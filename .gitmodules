@@ -1,0 +1,3 @@
+[submodule "Vendor/libxls"]
+	path = Vendor/libxls
+	url = https://github.com/libxls/libxls.git

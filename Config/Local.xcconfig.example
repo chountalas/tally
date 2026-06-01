@@ -1,0 +1,6 @@
+// Copy this file to Config/Local.xcconfig for local signing overrides.
+// Config/Local.xcconfig is ignored by git.
+
+// TALLY_BUNDLE_IDENTIFIER = com.example.Tally
+// TALLY_DEVELOPMENT_TEAM = ABCDE12345
+// TALLY_ICLOUD_CONTAINER_IDENTIFIER = iCloud.com.example.Tally

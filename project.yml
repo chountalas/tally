@@ -1,0 +1,153 @@
+name: Tally
+options:
+  bundleIdPrefix: dev.tally
+  createIntermediateGroups: true
+packages:
+  CoreXLSX:
+    url: https://github.com/CoreOffice/CoreXLSX.git
+    from: 0.14.1
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    GENERATE_INFOPLIST_FILE: YES
+    PRODUCT_NAME: $(TARGET_NAME)
+targets:
+  Tally:
+    type: application
+    platform: auto
+    configFiles:
+      Debug: Config/Tally.xcconfig
+      Release: Config/Tally.xcconfig
+    supportedDestinations:
+      - iOS
+      - macOS
+    deploymentTarget:
+      iOS: "26.2"
+      macOS: "26.2"
+    sources:
+      - path: Tally
+        excludes:
+          - Resources/LaunchScreen.storyboard
+      - path: Tally/Resources/LaunchScreen.storyboard
+        buildPhase: resources
+        destinationFilters:
+          - iOS
+      - path: Vendor/libxls/src/ole.c
+      - path: Vendor/libxls/src/xls.c
+      - path: Vendor/libxls/src/xlstool.c
+      - path: Vendor/libxls/src/locale.c
+      - path: Vendor/libxls/src/endian.c
+    settings:
+      base:
+        IPHONEOS_DEPLOYMENT_TARGET: "26.4"
+        MACOSX_DEPLOYMENT_TARGET: "26.4"
+        PRODUCT_BUNDLE_IDENTIFIER: $(TALLY_BUNDLE_IDENTIFIER)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_TEAM: $(TALLY_DEVELOPMENT_TEAM)
+        CODE_SIGN_STYLE: Automatic
+        "CODE_SIGN_STYLE[sdk=macosx*]": Manual
+        "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
+        "ENABLE_APP_SANDBOX[sdk=macosx*]": YES
+        CODE_SIGN_ENTITLEMENTS: Tally/Resources/Tally.iOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Tally/Resources/Tally.macOS.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: Tally/Support/Tally-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Vendor/libxls/include
+        # SDK-conditional runpath because this is a multi-destination target.
+        #   macOS: executable lives at .app/Contents/MacOS, frameworks at
+        #     .app/Contents/Frameworks — dyld must walk up one level.
+        #   iOS:   executable and frameworks both live at .app/, so the
+        #     framework directory is right next to the binary.
+        # xcodegen's default for `platform: auto` writes the iOS layout into
+        # the unconditional `LD_RUNPATH_SEARCH_PATHS` key, and Xcode unions
+        # array-typed build settings across the base and SDK-conditional
+        # variants. Neutralizing the base to just $(inherited) lets each
+        # SDK-conditional value below be the sole authoritative source for
+        # its platform — keeps macOS and iOS clean.
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+        "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]":
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - "@loader_path/../Frameworks"
+        "LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]":
+          - $(inherited)
+          - "@executable_path/Frameworks"
+        "LD_RUNPATH_SEARCH_PATHS[sdk=iphonesimulator*]":
+          - $(inherited)
+          - "@executable_path/Frameworks"
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
+        INFOPLIST_KEY_NSCalendarsUsageDescription: Tally can create renewal reminders in your calendar.
+        INFOPLIST_KEY_NSUserNotificationsUsageDescription: Tally can notify you before upcoming renewals.
+        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
+        INFOPLIST_KEY_CFBundleURLTypes:
+          - CFBundleURLName: $(TALLY_BUNDLE_IDENTIFIER)
+            CFBundleURLSchemes:
+              - tally
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: SwiftData.framework
+      - sdk: Charts.framework
+      - sdk: UniformTypeIdentifiers.framework
+      - sdk: EventKit.framework
+      - sdk: UserNotifications.framework
+      - sdk: FoundationModels.framework
+      - sdk: AppIntents.framework
+      - sdk: CoreSpotlight.framework
+      - package: CoreXLSX
+      # macOS-only local Gemma inference via llama.cpp Apple XCFramework.
+      # See Vendor/llama-framework-source.md for provenance and upgrade steps.
+      - framework: Vendor/llama.framework
+        embed: true
+        codeSign: true
+        destinationFilters: [macOS]
+  TallyTests:
+    type: bundle.unit-test
+    platform: macOS
+    configFiles:
+      Debug: Config/Tally.xcconfig
+      Release: Config/Tally.xcconfig
+    deploymentTarget: "26.4"
+    hostApplication: Tally
+    sources:
+      - path: TallyTests
+    settings:
+      base:
+        MACOSX_DEPLOYMENT_TARGET: "26.4"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Tally.app/Contents/MacOS/Tally"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        PRODUCT_BUNDLE_IDENTIFIER: $(TALLY_BUNDLE_IDENTIFIER).Tests
+        # @testable import Tally transitively imports the llama
+        # module from GemmaRuntime.swift, so the test bundle needs the
+        # framework on its search path. The host app embeds it; we just link.
+        FRAMEWORK_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Vendor
+    dependencies:
+      - target: Tally
+      - framework: Vendor/llama.framework
+        embed: false
+        link: true
+schemes:
+  Tally:
+    build:
+      targets:
+        Tally: all
+        TallyTests:
+          - test
+    test:
+      targets:
+        - name: TallyTests

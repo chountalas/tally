@@ -1,0 +1,29 @@
+# macOS and editor noise
+.DS_Store
+*.swp
+*.swo
+
+# Local build output
+.build/
+DerivedData/
+*.xcresult
+
+# Xcode user state
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+
+# Local machine and signing configuration
+Config/Local.xcconfig
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.cer
+*.pem
+
+# Local automation state
+.claude/
+.desloppify/
+
+# Vendored upstream build artifacts that are not source inputs
+Vendor/libxls/cplusplus/main

@@ -1,0 +1,31 @@
+disabled_rules:
+  - identifier_name
+
+excluded:
+  - .build
+  - DerivedData
+  - Tally/Shared/GeneratedServiceLogoManifest.swift
+
+line_length:
+  warning: 140
+  error: 300
+
+file_length:
+  warning: 800
+  error: 2500
+
+type_body_length:
+  warning: 350
+  error: 700
+
+function_body_length:
+  warning: 80
+  error: 160
+
+function_parameter_count:
+  warning: 8
+  error: 15
+
+large_tuple:
+  warning: 3
+  error: 6

@@ -1,0 +1,11 @@
+// Public defaults for local development.
+//
+// To use your own Apple signing team, bundle identifier, or CloudKit container,
+// copy Config/Local.xcconfig.example to Config/Local.xcconfig and update it.
+
+TALLY_BUNDLE_IDENTIFIER = dev.tally.Tally
+TALLY_DEVELOPMENT_TEAM =
+// Used by the optional iCloud entitlement examples.
+TALLY_ICLOUD_CONTAINER_IDENTIFIER = iCloud.$(TALLY_BUNDLE_IDENTIFIER)
+
+#include? "Local.xcconfig"
