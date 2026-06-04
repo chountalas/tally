@@ -1081,7 +1081,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\", \"CFBundleURLSchemes\": [\"tally\"]]]";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Tally can create renewal reminders in your calendar.";
 				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "Tally can notify you before upcoming renewals.";
@@ -1204,7 +1204,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\", \"CFBundleURLSchemes\": [\"tally\"]]]";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Tally can create renewal reminders in your calendar.";
 				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "Tally can notify you before upcoming renewals.";

@@ -13,6 +13,22 @@ Tally is a local-first SwiftUI app for tracking subscriptions from manual entrie
 
 See [PRIVACY.md](PRIVACY.md) for the full data-flow notes.
 
+## Install
+
+Install the macOS app with Homebrew:
+
+```sh
+brew tap chountalas/tap
+brew install --cask tally
+```
+
+Update it later with:
+
+```sh
+brew update
+brew upgrade --cask tally
+```
+
 ## Requirements
 
 - Current Xcode with Swift 6 and the Apple platform SDKs used by `project.yml`
