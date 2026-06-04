@@ -25,6 +25,8 @@ Date: 2026-06-01
 - The vendored `llama.framework` has recorded provenance and a SHA-256 in `Vendor/llama-framework-source.md`; verify replacements before committing.
 - Optional Plaid or bank-sync work must keep secrets out of the client and cannot become required for core local workflows.
 
-## Remaining Publication Gate
+## Publication State
 
-The current working tree has been sanitized, but this repository history is not publish-ready as-is. History checks found old commits containing removed `.DS_Store`/scorecard/internal planning artifacts, local absolute paths, and the previous Apple team identifier. The public launch path is to keep the existing private repository as an archive and publish a fresh public repository from the sanitized tree.
+This public repository was published from a fresh sanitized root commit. The
+older private development history should remain in the private archive and must
+not be pushed to the public remote.
