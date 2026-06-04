@@ -5,7 +5,7 @@ Date: 2026-06-01
 ## Current Tree Status
 
 - No hardcoded production API keys, bearer tokens, private keys, or service credentials were found in the current tracked source scan.
-- Private agent control-plane instructions were removed from public repo files.
+- Contributor-facing setup and safety instructions were reviewed for public use.
 - Apple signing team, bundle identifier, and iCloud container values are now contributor-configurable instead of hard-coded to a personal account.
 - Public OSLog output no longer includes Gemma model paths or raw model-output previews.
 - `.DS_Store`, build output, Xcode user state, local signing files, local automation state, and generated vendor binaries are ignored.
@@ -27,6 +27,6 @@ Date: 2026-06-01
 
 ## Publication State
 
-This public repository was published from a fresh sanitized root commit. The
-older private development history should remain in the private archive and must
-not be pushed to the public remote.
+Only public-safe source, documentation, fixtures, and provenance notes belong on
+the public remote. Local history, generated output, and contributor-specific
+state should stay out of commits.

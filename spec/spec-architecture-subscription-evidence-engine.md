@@ -93,7 +93,7 @@ The scope excludes:
 
 - **CON-001**: Plaid cannot be a required dependency because production access requires approval and client secrets cannot be shipped in an open-source client.
 - **CON-002**: All default tracking features shall work with file imports and at least one open-source-friendly bank feed path.
-- **CON-003**: GPL/AGPL project research may inform architecture only; Tally shall not copy implementation code or seed data from GPL/AGPL repositories.
+- **CON-003**: Tally shall not copy incompatible third-party source code, seed data, merchant lists, or licensed application behavior.
 - **CON-004**: Source adapters shall not require a hosted Tally service to use the core evidence engine.
 - **CON-005**: CloudKit sync shall remain compatible with SwiftData model additions or explicitly provide migration/reset handling.
 
@@ -629,34 +629,26 @@ The proposed engine does not discard these pieces. It inserts durable layers aro
 6. Evidence persistence around every automated decision.
 7. Local LLM evidence enrichment after deterministic feature extraction.
 
-### 7.3 Research Inputs From Inspected Repos
+### 7.3 Design Rationale
 
-The following repositories were inspected as architectural research inputs. The implementation shall use these as conceptual references only. The implementation shall not copy source code or seed data from GPL or AGPL repositories unless Tally intentionally adopts compatible licensing.
-
-| ID | Repo | Inspected commit | Tracking model | Why it matters for Tally | Add to Tally | Do not borrow |
-|----|------|------------------|----------------|--------------------------|--------------|---------------|
-| **SRC-001** | [actualbudget/actual](https://github.com/actualbudget/actual) | `000d9574537f544d89901ce82c32990d15bb1eec` | Schedules backed by transaction rules. Automatic schedule finding scans transaction history, matches approximate dates and amounts, and links transactions to schedules. | This is the strongest reference for accurate automated recurring detection because confirmed behavior becomes executable rules, not just a static record. | Add `SubscriptionMatchRule`; apply rules before clustering; use date windows and amount tolerances; derive future rules from review decisions. | Do not borrow the budgeting template/category system or require users to manually curate schedules as the main workflow. |
-| **SRC-002** | [firefly-iii/firefly-iii](https://github.com/firefly-iii/firefly-iii) | `891f5cb` | Bills are first-class records with amount windows, cadence, generated rules, transaction linking, rescans, and expected-vs-actual enrichment. | This is the strongest reference for subscription lifecycle repair: expected charges, actual payments, overdue state, and full historical rescans. | Add `SubscriptionOccurrence`; add amount bands; add hidden/internal rescan; add rule preview statistics; reconcile expected-vs-observed charges after every import. | Do not borrow full accounting breadth, object groups, budgets, webhooks, liabilities, or manual rule complexity. |
-| **SRC-003** | [monetr/monetr](https://github.com/monetr/monetr) | `17c26af` | Budgeting app with transaction clustering using raw descriptors, merchant names, TF-IDF-like tokenization, DBSCAN-style clustering, and Plaid sync. | Merchant identity is a major accuracy bottleneck in Tally. Descriptor clustering helps avoid brittle exact merchant strings. | Add `MerchantIdentity` and `MerchantIdentityMember`; persist ranked tokens, raw descriptors, centroid/canonical identity, source/account hints, and confidence. | Do not copy its incomplete recurring detector or Plaid-only assumptions. |
-| **SRC-004** | [francescogabrieli/Spectra](https://github.com/francescogabrieli/Spectra) | `a5d65a2c8c656519382c565df679f73c4f06f2bf` | Transaction-history app that applies overrides/rules, local categorization, static subscription merchant detection, temporal recurrence, and feedback replay. | It demonstrates the correct order for ambiguous data: apply user memory, use known merchant priors, then temporal recurrence, then review. | Add `SubscriptionDetectionEvidence`; persist evidence factors; add feedback replay; use service/profile priors before temporal scoring. | Do not copy AGPL code, merchant lists, or category-only subscription detection. |
-| **SRC-005** | [ellite/Wallos](https://github.com/ellite/Wallos) | `fdec995` | Manual subscription ledger with explicit cycles, next payment, auto-renew/manual renewal, inactive state, replacement subscriptions, reminders, and AI recommendations. | It shows lifecycle fields that Tally should infer automatically from transaction evidence. | Add lifecycle evidence for auto-renew, manual-renew, one-time, inactive, cancellation, replacement, and reminder state. | Do not borrow manual-entry-first tracking or simplistic renewal math as detection truth. |
-| **SRC-006** | [ajnart/subs](https://github.com/ajnart/subs) | `a37cf93b9919c9783f27b0273988e3e40e9f24f0` | Manual subscription tracker with a large service template catalog, domain/category/region metadata, duplicate prompts, and import validation. | Known-service priors are valuable, especially for local-first detection where bank descriptors are messy. | Add `ServiceProfile` catalog with aliases, domains, processor patterns, likely categories, common cadences, price bands, logo IDs, and cancellation URLs. | Do not use static template prices as truth or exact domain-price duplicate fingerprints as the main matching rule. |
-| **SRC-007** | [meceware/wapy.dev](https://github.com/meceware/wapy.dev) | `babaf66` | Manual subscription ledger with future payment dates, notification state, and durable `PastPayment` records when a user marks a payment as paid. | The useful primitive is an occurrence ledger: every expected payment can become matched, missed, late, early, or manually confirmed. | Add `SubscriptionOccurrence`; store expected date, matched transaction, status, date delta, amount delta, and confidence. | Do not make manual "mark paid" the source of truth; transactions should remain primary. |
-| **SRC-008** | [bscott/subtrackr](https://github.com/bscott/subtrackr) | `e45847073f53c369caa1b2d3ec3750f8e074bf09` | Manual subscription ledger with interval schedules, no-overflow month-end date logic, share counts, reminders, and an MCP automation surface. | It highlights date correctness and interval schedules, especially end-of-month and every-N-month cases that median-day cadence can mis-score. | Add `SubscriptionScheduleExpectation` with unit, interval, anchor policy, end-of-month handling, and date tolerance. Add automation actions for confirm, merge, split, suppress, and correction. | Do not copy AGPL code, manual-first workflow, or current-price-only accounting. |
-| **SRC-009** | [DennisBauer/RecurringExpenseTracker](https://github.com/DennisBauer/RecurringExpenseTracker) | `9f2f5d208b3e8f13024e402e24515122f0b42f03` | Manual recurring expense tracker that projects payment instances and stores per-occurrence paid/unpaid state. | It cleanly separates subscription definition from projected expected occurrences. Tally needs that same separation, but fed by transaction matching. | Project expected payment slots from schedule expectations; reconcile imported transactions into slots; score subscriptions by coverage. | Do not copy GPL code or manual-first expense tracking semantics. |
+The implementation shall keep the subscription evidence engine original to Tally.
+The design requirements are based on product needs, local-first privacy goals,
+and observed failure modes in messy transaction imports. The implementation shall
+not copy third-party source code, seed data, merchant lists, or licensed
+application behavior into this repository.
 
 ### 7.4 Why These Additions Are Required
 
-| Addition | Source repos | Why Tally needs it now |
-|----------|--------------|------------------------|
-| `SourceTransactionIdentity` | Actual Budget, Spectra, monetr | Accurate automation requires duplicate-safe ingestion before detection. Without this, overlapping CSV/SimpleFIN/Plaid imports double-count spend and corrupt cadence evidence. |
-| `MerchantIdentity` / `MerchantIdentityMember` | monetr, Spectra, Actual Budget | Merchant descriptors are unstable. Persistent identity is required for Apple, Google, PayPal, Stripe, Paddle, Amazon, domain registrars, and bank-specific descriptor variants. |
-| `ServiceProfile` | Subs, Wallos, Spectra | Known-service priors reduce manual review for obvious SaaS, streaming, software, storage, and membership services while still requiring transaction evidence. |
-| `SubscriptionMatchRule` | Actual Budget, Firefly III, Spectra | Confirmed subscriptions must become executable future behavior. A review action should teach Tally, not just update one record. |
-| `SubscriptionScheduleExpectation` | Actual Budget, SubTrackr, RecurringExpenseTracker | `SubscriptionCadence` is too coarse for every-two-month, end-of-month, nth-weekday, annual-date, and grace-window logic. |
-| `SubscriptionOccurrence` | Firefly III, Wapy.dev, RecurringExpenseTracker | The system should prove a subscription by matching expected charges to actual charges over time, and it should learn from missed or late charges. |
-| `SubscriptionDetectionEvidence` | Spectra, Firefly III, Actual Budget | Automation needs auditability. Every auto-confirm, auto-suppress, and review recommendation must explain which evidence factors drove the decision. |
-| Local LLM evidence interface | Current Tally, Spectra | Tally already has Gemma and Apple Intelligence. They should enrich structured evidence for messy descriptors and edge cases, while deterministic scoring remains authoritative. |
+| Addition | Why Tally needs it now |
+|----------|------------------------|
+| `SourceTransactionIdentity` | Accurate automation requires duplicate-safe ingestion before detection. Without this, overlapping CSV/SimpleFIN/Plaid imports double-count spend and corrupt cadence evidence. |
+| `MerchantIdentity` / `MerchantIdentityMember` | Merchant descriptors are unstable. Persistent identity is required for Apple, Google, PayPal, Stripe, Paddle, Amazon, domain registrars, and bank-specific descriptor variants. |
+| `ServiceProfile` | Known-service priors reduce manual review for obvious SaaS, streaming, software, storage, and membership services while still requiring transaction evidence. |
+| `SubscriptionMatchRule` | Confirmed subscriptions must become executable future behavior. A review action should teach Tally, not just update one record. |
+| `SubscriptionScheduleExpectation` | `SubscriptionCadence` is too coarse for every-two-month, end-of-month, nth-weekday, annual-date, and grace-window logic. |
+| `SubscriptionOccurrence` | The system should prove a subscription by matching expected charges to actual charges over time, and it should learn from missed or late charges. |
+| `SubscriptionDetectionEvidence` | Automation needs auditability. Every auto-confirm, auto-suppress, and review recommendation must explain which evidence factors drove the decision. |
+| Local LLM evidence interface | Tally already has Gemma and Apple Intelligence. They should enrich structured evidence for messy descriptors and edge cases, while deterministic scoring remains authoritative. |
 
 ### 7.5 Automation Philosophy
 
