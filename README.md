@@ -18,8 +18,7 @@ See [PRIVACY.md](PRIVACY.md) for the full data-flow notes.
 Install the macOS app with Homebrew:
 
 ```sh
-brew tap chountalas/tap
-brew install --cask tally
+brew install --cask chountalas/tap/tally
 ```
 
 Update it later with:
