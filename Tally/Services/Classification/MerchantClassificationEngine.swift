@@ -42,6 +42,7 @@ struct MerchantClassificationBatchResult: Sendable {
     let results: [String: MerchantClassificationResult]
     let strategyUsed: MerchantClassificationStrategy
     let fallbackReason: MerchantClassificationFallbackReason?
+    let currentCacheableRawMerchants: Set<String>
 }
 
 struct MerchantClassificationEngine: Sendable {
@@ -111,16 +112,19 @@ struct MerchantClassificationEngine: Sendable {
             return MerchantClassificationBatchResult(
                 results: [:],
                 strategyUsed: strategy,
-                fallbackReason: nil
+                fallbackReason: nil,
+                currentCacheableRawMerchants: []
             )
         }
 
         switch strategy {
         case .heuristicOnly:
+            let results = heuristicResults(for: requests)
             return MerchantClassificationBatchResult(
-                results: heuristicResults(for: requests),
+                results: results,
                 strategyUsed: .heuristicOnly,
-                fallbackReason: selectedProviderStatus.isReady ? .confidentHeuristics : .providerUnavailable
+                fallbackReason: selectedProviderStatus.isReady ? .confidentHeuristics : .providerUnavailable,
+                currentCacheableRawMerchants: selectedProviderStatus.isReady ? Set(results.keys) : []
             )
         case .individual:
             return await individualBatchResult(for: requests)
@@ -216,6 +220,7 @@ struct MerchantClassificationEngine: Sendable {
         var usedProvider = false
         var attemptedProvider = false
         var providerFailed = false
+        var currentCacheableRawMerchants: Set<String> = []
 
         for request in requests {
             let heuristicResult = heuristic.classify(
@@ -227,6 +232,7 @@ struct MerchantClassificationEngine: Sendable {
 
             if shouldPreferHeuristic(heuristicResult) {
                 results[request.rawMerchant] = heuristicResult
+                currentCacheableRawMerchants.insert(request.rawMerchant)
                 continue
             }
 
@@ -239,6 +245,7 @@ struct MerchantClassificationEngine: Sendable {
             ) {
                 results[request.rawMerchant] = result
                 usedProvider = true
+                currentCacheableRawMerchants.insert(request.rawMerchant)
             } else {
                 results[request.rawMerchant] = heuristicResult
                 providerFailed = true
@@ -251,7 +258,8 @@ struct MerchantClassificationEngine: Sendable {
                 attemptedProvider: attemptedProvider,
                 usedProvider: usedProvider,
                 providerFailed: providerFailed
-            )
+            ),
+            currentCacheableRawMerchants: currentCacheableRawMerchants
         )
     }
 
@@ -262,6 +270,7 @@ struct MerchantClassificationEngine: Sendable {
         let heuristics = heuristicResults(for: requests)
         var usedProviderBatch = false
         var providerBatchFailed = false
+        var currentCacheableRawMerchants: Set<String> = []
 
         let aiEligibleRequests = requests.filter { request in
             guard let heuristicResult = heuristics[request.rawMerchant] else {
@@ -275,6 +284,7 @@ struct MerchantClassificationEngine: Sendable {
         where aiEligibleRawMerchants.contains(request.rawMerchant) == false {
             if let heuristicResult = heuristics[request.rawMerchant] {
                 results[request.rawMerchant] = heuristicResult
+                currentCacheableRawMerchants.insert(request.rawMerchant)
             }
         }
 
@@ -287,6 +297,7 @@ struct MerchantClassificationEngine: Sendable {
                 for request in batch {
                     if let result = batchResults[request.rawMerchant] {
                         results[request.rawMerchant] = result
+                        currentCacheableRawMerchants.insert(request.rawMerchant)
                     } else {
                         providerBatchFailed = true
                         results[request.rawMerchant] = heuristics[request.rawMerchant]
@@ -307,7 +318,8 @@ struct MerchantClassificationEngine: Sendable {
                 attemptedProvider: aiEligibleRequests.isEmpty == false,
                 usedProvider: usedProviderBatch,
                 providerFailed: providerBatchFailed
-            )
+            ),
+            currentCacheableRawMerchants: currentCacheableRawMerchants
         )
     }
 

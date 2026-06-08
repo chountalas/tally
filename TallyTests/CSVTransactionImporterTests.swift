@@ -202,6 +202,10 @@ final class CSVTransactionImporterTests: XCTestCase {
         let transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
         XCTAssertEqual(transactions.count, 300)
 
+        let classifications = try context.fetch(FetchDescriptor<MerchantClassification>())
+        XCTAssertEqual(classifications.count, 300)
+        XCTAssertTrue(classifications.allSatisfy { $0.classifierVersion == 0 })
+
         let importRecords = try context.fetch(FetchDescriptor<ImportRecord>())
         XCTAssertEqual(importRecords.first?.importedTransactionCount, 300)
         XCTAssertEqual(importRecords.first?.detectedSubscriptionCount, 0)
@@ -234,6 +238,7 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertEqual(result.strategyUsed, .providerBatch)
         XCTAssertNil(result.fallbackReason)
         XCTAssertEqual(result.results.count, requests.count)
+        XCTAssertEqual(result.currentCacheableRawMerchants, Set(requests.map(\.rawMerchant)))
         XCTAssertEqual(recordedBatchSizes, [20, 10])
         XCTAssertEqual(result.results["Merchant 0"]?.canonicalName, "Merchant 0")
     }
@@ -266,6 +271,7 @@ final class CSVTransactionImporterTests: XCTestCase {
 
         XCTAssertEqual(result.strategyUsed, .heuristicOnly)
         XCTAssertEqual(result.fallbackReason, .providerFailed)
+        XCTAssertTrue(result.currentCacheableRawMerchants.isEmpty)
         XCTAssertTrue(summary.localizedStandardContains("attempted"))
         XCTAssertTrue(summary.localizedStandardContains("could not complete"))
         XCTAssertFalse(summary.localizedStandardContains("confident enough"))
@@ -300,6 +306,9 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertEqual(result.strategyUsed, .providerBatch)
         XCTAssertEqual(result.fallbackReason, .partialProviderFailure)
         XCTAssertEqual(result.results.count, requests.count)
+        XCTAssertEqual(result.currentCacheableRawMerchants.count, 20)
+        XCTAssertTrue(result.currentCacheableRawMerchants.contains("Merchant 0"))
+        XCTAssertFalse(result.currentCacheableRawMerchants.contains("Merchant 29"))
         XCTAssertTrue(summary.localizedStandardContains("heuristic fallback"))
     }
 
@@ -334,6 +343,8 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertEqual(result.results.count, requests.count)
         XCTAssertEqual(result.results["Merchant 0"]?.canonicalName, "Merchant 0")
         XCTAssertEqual(result.results["Merchant 1"]?.canonicalName, "AI Merchant 1")
+        XCTAssertFalse(result.currentCacheableRawMerchants.contains("Merchant 0"))
+        XCTAssertTrue(result.currentCacheableRawMerchants.contains("Merchant 1"))
         XCTAssertTrue(summary.localizedStandardContains("heuristic fallback"))
     }
 

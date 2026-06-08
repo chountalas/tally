@@ -69,7 +69,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.15,
                     confidence: 0.92
                 ),
-                classifierVersion: 2,
+                classifierVersion: 3,
                 lastUpdatedAt: .now
             )
         )
@@ -99,7 +99,7 @@ extension CSVTransactionImporterTests {
         XCTAssertEqual(refreshedClassification.serviceCategory, "Streaming")
         XCTAssertEqual(refreshedClassification.merchantKind, .mediaStreaming)
         XCTAssertGreaterThan(refreshedClassification.subscriptionAffinity, 0.8)
-        XCTAssertEqual(refreshedClassification.classifierVersion, 3)
+        XCTAssertEqual(refreshedClassification.classifierVersion, 4)
 
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)
@@ -124,7 +124,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.15,
                     confidence: 0.92
                 ),
-                classifierVersion: 2,
+                classifierVersion: 3,
                 lastUpdatedAt: .now
             )
         )
@@ -157,7 +157,7 @@ extension CSVTransactionImporterTests {
                 )
             ).first
         )
-        XCTAssertEqual(staleClassification.classifierVersion, 2)
+        XCTAssertEqual(staleClassification.classifierVersion, 3)
         XCTAssertEqual(staleClassification.merchantKind, .generalRetail)
     }
 
@@ -179,7 +179,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.15,
                     confidence: 0.92
                 ),
-                classifierVersion: 2,
+                classifierVersion: 3,
                 lastUpdatedAt: .now
             )
         )
@@ -193,7 +193,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.96,
                     confidence: 0.97
                 ),
-                classifierVersion: 3,
+                classifierVersion: 4,
                 lastUpdatedAt: .now
             )
         )
@@ -237,7 +237,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.96,
                     confidence: 0.97
                 ),
-                classifierVersion: 3,
+                classifierVersion: 4,
                 lastUpdatedAt: cachedAt
             )
         )
@@ -278,7 +278,7 @@ extension CSVTransactionImporterTests {
             ).first
         )
         XCTAssertEqual(reusedClassification.lastUpdatedAt, cachedAt)
-        XCTAssertEqual(reusedClassification.classifierVersion, 3)
+        XCTAssertEqual(reusedClassification.classifierVersion, 4)
 
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)

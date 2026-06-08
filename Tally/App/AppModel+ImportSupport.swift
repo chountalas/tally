@@ -20,7 +20,8 @@ private let classificationTelemetryLogger = Logger(
     category: "Classification"
 )
 
-private let currentClassificationCacheVersion = 3
+private let currentClassificationCacheVersion = 4
+private let fallbackClassificationCacheVersion = 0
 private let maxClassificationCacheAge: TimeInterval = 180 * 24 * 60 * 60
 
 extension AppModel {
@@ -60,6 +61,7 @@ extension AppModel {
             batchResult.results,
             requestsToClassify: requestsToClassify,
             cachedByRawMerchant: caches.cachedByRawMerchant,
+            currentCacheableRawMerchants: batchResult.currentCacheableRawMerchants,
             results: &results,
             context: context
         )
@@ -307,6 +309,7 @@ private extension AppModel {
         _ batchResults: [String: MerchantClassificationResult],
         requestsToClassify: [MerchantClassificationRequest],
         cachedByRawMerchant: [String: MerchantClassification],
+        currentCacheableRawMerchants: Set<String>,
         results: inout [String: MerchantClassificationResult],
         context: ModelContext
     ) {
@@ -315,20 +318,23 @@ private extension AppModel {
                 continue
             }
             results[request.rawMerchant] = classification
+            let classifierVersion = currentCacheableRawMerchants.contains(request.rawMerchant)
+                ? currentClassificationCacheVersion
+                : fallbackClassificationCacheVersion
             if let cached = cachedByRawMerchant[request.rawMerchant] {
                 cached.canonicalName = classification.canonicalName
                 cached.serviceCategory = classification.serviceCategory
                 cached.merchantKind = classification.merchantKind
                 cached.subscriptionAffinity = classification.subscriptionAffinity
                 cached.confidence = classification.confidence
-                cached.classifierVersion = currentClassificationCacheVersion
+                cached.classifierVersion = classifierVersion
                 cached.lastUpdatedAt = .now
             } else {
                 context.insert(
                     MerchantClassification(
                         rawMerchant: request.rawMerchant,
                         result: classification,
-                        classifierVersion: currentClassificationCacheVersion
+                        classifierVersion: classifierVersion
                     )
                 )
             }
