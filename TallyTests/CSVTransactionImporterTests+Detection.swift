@@ -201,7 +201,8 @@ extension CSVTransactionImporterTests {
                     merchantKind: .mediaStreaming,
                     subscriptionAffinity: 0.98,
                     confidence: 0.95
-                )
+                ),
+                isUserCorrected: true
             )
         )
 

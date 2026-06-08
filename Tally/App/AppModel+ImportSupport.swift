@@ -12,7 +12,7 @@ struct ClassificationLoadResult: Sendable {
 private struct ClassificationCaches {
     let aliasByRawMerchant: [String: MerchantAlias]
     let cachedByRawMerchant: [String: MerchantClassification]
-    let cachedByCanonicalMerchant: [String: MerchantClassification]
+    let cachedByCanonicalMerchant: [String: [MerchantClassification]]
 }
 
 private let classificationTelemetryLogger = Logger(
@@ -20,7 +20,7 @@ private let classificationTelemetryLogger = Logger(
     category: "Classification"
 )
 
-private let currentClassificationCacheVersion = 2
+private let currentClassificationCacheVersion = 3
 private let maxClassificationCacheAge: TimeInterval = 180 * 24 * 60 * 60
 
 extension AppModel {
@@ -234,9 +234,9 @@ private extension AppModel {
             result[classification.rawMerchant] = classification
         }
         let cachedByCanonicalMerchant = cachedClassifications.reduce(
-            into: [String: MerchantClassification]()
+            into: [String: [MerchantClassification]]()
         ) { result, classification in
-            result[classification.canonicalName] = result[classification.canonicalName] ?? classification
+            result[classification.canonicalName, default: []].append(classification)
         }
 
         return ClassificationCaches(
@@ -270,8 +270,12 @@ private extension AppModel {
         requestsToClassify: inout [MerchantClassificationRequest]
     ) {
         if let alias = caches.aliasByRawMerchant[seed.merchantRaw] {
-            let prior = caches.cachedByRawMerchant[seed.merchantRaw]?.result ??
-                caches.cachedByCanonicalMerchant[alias.canonicalName]?.result
+            let prior = reusableCachedClassification(
+                rawMerchant: seed.merchantRaw,
+                canonicalName: alias.canonicalName,
+                caches: caches,
+                forceRefresh: forceRefresh
+            )?.result
             results[seed.merchantRaw] = MerchantClassificationResult(
                 canonicalName: alias.canonicalName,
                 serviceCategory: seed.category ?? prior?.serviceCategory ?? "Uncategorized",
@@ -329,6 +333,39 @@ private extension AppModel {
                 )
             }
         }
+    }
+
+    func reusableCachedClassification(
+        rawMerchant: String,
+        canonicalName: String,
+        caches: ClassificationCaches,
+        forceRefresh: Bool
+    ) -> MerchantClassification? {
+        guard forceRefresh == false else {
+            return nil
+        }
+
+        var candidates: [MerchantClassification] = []
+        if let cached = caches.cachedByRawMerchant[rawMerchant] {
+            candidates.append(cached)
+        }
+        candidates.append(contentsOf: caches.cachedByCanonicalMerchant[canonicalName] ?? [])
+
+        return candidates.filter(shouldReuseCachedClassification).max(by: { lhs, rhs in
+            cachedClassificationPreference(lhs) < cachedClassificationPreference(rhs)
+        })
+    }
+
+    func cachedClassificationPreference(_ cached: MerchantClassification) -> Int {
+        if cached.isUserCorrected {
+            return 2
+        }
+
+        if cached.classifierVersion == currentClassificationCacheVersion {
+            return 1
+        }
+
+        return 0
     }
 
     func shouldReuseCachedClassification(_ cached: MerchantClassification) -> Bool {
