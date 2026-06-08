@@ -269,9 +269,10 @@ struct MerchantClassificationEngine: Sendable {
             }
             return shouldPreferHeuristic(heuristicResult) == false
         }
+        let aiEligibleRawMerchants = Set(aiEligibleRequests.map(\.rawMerchant))
 
         for request in requests
-        where aiEligibleRequests.contains(where: { $0.rawMerchant == request.rawMerchant }) == false {
+        where aiEligibleRawMerchants.contains(request.rawMerchant) == false {
             if let heuristicResult = heuristics[request.rawMerchant] {
                 results[request.rawMerchant] = heuristicResult
             }
