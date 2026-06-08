@@ -113,7 +113,8 @@ private extension AIProviderStatusSnapshot {
 enum AIProviderRegistry {
     static func defaultGenerator(
         preferences: AIProviderPreferences = AIProviderPreferences(),
-        gemmaModelManager: GemmaModelManager = GemmaModelManager()
+        gemmaModelManager: GemmaModelManager = GemmaModelManager(),
+        allowsModelAdoption: Bool = true
     ) -> (any SubscriptionIntelligenceGenerating)? {
         switch preferences.selectedKind {
         case .gemmaLocal:
@@ -123,7 +124,10 @@ enum AIProviderRegistry {
             }
 
             do {
-                guard let modelURL = try gemmaModelManager.prepareManagedModelIfNeeded() else {
+                let modelURL = allowsModelAdoption
+                    ? try gemmaModelManager.prepareManagedModelIfNeeded()
+                    : gemmaModelManager.managedModelIfReady()
+                guard let modelURL else {
                     return nil
                 }
 

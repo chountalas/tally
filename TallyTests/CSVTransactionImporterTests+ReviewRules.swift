@@ -7,7 +7,7 @@ extension CSVTransactionImporterTests {
     func testRefreshSubscriptionAnalysisClearsExistingFalsePositiveGroceries() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let staleClassificationDate =
             ISO8601DateFormatter().date(from: "2024-01-01T00:00:00Z") ?? .distantPast
@@ -53,11 +53,11 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
-    func testImportReclassifiesStaleCachedMerchantClassification() async throws {
+    func testImportReclassifiesPreviousVersionCachedMerchantClassification() async throws {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         context.insert(
             MerchantClassification(
@@ -69,6 +69,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.15,
                     confidence: 0.92
                 ),
+                classifierVersion: 3,
                 lastUpdatedAt: .now
             )
         )
@@ -98,7 +99,7 @@ extension CSVTransactionImporterTests {
         XCTAssertEqual(refreshedClassification.serviceCategory, "Streaming")
         XCTAssertEqual(refreshedClassification.merchantKind, .mediaStreaming)
         XCTAssertGreaterThan(refreshedClassification.subscriptionAffinity, 0.8)
-        XCTAssertGreaterThan(refreshedClassification.classifierVersion, 0)
+        XCTAssertEqual(refreshedClassification.classifierVersion, 4)
 
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)
@@ -106,10 +107,124 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
-    func testRefreshSubscriptionAnalysisReusesHealthyCachedClassification() async throws {
+    func testAliasImportIgnoresPreviousVersionNonUserCorrectedPrior() async throws {
+        let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
+
+        context.insert(MerchantAlias(rawMerchant: "NETFLIX *123", canonicalName: "Netflix"))
+        context.insert(
+            MerchantClassification(
+                rawMerchant: "Netflix",
+                result: MerchantClassificationResult(
+                    canonicalName: "Netflix",
+                    serviceCategory: "Retail",
+                    merchantKind: .generalRetail,
+                    subscriptionAffinity: 0.15,
+                    confidence: 0.92
+                ),
+                classifierVersion: 3,
+                lastUpdatedAt: .now
+            )
+        )
+        try context.save()
+
+        let csv = """
+        Date,Merchant,Amount,Category
+        2025-01-04,NETFLIX *123,-15.49,Streaming
+        2025-02-04,NETFLIX *123,-15.49,Streaming
+        2025-03-04,NETFLIX *123,-15.49,Streaming
+        """
+
+        let draft = try importer.makeDraft(fileName: "alias-stale-cache.csv", csvText: csv)
+        appModel.importDraft = draft
+
+        await appModel.commitImport(using: draft.suggestedMapping, into: context)
+
+        XCTAssertNil(appModel.importErrorMessage)
+
+        let transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
+        XCTAssertEqual(transactions.count, 3)
+        XCTAssertTrue(transactions.allSatisfy { $0.merchantNormalized == "Netflix" })
+        XCTAssertTrue(transactions.allSatisfy { $0.merchantKind == .unknown })
+        XCTAssertTrue(transactions.allSatisfy { $0.merchantSubscriptionAffinity == 0.5 })
+
+        let staleClassification = try XCTUnwrap(
+            context.fetch(
+                FetchDescriptor<MerchantClassification>(
+                    predicate: #Predicate { $0.rawMerchant == "Netflix" }
+                )
+            ).first
+        )
+        XCTAssertEqual(staleClassification.classifierVersion, 3)
+        XCTAssertEqual(staleClassification.merchantKind, .generalRetail)
+    }
+
+    @MainActor
+    func testAliasImportUsesCurrentCanonicalPriorWhenPreviousVersionRowSharesCanonicalName() async throws {
+        let importer = CSVTransactionImporter()
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        context.insert(MerchantAlias(rawMerchant: "NETFLIX *123", canonicalName: "Netflix"))
+        context.insert(
+            MerchantClassification(
+                rawMerchant: "Netflix Legacy",
+                result: MerchantClassificationResult(
+                    canonicalName: "Netflix",
+                    serviceCategory: "Retail",
+                    merchantKind: .generalRetail,
+                    subscriptionAffinity: 0.15,
+                    confidence: 0.92
+                ),
+                classifierVersion: 3,
+                lastUpdatedAt: .now
+            )
+        )
+        context.insert(
+            MerchantClassification(
+                rawMerchant: "Netflix Current",
+                result: MerchantClassificationResult(
+                    canonicalName: "Netflix",
+                    serviceCategory: "Streaming",
+                    merchantKind: .mediaStreaming,
+                    subscriptionAffinity: 0.96,
+                    confidence: 0.97
+                ),
+                classifierVersion: 4,
+                lastUpdatedAt: .now
+            )
+        )
+        try context.save()
+
+        let csv = """
+        Date,Merchant,Amount,Category
+        2025-01-04,NETFLIX *123,-15.49,Streaming
+        2025-02-04,NETFLIX *123,-15.49,Streaming
+        2025-03-04,NETFLIX *123,-15.49,Streaming
+        """
+
+        let draft = try importer.makeDraft(fileName: "alias-current-cache.csv", csvText: csv)
+        appModel.importDraft = draft
+
+        await appModel.commitImport(using: draft.suggestedMapping, into: context)
+
+        XCTAssertNil(appModel.importErrorMessage)
+
+        let transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
+        XCTAssertEqual(transactions.count, 3)
+        XCTAssertTrue(transactions.allSatisfy { $0.merchantNormalized == "Netflix" })
+        XCTAssertTrue(transactions.allSatisfy { $0.merchantKind == .mediaStreaming })
+        XCTAssertTrue(transactions.allSatisfy { $0.merchantSubscriptionAffinity >= 0.95 })
+    }
+
+    @MainActor
+    func testRefreshSubscriptionAnalysisReusesCurrentVersionCachedClassification() async throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
 
         let cachedAt = ISO8601DateFormatter().date(from: "2026-05-01T00:00:00Z") ?? .distantPast
         context.insert(
@@ -122,7 +237,7 @@ extension CSVTransactionImporterTests {
                     subscriptionAffinity: 0.96,
                     confidence: 0.97
                 ),
-                classifierVersion: 2,
+                classifierVersion: 4,
                 lastUpdatedAt: cachedAt
             )
         )
@@ -163,7 +278,7 @@ extension CSVTransactionImporterTests {
             ).first
         )
         XCTAssertEqual(reusedClassification.lastUpdatedAt, cachedAt)
-        XCTAssertEqual(reusedClassification.classifierVersion, 2)
+        XCTAssertEqual(reusedClassification.classifierVersion, 4)
 
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)

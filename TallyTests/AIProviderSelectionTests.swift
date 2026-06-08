@@ -23,30 +23,47 @@ struct AIProviderSelectionTests {
         #expect(reloaded.selectedKind == .appleIntelligence)
     }
 
-    @Test func importClassificationFallsBackToHeuristicsWhenGemmaIsSelected() {
+    @Test func importClassificationUsesSelectedProviderWhenGemmaIsSelected() {
         let defaults = UserDefaults(suiteName: "AIProviderSelectionTests.importGemma")!
         defaults.removePersistentDomain(forName: "AIProviderSelectionTests.importGemma")
         let preferences = AIProviderPreferences(userDefaults: defaults)
         preferences.selectedKind = .gemmaLocal
 
-        let engine = MerchantClassificationEngine(preferences: preferences)
+        let engine = MerchantClassificationEngine(
+            preferences: preferences,
+            gemmaModelManager: Self.emptyGemmaModelManager()
+        )
 
-        #expect(engine.importStrategy(forUniqueMerchantCount: 3) == .heuristicOnly)
-        #expect(engine.importStrategy(forUniqueMerchantCount: 300) == .heuristicOnly)
+        #expect(engine.importStrategy(forUniqueMerchantCount: 3) == .individual)
+        #expect(engine.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
     }
 
-    @Test func detectionServiceDisablesBackgroundAIWhenGemmaIsSelected() async {
+    @Test func detectionServiceEnablesBackgroundAIWhenGemmaIsReady() async throws {
+        let fileManager = FileManager.default
+        let rootDirectory = fileManager.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let manager = GemmaModelManager(
+            fileManager: fileManager,
+            appSupportDirectory: rootDirectory,
+            adoptableSourceURLs: [],
+            minimumValidModelSizeBytes: 32
+        )
+        try fileManager.createDirectory(at: manager.modelsDirectoryURL, withIntermediateDirectories: true)
+        try Self.makeValidGGUFModel(totalBytes: 64).write(to: manager.managedModelURL)
+
         let defaults = UserDefaults(suiteName: "AIProviderSelectionTests.detectionGemma")!
         defaults.removePersistentDomain(forName: "AIProviderSelectionTests.detectionGemma")
         let preferences = AIProviderPreferences(userDefaults: defaults)
         preferences.selectedKind = .gemmaLocal
 
+        let intelligence = SubscriptionIntelligenceService(
+            usage: .backgroundAutomation,
+            preferences: preferences,
+            gemmaModelManager: manager
+        )
+
         let capabilities = await MainActor.run {
             let service = SubscriptionDetectionService(
-                intelligence: SubscriptionIntelligenceService(
-                    usage: .backgroundAutomation,
-                    preferences: preferences
-                )
+                intelligence: intelligence
             )
 
             return (
@@ -55,8 +72,44 @@ struct AIProviderSelectionTests {
             )
         }
 
-        #expect(capabilities.0 == false)
-        #expect(capabilities.1 == false)
+        #expect(intelligence.evidenceProviderKind == .gemmaLocal)
+        #expect(capabilities.0 == true)
+        #expect(capabilities.1 == true)
+    }
+
+    @Test func backgroundAutomationDoesNotAdoptExistingGemmaModel() throws {
+        let fileManager = FileManager.default
+        let rootDirectory = fileManager.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let managedDirectory = rootDirectory.appending(path: "Managed", directoryHint: .isDirectory)
+        let existingDirectory = rootDirectory.appending(path: "Existing", directoryHint: .isDirectory)
+        let existingModelURL = existingDirectory.appending(
+            path: GemmaModelManager.managedModelFileName,
+            directoryHint: .notDirectory
+        )
+
+        try fileManager.createDirectory(at: existingDirectory, withIntermediateDirectories: true)
+        try Self.makeValidGGUFModel(totalBytes: 64).write(to: existingModelURL)
+
+        let manager = GemmaModelManager(
+            fileManager: fileManager,
+            appSupportDirectory: managedDirectory,
+            adoptableSourceURLs: [existingModelURL],
+            minimumValidModelSizeBytes: 32
+        )
+        let defaults = UserDefaults(suiteName: "AIProviderSelectionTests.backgroundNoAdopt")!
+        defaults.removePersistentDomain(forName: "AIProviderSelectionTests.backgroundNoAdopt")
+        let preferences = AIProviderPreferences(userDefaults: defaults)
+        preferences.selectedKind = .gemmaLocal
+
+        let intelligence = SubscriptionIntelligenceService(
+            usage: .backgroundAutomation,
+            preferences: preferences,
+            gemmaModelManager: manager
+        )
+
+        #expect(intelligence.evidenceProviderKind == nil)
+        #expect(fileManager.fileExists(atPath: manager.managedModelURL.path) == false)
+        #expect(manager.statusSnapshot().health == .adoptable)
     }
 
     @Test @MainActor
@@ -66,9 +119,12 @@ struct AIProviderSelectionTests {
         let preferences = AIProviderPreferences(userDefaults: defaults)
         preferences.selectedKind = .gemmaLocal
 
-        let appModel = AppModel(aiProviderPreferences: preferences)
+        let appModel = AppModel(
+            aiProviderPreferences: preferences,
+            gemmaModelManager: Self.emptyGemmaModelManager()
+        )
 
-        #expect(appModel.classifier.importStrategy(forUniqueMerchantCount: 300) == .heuristicOnly)
+        #expect(appModel.classifier.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
 
         appModel.selectIntelligenceProvider(.appleIntelligence)
 
@@ -633,6 +689,14 @@ struct AIProviderSelectionTests {
             data.append(Data(repeating: 0x58, count: totalBytes - data.count))
         }
         return data
+    }
+
+    private static func emptyGemmaModelManager() -> GemmaModelManager {
+        GemmaModelManager(
+            appSupportDirectory: FileManager.default.temporaryDirectory
+                .appending(path: "AIProviderSelectionTests-\(UUID().uuidString)", directoryHint: .isDirectory),
+            adoptableSourceURLs: []
+        )
     }
 }
 

@@ -8,7 +8,7 @@ extension CSVTransactionImporterTests {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let csv = """
         Date,Merchant,Category,Account,Original Statement,Amount
@@ -45,7 +45,7 @@ extension CSVTransactionImporterTests {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let calendar = Calendar(identifier: .gregorian)
         let formatter = DateFormatter()

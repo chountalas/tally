@@ -175,11 +175,7 @@ final class CSVTransactionImporterTests: XCTestCase {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
-        var preferences = AIProviderPreferences()
-        let originalProvider = preferences.selectedKind
-        preferences.selectedKind = .gemmaLocal
-        defer { preferences.selectedKind = originalProvider }
+        let appModel = AppModel.testing()
 
         var csvLines = ["Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags"]
         for index in 0..<300 {
@@ -199,16 +195,16 @@ final class CSVTransactionImporterTests: XCTestCase {
             appModel.infoMessage,
             "Imported 300 transactions from bulk.csv. Found 0 subscriptions and 0 items to review."
         )
-        XCTAssertEqual(
-            appModel.classificationStatusMessage,
-            """
-            Used heuristic classification for 300 unique merchants
-            to keep the import responsive.
-            """
-        )
+        XCTAssertTrue(appModel.classificationStatusMessage?.contains("Gemma is unavailable") == true)
+        XCTAssertTrue(appModel.classificationStatusMessage?.contains("Falling back") == true)
+        XCTAssertTrue(appModel.classificationStatusMessage?.contains("300 unique merchants") == true)
 
         let transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
         XCTAssertEqual(transactions.count, 300)
+
+        let classifications = try context.fetch(FetchDescriptor<MerchantClassification>())
+        XCTAssertEqual(classifications.count, 300)
+        XCTAssertTrue(classifications.allSatisfy { $0.classifierVersion == 0 })
 
         let importRecords = try context.fetch(FetchDescriptor<ImportRecord>())
         XCTAssertEqual(importRecords.first?.importedTransactionCount, 300)
@@ -240,9 +236,116 @@ final class CSVTransactionImporterTests: XCTestCase {
         let recordedBatchSizes = await intelligence.batchSizes()
 
         XCTAssertEqual(result.strategyUsed, .providerBatch)
+        XCTAssertNil(result.fallbackReason)
         XCTAssertEqual(result.results.count, requests.count)
+        XCTAssertEqual(result.currentCacheableRawMerchants, Set(requests.map(\.rawMerchant)))
         XCTAssertEqual(recordedBatchSizes, [20, 10])
         XCTAssertEqual(result.results["Merchant 0"]?.canonicalName, "Merchant 0")
+    }
+
+    func testReadyProviderFailureReportsAttemptedFallback() async throws {
+        let defaults = UserDefaults(suiteName: "CSVTransactionImporterTests.providerFailure")!
+        defaults.removePersistentDomain(forName: "CSVTransactionImporterTests.providerFailure")
+        let preferences = AIProviderPreferences(userDefaults: defaults)
+        preferences.selectedKind = .gemmaLocal
+        let engine = MerchantClassificationEngine(
+            preferences: preferences,
+            gemmaModelManager: try makeReadyGemmaModelManager(),
+            intelligence: FailingMerchantClassificationIntelligence()
+        )
+        let requests = [
+            MerchantClassificationRequest(
+                rawMerchant: "Mystery Merchant",
+                memo: "Monthly plan",
+                category: "Software",
+                amount: Decimal(string: "12.99") ?? 12.99
+            )
+        ]
+
+        let result = await engine.classifyBatch(requests, strategy: .individual)
+        let summary = engine.availabilitySummary(
+            for: result.strategyUsed,
+            uniqueMerchantCount: requests.count,
+            fallbackReason: result.fallbackReason
+        )
+
+        XCTAssertEqual(result.strategyUsed, .heuristicOnly)
+        XCTAssertEqual(result.fallbackReason, .providerFailed)
+        XCTAssertTrue(result.currentCacheableRawMerchants.isEmpty)
+        XCTAssertTrue(summary.localizedStandardContains("attempted"))
+        XCTAssertTrue(summary.localizedStandardContains("could not complete"))
+        XCTAssertFalse(summary.localizedStandardContains("confident enough"))
+    }
+
+    func testPartialProviderBatchFailureReportsHeuristicFallback() async throws {
+        let defaults = UserDefaults(suiteName: "CSVTransactionImporterTests.partialBatchFailure")!
+        defaults.removePersistentDomain(forName: "CSVTransactionImporterTests.partialBatchFailure")
+        let preferences = AIProviderPreferences(userDefaults: defaults)
+        preferences.selectedKind = .gemmaLocal
+        let engine = MerchantClassificationEngine(
+            preferences: preferences,
+            gemmaModelManager: try makeReadyGemmaModelManager(),
+            intelligence: PartiallyFailingBatchMerchantClassificationIntelligence()
+        )
+        let requests = (0..<30).map { index in
+            MerchantClassificationRequest(
+                rawMerchant: "Merchant \(index)",
+                memo: nil,
+                category: "Software",
+                amount: Decimal(index + 1)
+            )
+        }
+
+        let result = await engine.classifyBatch(requests, strategy: .providerBatch)
+        let summary = engine.availabilitySummary(
+            for: result.strategyUsed,
+            uniqueMerchantCount: requests.count,
+            fallbackReason: result.fallbackReason
+        )
+
+        XCTAssertEqual(result.strategyUsed, .providerBatch)
+        XCTAssertEqual(result.fallbackReason, .partialProviderFailure)
+        XCTAssertEqual(result.results.count, requests.count)
+        XCTAssertEqual(result.currentCacheableRawMerchants.count, 20)
+        XCTAssertTrue(result.currentCacheableRawMerchants.contains("Merchant 0"))
+        XCTAssertFalse(result.currentCacheableRawMerchants.contains("Merchant 29"))
+        XCTAssertTrue(summary.localizedStandardContains("heuristic fallback"))
+    }
+
+    func testSubsetProviderBatchResponseReportsHeuristicFallback() async throws {
+        let defaults = UserDefaults(suiteName: "CSVTransactionImporterTests.subsetBatchResponse")!
+        defaults.removePersistentDomain(forName: "CSVTransactionImporterTests.subsetBatchResponse")
+        let preferences = AIProviderPreferences(userDefaults: defaults)
+        preferences.selectedKind = .gemmaLocal
+        let engine = MerchantClassificationEngine(
+            preferences: preferences,
+            gemmaModelManager: try makeReadyGemmaModelManager(),
+            intelligence: SubsetBatchMerchantClassificationIntelligence()
+        )
+        let requests = (0..<30).map { index in
+            MerchantClassificationRequest(
+                rawMerchant: "Merchant \(index)",
+                memo: nil,
+                category: "Software",
+                amount: Decimal(index + 1)
+            )
+        }
+
+        let result = await engine.classifyBatch(requests, strategy: .providerBatch)
+        let summary = engine.availabilitySummary(
+            for: result.strategyUsed,
+            uniqueMerchantCount: requests.count,
+            fallbackReason: result.fallbackReason
+        )
+
+        XCTAssertEqual(result.strategyUsed, .providerBatch)
+        XCTAssertEqual(result.fallbackReason, .partialProviderFailure)
+        XCTAssertEqual(result.results.count, requests.count)
+        XCTAssertEqual(result.results["Merchant 0"]?.canonicalName, "Merchant 0")
+        XCTAssertEqual(result.results["Merchant 1"]?.canonicalName, "AI Merchant 1")
+        XCTAssertFalse(result.currentCacheableRawMerchants.contains("Merchant 0"))
+        XCTAssertTrue(result.currentCacheableRawMerchants.contains("Merchant 1"))
+        XCTAssertTrue(summary.localizedStandardContains("heuristic fallback"))
     }
 
     func testXLSXDraftDetectionAndMaterialization() throws {
@@ -323,6 +426,28 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertTrue(message.localizedStandardContains("too large"))
         XCTAssertTrue(message.localizedStandardContains("under"))
     }
+
+    private func makeReadyGemmaModelManager() throws -> GemmaModelManager {
+        let fileManager = FileManager.default
+        let rootDirectory = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let manager = GemmaModelManager(
+            fileManager: fileManager,
+            appSupportDirectory: rootDirectory,
+            adoptableSourceURLs: [],
+            minimumValidModelSizeBytes: 32
+        )
+        try fileManager.createDirectory(at: manager.modelsDirectoryURL, withIntermediateDirectories: true)
+        try Self.makeValidGGUFModel(totalBytes: 64).write(to: manager.managedModelURL)
+        return manager
+    }
+
+    private static func makeValidGGUFModel(totalBytes: Int) -> Data {
+        var data = Data("GGUF".utf8)
+        if totalBytes > data.count {
+            data.append(Data(repeating: 0x41, count: totalBytes - data.count))
+        }
+        return data
+    }
 }
 
 private actor RecordingMerchantClassificationIntelligence: MerchantClassificationIntelligence {
@@ -364,5 +489,98 @@ private actor RecordingMerchantClassificationIntelligence: MerchantClassificatio
 
     func batchSizes() -> [Int] {
         recordedBatchSizes
+    }
+}
+
+private actor FailingMerchantClassificationIntelligence: MerchantClassificationIntelligence {
+    func classifyMerchant(
+        rawMerchant: String,
+        memo: String?,
+        category: String?,
+        amount: Decimal
+    ) async -> MerchantClassificationResult? {
+        nil
+    }
+
+    func classifyMerchantsBatch(
+        _ requests: [MerchantClassificationRequest]
+    ) async -> [String: MerchantClassificationResult]? {
+        nil
+    }
+}
+
+private actor PartiallyFailingBatchMerchantClassificationIntelligence: MerchantClassificationIntelligence {
+    private var batchCallCount = 0
+
+    func classifyMerchant(
+        rawMerchant: String,
+        memo: String?,
+        category: String?,
+        amount: Decimal
+    ) async -> MerchantClassificationResult? {
+        MerchantClassificationResult(
+            canonicalName: rawMerchant,
+            serviceCategory: category ?? "Uncategorized",
+            merchantKind: .softwareOrSaaS,
+            subscriptionAffinity: 0.8,
+            confidence: 0.7
+        )
+    }
+
+    func classifyMerchantsBatch(
+        _ requests: [MerchantClassificationRequest]
+    ) async -> [String: MerchantClassificationResult]? {
+        batchCallCount += 1
+
+        guard batchCallCount == 1 else {
+            return nil
+        }
+
+        return Dictionary(uniqueKeysWithValues: requests.map { request in
+            (
+                request.rawMerchant,
+                MerchantClassificationResult(
+                    canonicalName: request.rawMerchant,
+                    serviceCategory: request.category ?? "Uncategorized",
+                    merchantKind: .softwareOrSaaS,
+                    subscriptionAffinity: 0.8,
+                    confidence: 0.7
+                )
+            )
+        })
+    }
+}
+
+private actor SubsetBatchMerchantClassificationIntelligence: MerchantClassificationIntelligence {
+    func classifyMerchant(
+        rawMerchant: String,
+        memo: String?,
+        category: String?,
+        amount: Decimal
+    ) async -> MerchantClassificationResult? {
+        MerchantClassificationResult(
+            canonicalName: "AI \(rawMerchant)",
+            serviceCategory: category ?? "Uncategorized",
+            merchantKind: .softwareOrSaaS,
+            subscriptionAffinity: 0.8,
+            confidence: 0.7
+        )
+    }
+
+    func classifyMerchantsBatch(
+        _ requests: [MerchantClassificationRequest]
+    ) async -> [String: MerchantClassificationResult]? {
+        Dictionary(uniqueKeysWithValues: requests.dropFirst().map { request in
+            (
+                request.rawMerchant,
+                MerchantClassificationResult(
+                    canonicalName: "AI \(request.rawMerchant)",
+                    serviceCategory: request.category ?? "Uncategorized",
+                    merchantKind: .softwareOrSaaS,
+                    subscriptionAffinity: 0.8,
+                    confidence: 0.7
+                )
+            )
+        })
     }
 }

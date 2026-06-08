@@ -246,6 +246,7 @@ final class AppModel {
     var classifier: MerchantClassificationEngine {
         MerchantClassificationEngine(
             preferences: aiProviderPreferences,
+            gemmaModelManager: gemmaModelManager,
             intelligence: backgroundAutomationIntelligence
         )
     }
@@ -544,7 +545,8 @@ private extension AppModel {
         currentImportRecord = nil
         classificationStatusMessage = classifier.availabilitySummary(
             for: classificationLoadResult.strategy,
-            uniqueMerchantCount: classificationLoadResult.uniqueMerchantCount
+            uniqueMerchantCount: classificationLoadResult.uniqueMerchantCount,
+            fallbackReason: classificationLoadResult.fallbackReason
         )
         let baseMessage = "Imported \(seedCount) transactions from \(importFileName)."
         let detectionMessage = """

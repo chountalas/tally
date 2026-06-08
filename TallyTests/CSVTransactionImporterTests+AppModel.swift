@@ -31,7 +31,7 @@ extension CSVTransactionImporterTests {
     func testDismissImportRemovesPendingImportRecord() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -54,7 +54,7 @@ extension CSVTransactionImporterTests {
     func testClearImportedLibraryRemovesPersistedImportDataAndDraftState() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let mapping = ColumnMappingConfig(
             dateColumn: "Date",
@@ -94,7 +94,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testNavigationExposesTransactionsTabAndRoutesToIt() {
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         XCTAssertTrue(SidebarTab.allCases.contains(.transactions))
 
@@ -105,7 +105,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testOpenSubscriptionLibraryQueuesSuggestedInboxNavigation() {
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         appModel.openSubscriptionLibrary(state: .suggested)
 
@@ -116,7 +116,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testOpenSubscriptionLibraryCanScopeNavigationToImportRecord() {
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let importRecordID = UUID()
 
         appModel.openSubscriptionLibrary(
@@ -135,7 +135,7 @@ extension CSVTransactionImporterTests {
     func testSaveChangesAndApplyReviewRuleLocallyReplaysMerchantLearningForConfirmedRule() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let calendar = Calendar.current
         let previousChargeDate = calendar.date(byAdding: .day, value: -42, to: .now) ?? .now
         let latestChargeDate = calendar.date(byAdding: .day, value: -12, to: .now) ?? .now
@@ -220,7 +220,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testReviewAutomationPlanSplitsSafeConfirmationsNoiseAndManualReview() throws {
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let safe = makeAutomationSubscription(
             name: "GitHub",
             status: .needsReview,
@@ -293,7 +293,7 @@ extension CSVTransactionImporterTests {
     func testAutomatedReviewConfirmationDoesNotDeleteUntouchedSubscriptions() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let safe = makeAutomationSubscription(
             name: "GitHub",
@@ -386,7 +386,7 @@ extension CSVTransactionImporterTests {
     func testAutomatedReviewLearnsStableServiceNameForProcessorDescriptors() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let candidate = makeAutomationSubscription(
             name: "ChatGPT $19.58 $19.58",
@@ -453,7 +453,7 @@ extension CSVTransactionImporterTests {
     func testAutomatedReviewDoesNotRewriteDistinctOpenAIProductToChatGPT() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let candidate = makeAutomationSubscription(
             name: "OpenAI API $20.00",
@@ -496,7 +496,7 @@ extension CSVTransactionImporterTests {
     func testAutomatedReviewUsesLinkedChargeDateBeforePersistingConfirmedStatus() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let candidate = makeAutomationSubscription(
             name: "GitHub",
@@ -543,7 +543,7 @@ extension CSVTransactionImporterTests {
     func testAutomatedReviewAppliesSuppressionCandidates() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let noise = makeAutomationSubscription(
             name: "Corner Market",
@@ -588,7 +588,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testReviewAutomationKeepsSharedRawMerchantManual() async throws {
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let candidate = makeAutomationSubscription(
             name: "Apple Music",
             status: .needsReview,
@@ -643,7 +643,7 @@ extension CSVTransactionImporterTests {
     func testAutomatedReviewRevalidatesStalePlanBeforeApplying() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let safe = makeAutomationSubscription(
             name: "GitHub",
