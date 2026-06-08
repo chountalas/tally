@@ -239,7 +239,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let csv = """
         Date,Merchant,Amount,Category,Memo
         2025-01-04,Netflix,-15.49,Streaming,Standard plan
@@ -267,7 +267,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let csv = """
         Date,Merchant,Amount,Category,Memo
         2025-01-04,Apple,-4.99,Digital,App Store
@@ -291,7 +291,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let originalCSV = """
         Date,Merchant,Amount,Category,Memo
         2025-01-04,Netflix,-15.49,Streaming,Standard plan

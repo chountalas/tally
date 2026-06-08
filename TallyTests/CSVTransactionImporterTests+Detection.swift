@@ -189,7 +189,7 @@ extension CSVTransactionImporterTests {
     func testAliasImportPreservesMerchantPriorSignals() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         context.insert(MerchantAlias(rawMerchant: "NETFLIX *123", canonicalName: "Netflix"))
         context.insert(

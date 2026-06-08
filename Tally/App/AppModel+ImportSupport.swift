@@ -5,6 +5,7 @@ import SwiftData
 struct ClassificationLoadResult: Sendable {
     let results: [String: MerchantClassificationResult]
     let strategy: MerchantClassificationStrategy
+    let fallbackReason: MerchantClassificationFallbackReason?
     let uniqueMerchantCount: Int
 }
 
@@ -66,6 +67,7 @@ extension AppModel {
         let result = ClassificationLoadResult(
             results: results,
             strategy: batchResult.strategyUsed,
+            fallbackReason: batchResult.fallbackReason,
             uniqueMerchantCount: uniqueMerchantCount
         )
 

@@ -7,7 +7,7 @@ extension CSVTransactionImporterTests {
     func testRefreshSubscriptionAnalysisClearsExistingFalsePositiveGroceries() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let staleClassificationDate =
             ISO8601DateFormatter().date(from: "2024-01-01T00:00:00Z") ?? .distantPast
@@ -57,7 +57,7 @@ extension CSVTransactionImporterTests {
         let importer = CSVTransactionImporter()
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         context.insert(
             MerchantClassification(
@@ -109,7 +109,7 @@ extension CSVTransactionImporterTests {
     func testRefreshSubscriptionAnalysisReusesHealthyCachedClassification() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let cachedAt = ISO8601DateFormatter().date(from: "2026-05-01T00:00:00Z") ?? .distantPast
         context.insert(

@@ -352,15 +352,10 @@ extension SubscriptionIntelligenceService {
         preferences: AIProviderPreferences = AIProviderPreferences(),
         gemmaModelManager: GemmaModelManager = GemmaModelManager()
     ) -> (any SubscriptionIntelligenceGenerating)? {
-        #if os(macOS)
-        if usage == .backgroundAutomation, preferences.selectedKind == .gemmaLocal {
-            return nil
-        }
-        #endif
-
         return AIProviderRegistry.defaultGenerator(
             preferences: preferences,
-            gemmaModelManager: gemmaModelManager
+            gemmaModelManager: gemmaModelManager,
+            allowsModelAdoption: usage != .backgroundAutomation
         )
     }
 

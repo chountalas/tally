@@ -7,7 +7,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testManualSubscriptionCreationPersistsFirstClassManualEntry() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let subscription = try appModel.createManualSubscription(
             .init(
@@ -44,7 +44,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testManualSubscriptionCreationInfersServiceIdentityWhenLeftBlank() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let subscription = try appModel.createManualSubscription(
             .init(
@@ -64,7 +64,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testFormerManualSubscriptionPersistsReplacementLink() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let replacement = try appModel.createManualSubscription(
             .init(
@@ -101,7 +101,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let subscription = try appModel.createManualSubscription(
             .init(
@@ -132,7 +132,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testEditedDetectedSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
@@ -223,7 +223,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testEditingDetectedSubscriptionStatusUpdatesLibraryStateImmediately() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let lastChargeDate = Date.now
 
         let subscription = Subscription(
@@ -291,7 +291,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testMerchantLearningPersistsNonUSDCurrencyForKeptSuggestion() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
         let lastChargeDate = Date.now
 
         let importRecord = ImportRecord(
@@ -376,7 +376,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testEditingSuggestedDetectedSubscriptionPreservesReviewQueueState() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
@@ -451,7 +451,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testCancellingDetectedSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
@@ -520,7 +520,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testRemovingDetectedFormerSubscriptionSuppressesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
-        let appModel = AppModel()
+        let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",

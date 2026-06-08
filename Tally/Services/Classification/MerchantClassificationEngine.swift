@@ -24,6 +24,13 @@ enum MerchantClassificationStrategy: Sendable {
     case heuristicOnly
 }
 
+enum MerchantClassificationFallbackReason: Sendable, Equatable {
+    case providerUnavailable
+    case confidentHeuristics
+    case providerFailed
+    case partialProviderFailure
+}
+
 struct MerchantClassificationRequest: Sendable {
     let rawMerchant: String
     let memo: String?
@@ -34,23 +41,31 @@ struct MerchantClassificationRequest: Sendable {
 struct MerchantClassificationBatchResult: Sendable {
     let results: [String: MerchantClassificationResult]
     let strategyUsed: MerchantClassificationStrategy
+    let fallbackReason: MerchantClassificationFallbackReason?
 }
 
 struct MerchantClassificationEngine: Sendable {
     private let heuristic = HeuristicMerchantClassifier()
     private let intelligence: any MerchantClassificationIntelligence
     private let selectedProviderKind: AIProviderKind
+    private let selectedProviderStatus: AIProviderStatusSnapshot
     private let providerBatchThreshold = 25
     private let providerBatchSize = 20
 
     init(
         preferences: AIProviderPreferences = AIProviderPreferences(),
+        gemmaModelManager: GemmaModelManager = GemmaModelManager(),
         intelligence: (any MerchantClassificationIntelligence)? = nil
     ) {
         self.selectedProviderKind = preferences.selectedKind
+        self.selectedProviderStatus = AIProviderRegistry.statusSnapshot(
+            for: preferences.selectedKind,
+            gemmaModelManager: gemmaModelManager
+        )
         self.intelligence = intelligence ?? SubscriptionIntelligenceService(
             usage: .backgroundAutomation,
-            preferences: preferences
+            preferences: preferences,
+            gemmaModelManager: gemmaModelManager
         )
     }
 
@@ -93,14 +108,19 @@ struct MerchantClassificationEngine: Sendable {
         strategy: MerchantClassificationStrategy
     ) async -> MerchantClassificationBatchResult {
         guard !requests.isEmpty else {
-            return MerchantClassificationBatchResult(results: [:], strategyUsed: strategy)
+            return MerchantClassificationBatchResult(
+                results: [:],
+                strategyUsed: strategy,
+                fallbackReason: nil
+            )
         }
 
         switch strategy {
         case .heuristicOnly:
             return MerchantClassificationBatchResult(
                 results: heuristicResults(for: requests),
-                strategyUsed: .heuristicOnly
+                strategyUsed: .heuristicOnly,
+                fallbackReason: selectedProviderStatus.isReady ? .confidentHeuristics : .providerUnavailable
             )
         case .individual:
             return await individualBatchResult(for: requests)
@@ -114,26 +134,56 @@ struct MerchantClassificationEngine: Sendable {
     }
 
     func importStrategy(forUniqueMerchantCount count: Int) -> MerchantClassificationStrategy {
-        #if os(macOS)
-        if selectedProviderKind == .gemmaLocal {
-            return .heuristicOnly
-        }
-        #endif
-
         return strategy(forUniqueMerchantCount: count)
     }
 
-    func availabilitySummary(for strategy: MerchantClassificationStrategy, uniqueMerchantCount: Int) -> String {
-        if strategy == .heuristicOnly {
-            let merchantLabel = uniqueMerchantCount == 1 ? "merchant" : "merchants"
+    func availabilitySummary(
+        for strategy: MerchantClassificationStrategy,
+        uniqueMerchantCount: Int,
+        fallbackReason: MerchantClassificationFallbackReason? = nil
+    ) -> String {
+        let merchantLabel = uniqueMerchantCount == 1 ? "merchant" : "merchants"
+
+        switch fallbackReason {
+        case .providerFailed:
+            return """
+            \(selectedProviderKind.title) was attempted but could not complete. Falling back to
+            heuristic classification for \(uniqueMerchantCount) unique \(merchantLabel).
+            """
+        case .partialProviderFailure:
+            return """
+            Used \(selectedProviderKind.title) classification with heuristic fallback for some of
+            \(uniqueMerchantCount) unique \(merchantLabel).
+            """
+        case .providerUnavailable:
+            return """
+            \(selectedProviderKind.title) is unavailable: \(selectedProviderStatus.detail) Falling back to
+            heuristic classification for \(uniqueMerchantCount) unique \(merchantLabel).
+            """
+        case .confidentHeuristics:
             return """
             Used heuristic classification for \(uniqueMerchantCount) unique \(merchantLabel)
-            to keep the import responsive.
+            because local rules were confident enough to skip AI.
+            """
+        case nil:
+            break
+        }
+
+        if strategy == .heuristicOnly {
+            if selectedProviderStatus.isReady == false {
+                return """
+                \(selectedProviderKind.title) is unavailable: \(selectedProviderStatus.detail) Falling back to
+                heuristic classification for \(uniqueMerchantCount) unique \(uniqueMerchantCount == 1 ? "merchant" : "merchants").
+                """
+            }
+
+            return """
+            Used heuristic classification for \(uniqueMerchantCount) unique \(merchantLabel)
+            because local rules were confident enough to skip AI.
             """
         }
 
         if strategy == .providerBatch {
-            let merchantLabel = uniqueMerchantCount == 1 ? "merchant" : "merchants"
             return """
             Used \(selectedProviderKind.title) batch classification for \(uniqueMerchantCount) unique
             \(merchantLabel).
@@ -163,18 +213,45 @@ struct MerchantClassificationEngine: Sendable {
         for requests: [MerchantClassificationRequest]
     ) async -> MerchantClassificationBatchResult {
         var results: [String: MerchantClassificationResult] = [:]
+        var usedProvider = false
+        var attemptedProvider = false
+        var providerFailed = false
+
         for request in requests {
-            results[request.rawMerchant] = await classify(
+            let heuristicResult = heuristic.classify(
                 rawMerchant: request.rawMerchant,
                 memo: request.memo,
                 category: request.category,
-                amount: request.amount,
-                strategy: .individual
+                amount: request.amount
             )
+
+            if shouldPreferHeuristic(heuristicResult) {
+                results[request.rawMerchant] = heuristicResult
+                continue
+            }
+
+            attemptedProvider = true
+            if let result = await intelligence.classifyMerchant(
+                rawMerchant: request.rawMerchant,
+                memo: request.memo,
+                category: request.category,
+                amount: request.amount
+            ) {
+                results[request.rawMerchant] = result
+                usedProvider = true
+            } else {
+                results[request.rawMerchant] = heuristicResult
+                providerFailed = true
+            }
         }
         return MerchantClassificationBatchResult(
             results: results,
-            strategyUsed: .individual
+            strategyUsed: usedProvider ? .individual : .heuristicOnly,
+            fallbackReason: providerFallbackReason(
+                attemptedProvider: attemptedProvider,
+                usedProvider: usedProvider,
+                providerFailed: providerFailed
+            )
         )
     }
 
@@ -184,6 +261,7 @@ struct MerchantClassificationEngine: Sendable {
         var results: [String: MerchantClassificationResult] = [:]
         let heuristics = heuristicResults(for: requests)
         var usedProviderBatch = false
+        var providerBatchFailed = false
 
         let aiEligibleRequests = requests.filter { request in
             guard let heuristicResult = heuristics[request.rawMerchant] else {
@@ -209,10 +287,12 @@ struct MerchantClassificationEngine: Sendable {
                     if let result = batchResults[request.rawMerchant] {
                         results[request.rawMerchant] = result
                     } else {
+                        providerBatchFailed = true
                         results[request.rawMerchant] = heuristics[request.rawMerchant]
                     }
                 }
             } else {
+                providerBatchFailed = true
                 for request in batch {
                     results[request.rawMerchant] = heuristics[request.rawMerchant]
                 }
@@ -221,16 +301,40 @@ struct MerchantClassificationEngine: Sendable {
 
         return MerchantClassificationBatchResult(
             results: results,
-            strategyUsed: usedProviderBatch ? .providerBatch : .heuristicOnly
+            strategyUsed: usedProviderBatch ? .providerBatch : .heuristicOnly,
+            fallbackReason: providerFallbackReason(
+                attemptedProvider: aiEligibleRequests.isEmpty == false,
+                usedProvider: usedProviderBatch,
+                providerFailed: providerBatchFailed
+            )
         )
+    }
+
+    private func providerFallbackReason(
+        attemptedProvider: Bool,
+        usedProvider: Bool,
+        providerFailed: Bool
+    ) -> MerchantClassificationFallbackReason? {
+        if providerFailed {
+            if selectedProviderStatus.isReady == false {
+                return .providerUnavailable
+            }
+
+            return usedProvider ? .partialProviderFailure : .providerFailed
+        }
+
+        if attemptedProvider == false {
+            return .confidentHeuristics
+        }
+
+        return nil
     }
 
     private func intelligenceAvailabilitySummary() -> String {
         let selectedProvider = selectedProviderKind
-        let status = AIProviderRegistry.statusSnapshot(for: selectedProvider)
-        guard status.isReady else {
+        guard selectedProviderStatus.isReady else {
             return """
-            \(selectedProvider.title) is unavailable: \(status.detail). Falling back to
+            \(selectedProvider.title) is unavailable: \(selectedProviderStatus.detail). Falling back to
             heuristic classification.
             """
         }

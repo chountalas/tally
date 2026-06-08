@@ -209,7 +209,8 @@ private extension AppModel {
     ) {
         classificationStatusMessage = classifier.availabilitySummary(
             for: classificationLoadResult.strategy,
-            uniqueMerchantCount: classificationLoadResult.uniqueMerchantCount
+            uniqueMerchantCount: classificationLoadResult.uniqueMerchantCount,
+            fallbackReason: classificationLoadResult.fallbackReason
         )
         infoMessage = "Refreshed subscription analysis for \(transactionCount) transactions."
     }
