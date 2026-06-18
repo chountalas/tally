@@ -238,30 +238,6 @@ struct SolidAccentButton: View {
     }
 }
 
-/// Quiet bordered capsule on a surface (nudge "Not now", sheet "Maybe later").
-struct GhostButton: View {
-    let title: String
-    let action: () -> Void
-    @State private var hovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13.5, weight: .semibold))
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .padding(.horizontal, 15)
-                .padding(.vertical, 9)
-                .background(Capsule(style: .continuous).fill(Theme.Colors.bgCard))
-                .overlay(Capsule(style: .continuous).strokeBorder(Theme.Colors.borderStrong, lineWidth: 0.5))
-                .offset(y: hovering && !reduceMotion ? -1 : 0)
-        }
-        .buttonStyle(PressableStyle())
-        .onHover { hovering = $0 }
-        .animation(Theme.Animation.whenAllowed(Theme.Animation.feedbackSmooth, reduceMotion: reduceMotion), value: hovering)
-    }
-}
-
 /// Pill action button for the detail view (Remind / Edit / Mark cancelled).
 struct TallyActionButton: View {
     enum Kind { case primary, normal, danger }
@@ -328,7 +304,7 @@ struct HoverLift: ViewModifier {
         content
             .scaleEffect(hovering && !reduceMotion ? 1.012 : 1)
             .offset(y: hovering && !reduceMotion ? -4 : 0)
-            .shadow(color: hovering && !reduceMotion ? Color(.sRGB, red: 120/255, green: 70/255, blue: 40/255, opacity: 0.18) : .clear,
+            .shadow(color: hovering && !reduceMotion ? Theme.Colors.warmShadow(opacity: 0.18) : .clear,
                     radius: 18, x: 0, y: 14)
             .onHover { hovering = $0 }
             .animation(Theme.Animation.whenAllowed(Theme.Animation.smooth, reduceMotion: reduceMotion), value: hovering)

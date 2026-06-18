@@ -224,7 +224,6 @@ enum Theme {
         // Signal colors
         static let destructive = Color.oklch(light: (0.58, 0.18, 25), dark: (0.72, 0.16, 27))
         static let warning = Color.oklch(light: (0.62, 0.14, 55), dark: (0.82, 0.12, 60))
-        static let warn = warning
         static let positive = Color.oklch(light: (0.55, 0.13, 150), dark: (0.82, 0.13, 150))
 
         // Category tones (used for ambient backdrops / story accents)
@@ -234,14 +233,10 @@ enum Theme {
         static let rose = Color.oklch(light: (0.60, 0.15, 5), dark: (0.82, 0.12, 8))
         static let moss = Color.oklch(light: (0.58, 0.11, 145), dark: (0.80, 0.10, 145))
 
-        // Legacy compatibility aliases
-        static let warmBackground = bg
-        static let cardSurface = bgCard
-        static let sidebarBackground = bgElevated
-        static let primaryText = textPrimary
-        static let secondaryText = textSecondary
-        static let muted = textTertiary
-        static let negative = destructive
+        // Warm ambient drop shadow (matches the design's soft shadows)
+        static func warmShadow(opacity: Double) -> Color {
+            Color(.sRGB, red: 120 / 255, green: 70 / 255, blue: 40 / 255, opacity: opacity)
+        }
     }
     // swiftlint:enable identifier_name
 
@@ -280,17 +275,6 @@ enum Theme {
         static let metric = rounded(28, .heavy)
         static let ledger = sans(12, .semibold)
         static let stamp = sans(11, .bold)
-
-        // Legacy aliases
-        static let heroValue = masthead
-        static let metricValue = metric
-        static let largeTitle = displayLarge
-        static let pageTitle = displayMedium
-        static let sectionTitle = headline
-        static let detail = callout
-        static let smallLabel = footnote
-        static let mono = Font.system(size: 13, weight: .regular, design: .monospaced)
-        static let priceUnit = footnote
     }
 }
 
@@ -316,29 +300,11 @@ struct FeatureCard: ViewModifier {
             .shadow(
                 color: colorScheme == .dark
                     ? Color.black.opacity(0.55)
-                    : Color(.sRGB, red: 120 / 255, green: 70 / 255, blue: 40 / 255, opacity: 0.18),
+                    : Theme.Colors.warmShadow(opacity: 0.18),
                 radius: colorScheme == .dark ? 26 : 22,
                 x: 0,
                 y: colorScheme == .dark ? 18 : 16
             )
-    }
-}
-
-struct SurfaceTile: ViewModifier {
-    var padding: CGFloat = Theme.Spacing.lg
-    var radius: CGFloat = Theme.Radius.small
-
-    func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Theme.Colors.bgInset)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Theme.Colors.border, lineWidth: 0.5)
-            }
     }
 }
 
@@ -348,17 +314,9 @@ extension View {
         modifier(FeatureCard(padding: padding, radius: radius))
     }
 
-    /// Quiet inset tile — no shadow.
-    func surfaceTile(padding: CGFloat = Theme.Spacing.lg, radius: CGFloat = Theme.Radius.small) -> some View {
-        modifier(SurfaceTile(padding: padding, radius: radius))
-    }
-
     func cardShadow() -> some View {
-        shadow(color: Color(.sRGB, red: 120 / 255, green: 70 / 255, blue: 40 / 255, opacity: 0.14), radius: 18, x: 0, y: 12)
+        shadow(color: Theme.Colors.warmShadow(opacity: 0.14), radius: 18, x: 0, y: 12)
     }
-
-    func metricCard() -> some View { featureCard() }
-    func subscriptionCard() -> some View { surfaceTile() }
 
     func editorialPage(maxWidth: CGFloat = Theme.Layout.contentMaxWidth) -> some View {
         frame(maxWidth: maxWidth, alignment: .leading)
@@ -574,22 +532,6 @@ struct HairlineDivider: View {
 
 // MARK: - Appear / Scene Animations
 
-struct AppearAnimation: ViewModifier {
-    let delay: Double
-    @State private var isVisible = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isVisible ? 1 : 0)
-            .animation(
-                Theme.Animation.whenAllowed(Theme.Animation.entranceSmooth.delay(delay), reduceMotion: reduceMotion),
-                value: isVisible
-            )
-            .onAppear { isVisible = true }
-    }
-}
-
 struct EditorialSceneTransition: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
@@ -597,137 +539,6 @@ struct EditorialSceneTransition: ViewModifier {
     }
 }
 
-// MARK: - Collapsible Section
-
-struct CollapsibleSection<Header: View, Content: View>: View {
-    let isExpanded: Bool
-    let onToggle: () -> Void
-    @ViewBuilder let header: () -> Header
-    @ViewBuilder let content: () -> Content
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            Button(action: onToggle) {
-                HStack {
-                    header()
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.textTertiary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(
-                            Theme.Animation.whenAllowed(Theme.Animation.quickSmooth, reduceMotion: reduceMotion),
-                            value: isExpanded
-                        )
-                }
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                content()
-                    .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: 0, y: -6)))
-            }
-        }
-        .animation(
-            Theme.Animation.whenAllowed(Theme.Animation.smooth, reduceMotion: reduceMotion),
-            value: isExpanded
-        )
-    }
-}
-
-// MARK: - Progress / Confidence Bars
-
-struct ConfidenceBar: View {
-    let value: Double
-    @State private var animatedWidth: Double = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.Colors.bgInset)
-                    Capsule()
-                        .fill(barColor)
-                        .frame(width: geometry.size.width * animatedWidth)
-                }
-            }
-            .frame(width: 64, height: 6)
-
-            Text(value, format: .percent.precision(.fractionLength(0)))
-                .font(Theme.Typography.callout.monospacedDigit())
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .contentTransition(.numericText())
-        }
-        .onAppear { animate() }
-        .onChange(of: value) { _, _ in animate() }
-    }
-
-    private func animate() {
-        let target = min(max(value, 0), 1)
-        guard !reduceMotion else { animatedWidth = target; return }
-        withAnimation(Theme.Animation.progressSmooth.delay(0.1)) { animatedWidth = target }
-    }
-
-    private var barColor: Color {
-        if value >= 0.7 { return Theme.Colors.positive }
-        if value >= 0.4 { return Theme.Colors.warning }
-        return Theme.Colors.destructive
-    }
-}
-
-struct EditorialProgressBar: View {
-    let value: Double
-    let tint: Color
-    @State private var animatedValue: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.Colors.bgInset)
-                Capsule()
-                    .fill(LinearGradient(colors: [Theme.Colors.accent2, tint], startPoint: .leading, endPoint: .trailing))
-                    .frame(width: geometry.size.width * animatedValue)
-            }
-        }
-        .frame(height: 12)
-        .onAppear { update() }
-        .onChange(of: value) { _, _ in update() }
-    }
-
-    private var clampedValue: CGFloat { CGFloat(min(max(value, 0), 1)) }
-
-    private func update() {
-        guard !reduceMotion else { animatedValue = clampedValue; return }
-        withAnimation(Theme.Animation.progressSmooth) { animatedValue = clampedValue }
-    }
-}
-
-// MARK: - Filter Pill (chip)
-
-struct FilterPill: ViewModifier {
-    let isSelected: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, Theme.Spacing.md + 3)
-            .padding(.vertical, Theme.Spacing.sm)
-            .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textSecondary)
-            .background {
-                if isSelected {
-                    Capsule(style: .continuous).fill(Theme.Colors.accent)
-                } else {
-                    Capsule(style: .continuous).strokeBorder(Theme.Colors.borderStrong, lineWidth: 0.5)
-                }
-            }
-            .animation(Theme.Animation.quickSmooth, value: isSelected)
-    }
-}
-
 extension View {
-    func appearAnimation(delay: Double = 0) -> some View { modifier(AppearAnimation(delay: delay)) }
     func editorialSceneTransition() -> some View { modifier(EditorialSceneTransition()) }
-    func filterPill(isSelected: Bool) -> some View { modifier(FilterPill(isSelected: isSelected)) }
 }

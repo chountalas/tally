@@ -172,11 +172,6 @@ final class DashboardMetricsProvider {
         )
         return contentSnapshot
     }
-
-    func invalidate() {
-        cachedSnapshot = nil
-        cachedContentSnapshot = nil
-    }
 }
 
 @MainActor

@@ -50,7 +50,7 @@ final class RenewalNotificationService {
             content.title = "\(subscription.displayName) renews soon"
             content.body = """
             Expected charge \
-            \(subscription.priceAmount.formatted(.currency(code: subscription.priceCurrency))) \
+            \(subscription.priceAmount.currencyString(code: subscription.priceCurrency)) \
             on \(renewalDate.formatted(date: .abbreviated, time: .omitted)).
             """
             content.sound = .default

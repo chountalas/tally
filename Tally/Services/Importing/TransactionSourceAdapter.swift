@@ -174,24 +174,6 @@ struct SourceTransactionUpsertService {
         return summary
     }
 
-    func tombstone(
-        source: TransactionSource,
-        externalTransactionID: String,
-        in context: ModelContext
-    ) throws -> Bool {
-        let descriptor = FetchDescriptor<SourceTransactionIdentity>(
-            predicate: #Predicate { identity in
-                identity.sourceRawValue == source.rawValue &&
-                    identity.externalTransactionID == externalTransactionID
-            }
-        )
-        guard let identity = try context.fetch(descriptor).first else {
-            return false
-        }
-        identity.status = .tombstoned
-        identity.lastSeenAt = .now
-        return true
-    }
 }
 
 private enum SourceIdentityMatch {
@@ -272,32 +254,7 @@ private extension SourceTransactionUpsertService {
             return nil
         }
 
-        return transactions.first { transaction in
-            guard transaction.sourceRawValue == draft.source.rawValue else {
-                return false
-            }
-            guard (transaction.accountName ?? "") == (draft.seed.accountName ?? "") else {
-                return false
-            }
-            guard transaction.transactionAmount == draft.seed.transactionAmount else {
-                return false
-            }
-            let days = abs(
-                Calendar.current.dateComponents(
-                    [.day],
-                    from: Calendar.current.startOfDay(for: transaction.transactionDate),
-                    to: Calendar.current.startOfDay(for: draft.seed.transactionDate)
-                ).day ?? .max
-            )
-            guard days <= 2 else {
-                return false
-            }
-
-            return merchantSimilarity(
-                lhs: transaction.merchantRaw,
-                rhs: draft.seed.merchantRaw
-            ) >= 0.82
-        }
+        return transactions.first { fuzzyTransactionMatches($0, draft: draft) }
     }
 
     func fuzzyPendingReplacementIdentity(

@@ -1232,18 +1232,6 @@ private extension SubscriptionDetectionService {
         return date.map { Calendar.current.component(.weekday, from: $0) }
     }
 
-    func occurrenceAmountMatches(
-        transaction: NormalizedTransaction,
-        subscription: Subscription
-    ) -> Bool {
-        let expected = abs((subscription.priceAmount as NSDecimalNumber).doubleValue)
-        guard expected > 0 else {
-            return true
-        }
-        let actual = abs((transaction.transactionAmount as NSDecimalNumber).doubleValue)
-        return abs(actual - expected) <= max(2.5, expected * 0.2)
-    }
-
     func amountDeltaPercent(expected: Decimal, actual: Decimal) -> Double? {
         let expectedDouble = abs((expected as NSDecimalNumber).doubleValue)
         guard expectedDouble > 0 else {

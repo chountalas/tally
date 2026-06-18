@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 extension Decimal {
     var numberValue: NSDecimalNumber {
@@ -12,6 +11,8 @@ extension Decimal {
 }
 
 extension Decimal {
+    /// Currency-default precision (e.g. JPY 0 digits, USD 2, BHD 3). Distinct from
+    /// `tallyMoney`, which forces 2-or-0 digits for design-consistent display.
     func currencyString(code: String = "USD") -> String {
         formatted(.currency(code: code))
     }
@@ -20,18 +21,6 @@ extension Decimal {
 extension Date {
     var shortDateString: String {
         formatted(date: .abbreviated, time: .omitted)
-    }
-
-    var relativeDaysString: String {
-        let days = Calendar.current.dateComponents([.day], from: .now, to: self).day ?? 0
-        if days == 0 { return "Today" }
-        if days == 1 { return "Tomorrow" }
-        if days < 0 { return "\(abs(days))d ago" }
-        return "in \(days)d"
-    }
-
-    var monthYearString: String {
-        formatted(.dateTime.month(.wide).year())
     }
 }
 
@@ -52,21 +41,5 @@ extension String {
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
         return Decimal(string: sanitized)
-    }
-}
-
-extension ModelContext {
-    func fetchOrCreateReviewRule(canonicalName: String) throws -> SubscriptionReviewRule {
-        let descriptor = FetchDescriptor<SubscriptionReviewRule>(
-            predicate: #Predicate { $0.canonicalName == canonicalName }
-        )
-
-        if let existing = try fetch(descriptor).first {
-            return existing
-        }
-
-        let created = SubscriptionReviewRule(canonicalName: canonicalName)
-        insert(created)
-        return created
     }
 }

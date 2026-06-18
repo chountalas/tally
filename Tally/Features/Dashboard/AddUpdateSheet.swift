@@ -136,7 +136,7 @@ private struct ChoiceButton: View {
                     )
             )
             .offset(y: hovering && !reduceMotion ? -2 : 0)
-            .shadow(color: hovering && !reduceMotion ? Color(.sRGB, red: 120/255, green: 70/255, blue: 40/255, opacity: 0.18) : .clear,
+            .shadow(color: hovering && !reduceMotion ? Theme.Colors.warmShadow(opacity: 0.18) : .clear,
                     radius: 18, x: 0, y: 12)
         }
         .buttonStyle(.plain)

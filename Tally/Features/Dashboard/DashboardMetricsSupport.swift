@@ -105,7 +105,7 @@ extension DashboardMetrics {
             let category = group.first?.serviceCategory ?? "Uncategorized"
             let names = group.map(\.displayName).sorted().joined(separator: ", ")
             let monthlyExposure = group.reduce(Decimal.zero) { $0 + $1.normalizedMonthlyAmount }
-            let exposure = monthlyExposure.formatted(.currency(code: "USD"))
+            let exposure = monthlyExposure.currencyString()
             items.append(
                 SavingsOpportunity(
                     title: "Overlap in \(category)",
@@ -141,9 +141,7 @@ extension DashboardMetrics {
                 continue
             }
 
-            let formattedPercent = percentChange.formatted(
-                .percent.precision(.fractionLength(0))
-            )
+            let formattedPercent = percentChange.percentString
             items.append(
                 SavingsOpportunity(
                     title: "Price increase: \(subscription.displayName)",

@@ -80,14 +80,4 @@ enum AuditEngine {
         if score >= 25 { return .review }
         return .keep
     }
-
-    static func rankAll(
-        subscriptions: [Subscription],
-        transactions: [NormalizedTransaction]
-    ) -> [AuditScore] {
-        let active = subscriptions.filter { $0.status == .active }
-        return active
-            .map { score(subscription: $0, allActive: active, transactions: transactions) }
-            .sorted { $0.cancelWorthiness > $1.cancelWorthiness }
-    }
 }

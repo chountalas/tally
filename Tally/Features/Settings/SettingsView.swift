@@ -4,7 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
-    @AppStorage("appearanceMode") private var appearanceMode: String = "system"
+    @AppStorage("appearanceMode") private var appearanceMode: AppearanceOption = .system
     @State private var isConfirmingReset = false
     @State private var exportDocument: AppDataExportDocument?
     @State private var isExporting = false
@@ -121,10 +121,10 @@ struct SettingsView: View {
                     PreferenceSelectionRow(
                         title: option.label,
                         detail: option.detail,
-                        isSelected: appearanceMode == option.rawValue
+                        isSelected: appearanceMode == option
                     ) {
                         withAnimation(Theme.Animation.quickSmooth) {
-                            appearanceMode = option.rawValue
+                            appearanceMode = option
                         }
                     }
 
@@ -614,36 +614,6 @@ private enum PreferenceTone: Equatable {
             return Theme.Colors.warning
         case .destructive:
             return Theme.Colors.destructive
-        }
-    }
-}
-
-private enum AppearanceOption: String, CaseIterable, Identifiable {
-    case light
-    case system
-    case dark
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .light:
-            return "Light"
-        case .system:
-            return "System"
-        case .dark:
-            return "Dark"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .light:
-            return "Warm linen surfaces and editorial contrast."
-        case .system:
-            return "Follow the Mac appearance automatically."
-        case .dark:
-            return "Warm charcoal surfaces for lower-light work."
         }
     }
 }

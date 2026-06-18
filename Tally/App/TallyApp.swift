@@ -6,7 +6,7 @@ struct TallyApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appModel = AppModel()
     @State private var bootstrap: ModelContainerFactory.BootstrapResult?
-    @AppStorage("appearanceMode") private var appearanceMode: String = "system"
+    @AppStorage("appearanceMode") private var appearanceMode: AppearanceOption = .system
 
     var body: some Scene {
         #if os(macOS)
@@ -34,9 +34,9 @@ struct TallyApp: App {
         if let forced = TallyPreview.forcedColorScheme { return forced }
         #endif
         switch appearanceMode {
-        case "light": return .light
-        case "dark": return .dark
-        default: return nil // follows system
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
         }
     }
 
