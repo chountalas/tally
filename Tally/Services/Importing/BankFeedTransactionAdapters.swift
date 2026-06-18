@@ -59,16 +59,6 @@ struct OFXTransactionSourceAdapter: TransactionSourceAdapter {
     }
 }
 
-struct QFXTransactionSourceAdapter: TransactionSourceAdapter {
-    let source: TransactionSource = .qfx
-    let text: String
-
-    func prepareTransactions() async throws -> [SourceTransactionDraft] {
-        try await OFXTransactionSourceAdapter(text: text, source: source)
-            .prepareTransactions()
-    }
-}
-
 struct SimpleFINTransactionSourceAdapter: TransactionSourceAdapter {
     let source: TransactionSource = .simpleFIN
     let data: Data

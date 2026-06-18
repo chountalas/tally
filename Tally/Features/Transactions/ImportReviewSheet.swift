@@ -51,7 +51,7 @@ struct ImportReviewSheet: View {
                 Section("Preview") {
                     LabeledContent(
                         "Mapping Confidence",
-                        value: draft.confidence.formatted(.percent.precision(.fractionLength(0)))
+                        value: draft.confidence.percentString
                     )
                     LabeledContent("Sampled Rows", value: "\(validation.sampleRowCount)")
                     LabeledContent("Parseable Rows", value: "\(validation.parseableRowCount)")

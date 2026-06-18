@@ -312,11 +312,6 @@ extension AppModel {
         )
     }
 
-    func consumePendingSubscriptionNavigationID() -> UUID? {
-        defer { pendingSubscriptionNavigationID = nil }
-        return pendingSubscriptionNavigationID
-    }
-
     func consumePendingSubscriptionLibraryState() -> SubscriptionLibraryState? {
         defer {
             pendingSubscriptionLibraryState = nil
@@ -825,41 +820,6 @@ extension AppModel {
             in: context
         )
         return "Learned \(trimmedRawMerchant) → \(trimmedCanonicalName) and refreshed history."
-    }
-
-    func removeAliases(
-        rawMerchants: [String],
-        in context: ModelContext
-    ) async throws -> String {
-        let trimmedRawMerchants = Set(
-            rawMerchants
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { $0.isEmpty == false }
-        )
-        guard trimmedRawMerchants.isEmpty == false else {
-            return "No aliases were selected."
-        }
-
-        let aliases = try context.fetch(FetchDescriptor<MerchantAlias>())
-        for alias in aliases where trimmedRawMerchants.contains(alias.rawMerchant) {
-            context.delete(alias)
-        }
-
-        let classifications = try context.fetch(FetchDescriptor<MerchantClassification>())
-        for classification in classifications where trimmedRawMerchants.contains(classification.rawMerchant) {
-            context.delete(classification)
-        }
-
-        try await replayMerchantResolution(
-            for: trimmedRawMerchants,
-            preferredResults: nil,
-            forceRefresh: true,
-            in: context
-        )
-
-        let aliasCount = trimmedRawMerchants.count
-        let aliasLabel = aliasCount == 1 ? "alias" : "aliases"
-        return "Removed \(aliasCount) \(aliasLabel) and refreshed affected history."
     }
 
     func applyReviewUpdate(
@@ -1913,14 +1873,13 @@ private extension AppModel {
         return fallback
     }
 
+    private static let trailingAmountRegex = try? NSRegularExpression(
+        pattern: #"(\s+\$?\d+(?:[.,]\d{2})?)+$"#
+    )
+
     func stableSubscriptionName(from name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let regex = try? NSRegularExpression(
-            pattern: #"(\s+\$?\d+(?:[.,]\d{2})?)+$"#
-        ) else {
-            return trimmed
-        }
-
+        guard let regex = Self.trailingAmountRegex else { return trimmed }
         let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
         let stripped = regex.stringByReplacingMatches(
             in: trimmed,

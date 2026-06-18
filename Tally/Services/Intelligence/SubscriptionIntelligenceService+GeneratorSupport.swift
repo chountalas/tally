@@ -90,51 +90,6 @@ extension SubscriptionIntelligenceService {
         await SubscriptionIntelligenceResultCache.shared.invalidateAll()
     }
 
-    func generateMonthlyBrief(metrics: DashboardMetrics) async -> String {
-        let fallback = fallbackBrief(metrics: metrics)
-        guard let generator else {
-            return fallback
-        }
-
-        do {
-            let text = try await generator.generateText(
-                instructions: monthlyBriefInstructions,
-                prompt: monthlyBriefPrompt(metrics: metrics)
-            )
-            return sanitizedGeneratedText(text, fallback: fallback)
-        } catch {
-            return fallback
-        }
-    }
-
-    @MainActor
-    func generateAuditOneLiner(
-        subscription: Subscription,
-        score: AuditScore,
-        allActive: [Subscription],
-        transactions: [NormalizedTransaction]
-    ) async -> String {
-        let fallback = fallbackAuditOneLiner(subscription: subscription, score: score)
-        guard let generator else {
-            return fallback
-        }
-
-        do {
-            let text = try await generator.generateText(
-                instructions: auditOneLinerInstructions,
-                prompt: auditOneLinerPrompt(
-                    subscription: subscription,
-                    score: score,
-                    allActive: allActive,
-                    transactions: transactions
-                )
-            )
-            return sanitizedGeneratedText(text, fallback: fallback)
-        } catch {
-            return fallback
-        }
-    }
-
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,
@@ -308,45 +263,6 @@ extension SubscriptionIntelligenceService {
         }
     }
 
-    func fallbackBrief(metrics: DashboardMetrics) -> String {
-        var parts: [String] = [
-            """
-            \(metrics.activeCount) active subscriptions totaling
-            \(metrics.monthlyRunRate.currencyString())/month.
-            """
-        ]
-
-        if metrics.actNowItems.count > 0 {
-            parts.append(
-                """
-                \(metrics.actNowItems.count) renewal\(metrics.actNowItems.count == 1 ? "" : "s")
-                coming up in 30 days.
-                """
-            )
-        }
-        if let overlap = metrics.overlapGroups.first {
-            parts.append(
-                "Overlap detected in \(overlap.category) (\(overlap.subscriptions.count) services)."
-            )
-        }
-        if let priceChange = metrics.priceChangedSubscriptions.first,
-           let pct = priceChange.priceChangePercent {
-            parts.append("\(priceChange.displayName) price is up \(pct.percentString).")
-        }
-
-        return parts.joined(separator: " ")
-    }
-
-    func fallbackAuditOneLiner(subscription: Subscription, score: AuditScore) -> String {
-        if score.cancelWorthiness >= 50 {
-            return score.reasons.first ?? "Multiple risk signals suggest reviewing this subscription."
-        }
-        if score.cancelWorthiness >= 25 {
-            return score.reasons.first ?? "Worth a second look based on your spending patterns."
-        }
-        return "Stable subscription - no immediate concerns."
-    }
-
     static func makeDefaultGenerator(
         usage: SubscriptionIntelligenceUsage = .interactive,
         preferences: AIProviderPreferences = AIProviderPreferences(),
@@ -440,73 +356,6 @@ extension SubscriptionIntelligenceService {
 }
 
 extension SubscriptionIntelligenceService {
-    var monthlyBriefInstructions: String {
-        """
-        Write a concise personal finance brief for Tally, a privacy-first subscription tracker.
-        Use 2 or 3 sentences. Mention renewals, notable savings opportunities, and one
-        concrete action.
-        """
-    }
-
-    var auditOneLinerInstructions: String {
-        """
-        Write a single concise sentence explaining why a user should consider canceling
-        or keeping a subscription. Be specific based on the data provided.
-        """
-    }
-
-    func monthlyBriefPrompt(metrics: DashboardMetrics) -> String {
-        let upcomingNames = metrics.actNowItems.prefix(3).map(\.subscriptionName).joined(separator: ", ")
-        let overlaps = metrics.overlapGroups.prefix(2).map {
-            "\($0.category): \($0.subscriptions.map(\.displayName).joined(separator: ", "))"
-        }.joined(separator: "; ")
-        let priceChanges = metrics.priceChangedSubscriptions.prefix(2).map {
-            "\($0.displayName) (\(($0.priceChangePercent ?? 0).percentString) increase)"
-        }.joined(separator: ", ")
-
-        return """
-        Active subscriptions: \(metrics.activeCount)
-        Monthly run rate: \(metrics.monthlyRunRate.currencyString())
-        Annualized spend: \(metrics.annualizedSpend.currencyString())
-        Needs review: \(metrics.needsReviewCount)
-        Upcoming renewals (30 days): \(upcomingNames.isEmpty ? "none" : upcomingNames)
-        Service overlaps: \(overlaps.isEmpty ? "none detected" : overlaps)
-        Price changes: \(priceChanges.isEmpty ? "none detected" : priceChanges)
-        Top savings opportunity: \(metrics.opportunities.first?.title ?? "none")
-        """
-    }
-
-    func auditOneLinerPrompt(
-        subscription: Subscription,
-        score: AuditScore,
-        allActive: [Subscription],
-        transactions: [NormalizedTransaction]
-    ) -> String {
-        let linkedTransactions = transactions.filter { $0.subscriptionID == subscription.id }
-        let totalSpent = linkedTransactions.reduce(Decimal.zero) { $0 + abs($1.transactionAmount) }
-        let peers = allActive
-            .filter { $0.id != subscription.id && $0.serviceCategory == subscription.serviceCategory }
-            .map(\.displayName)
-            .joined(separator: ", ")
-
-        return """
-        Subscription: \(subscription.displayName)
-        Category: \(subscription.serviceCategory ?? "Unknown")
-        Monthly cost: \(subscription.normalizedMonthlyAmount.currencyString())
-        Tenure: \(subscription.tenureMonths ?? 0) months
-        Total spent: \(totalSpent.currencyString())
-        Price change: \(subscription.priceChangePercent?.percentString ?? "none")
-        Overlap peers: \(peers.isEmpty ? "none" : peers)
-        Score: \(score.cancelWorthiness)/100
-        Risks: \(score.reasons.joined(separator: " "))
-        """
-    }
-
-    func sanitizedGeneratedText(_ text: String, fallback: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? fallback : trimmed
-    }
-
     func sanitizeRecurringClusterResult(
         _ result: RecurringClusterEvaluationResult
     ) -> RecurringClusterEvaluationResult {

@@ -309,13 +309,21 @@ struct SubscriptionDetailView: View {
                 }
                 if isActive {
                     TallyActionButton(title: "Mark as cancelled", systemImage: "trash", kind: .danger) {
-                        try? appModel.cancelSubscription(id: sub.id, in: modelContext)
-                        appModel.tallySelectedSubscriptionID = nil
+                        do {
+                            try appModel.cancelSubscription(id: sub.id, in: modelContext)
+                            appModel.tallySelectedSubscriptionID = nil
+                        } catch {
+                            appModel.importErrorMessage = error.localizedDescription
+                        }
                     }
                 } else {
                     TallyActionButton(title: "Remove from list", systemImage: "trash", kind: .danger) {
-                        try? appModel.removeSubscription(id: sub.id, in: modelContext)
-                        appModel.tallySelectedSubscriptionID = nil
+                        do {
+                            try appModel.removeSubscription(id: sub.id, in: modelContext)
+                            appModel.tallySelectedSubscriptionID = nil
+                        } catch {
+                            appModel.importErrorMessage = error.localizedDescription
+                        }
                     }
                 }
             }

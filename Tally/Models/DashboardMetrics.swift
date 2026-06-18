@@ -139,3 +139,8 @@ struct OverlapGroup: Identifiable {
     let monthlyExposure: Decimal
     var id: String { category }
 }
+
+struct MetricChange {
+    let label: String
+    let isPositive: Bool
+}

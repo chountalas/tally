@@ -69,22 +69,8 @@ enum SubscriptionCadence: String, Codable, CaseIterable, Identifiable {
     }
 
     func advance(_ date: Date, using calendar: Calendar = .current) -> Date? {
-        switch self {
-        case .monthly:
-            return calendar.date(byAdding: .month, value: 1, to: date)
-        case .annual:
-            return calendar.date(byAdding: .year, value: 1, to: date)
-        case .quarterly:
-            return calendar.date(byAdding: .month, value: 3, to: date)
-        case .semiannual:
-            return calendar.date(byAdding: .month, value: 6, to: date)
-        case .biweekly:
-            return calendar.date(byAdding: .day, value: 14, to: date)
-        case .weekly:
-            return calendar.date(byAdding: .day, value: 7, to: date)
-        case .unknown:
-            return nil
-        }
+        guard self != .unknown else { return nil }
+        return tallyAdvanced(date, by: 1, using: calendar)
     }
 }
 
@@ -361,6 +347,36 @@ enum AuditAction: String, Codable, CaseIterable, Identifiable {
         case .keep: return "Keep"
         case .review: return "Review"
         case .cancel: return "Cancel"
+        }
+    }
+}
+
+enum AppearanceOption: String, CaseIterable, Identifiable {
+    case light
+    case system
+    case dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .light:
+            return "Light"
+        case .system:
+            return "System"
+        case .dark:
+            return "Dark"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .light:
+            return "Warm linen surfaces and editorial contrast."
+        case .system:
+            return "Follow the Mac appearance automatically."
+        case .dark:
+            return "Warm charcoal surfaces for lower-light work."
         }
     }
 }
