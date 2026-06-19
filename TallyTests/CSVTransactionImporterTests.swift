@@ -220,7 +220,7 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertEqual(engine.strategy(forUniqueMerchantCount: 10), .individual)
     }
 
-    func testLargeGemmaBatchUsesProviderClassificationWhenAvailable() async {
+    func testLargeGemmaBatchUsesProviderClassificationWhenAvailable() async throws {
         let intelligence = RecordingMerchantClassificationIntelligence()
         let engine = MerchantClassificationEngine(intelligence: intelligence)
         let requests = (0..<30).map { index in
@@ -232,7 +232,7 @@ final class CSVTransactionImporterTests: XCTestCase {
             )
         }
 
-        let result = await engine.classifyBatch(requests, strategy: .providerBatch)
+        let result = try await engine.classifyBatch(requests, strategy: .providerBatch)
         let recordedBatchSizes = await intelligence.batchSizes()
 
         XCTAssertEqual(result.strategyUsed, .providerBatch)
@@ -262,7 +262,7 @@ final class CSVTransactionImporterTests: XCTestCase {
             )
         ]
 
-        let result = await engine.classifyBatch(requests, strategy: .individual)
+        let result = try await engine.classifyBatch(requests, strategy: .individual)
         let summary = engine.availabilitySummary(
             for: result.strategyUsed,
             uniqueMerchantCount: requests.count,
@@ -296,7 +296,7 @@ final class CSVTransactionImporterTests: XCTestCase {
             )
         }
 
-        let result = await engine.classifyBatch(requests, strategy: .providerBatch)
+        let result = try await engine.classifyBatch(requests, strategy: .providerBatch)
         let summary = engine.availabilitySummary(
             for: result.strategyUsed,
             uniqueMerchantCount: requests.count,
@@ -331,7 +331,7 @@ final class CSVTransactionImporterTests: XCTestCase {
             )
         }
 
-        let result = await engine.classifyBatch(requests, strategy: .providerBatch)
+        let result = try await engine.classifyBatch(requests, strategy: .providerBatch)
         let summary = engine.availabilitySummary(
             for: result.strategyUsed,
             uniqueMerchantCount: requests.count,
@@ -346,6 +346,72 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertFalse(result.currentCacheableRawMerchants.contains("Merchant 0"))
         XCTAssertTrue(result.currentCacheableRawMerchants.contains("Merchant 1"))
         XCTAssertTrue(summary.localizedStandardContains("heuristic fallback"))
+    }
+
+    func testProviderBatchCancellationPropagatesWithoutRemainingBatches() async {
+        let intelligence = CancellingBatchMerchantClassificationIntelligence()
+        let engine = MerchantClassificationEngine(intelligence: intelligence)
+        let requests = (0..<30).map { index in
+            MerchantClassificationRequest(
+                rawMerchant: "Merchant \(index)",
+                memo: nil,
+                category: "Software",
+                amount: Decimal(index + 1)
+            )
+        }
+
+        do {
+            _ = try await engine.classifyBatch(requests, strategy: .providerBatch)
+            XCTFail("Expected cancellation to propagate")
+        } catch is CancellationError {
+            let batchCallCount = await intelligence.batchCallCount()
+            XCTAssertEqual(batchCallCount, 1)
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
+    func testIndividualProviderCancellationPropagatesWithoutContinuingMerchants() async {
+        let intelligence = CancellingIndividualMerchantClassificationIntelligence()
+        let engine = MerchantClassificationEngine(intelligence: intelligence)
+        let requests = (0..<3).map { index in
+            MerchantClassificationRequest(
+                rawMerchant: "Merchant \(index)",
+                memo: nil,
+                category: "Software",
+                amount: Decimal(index + 1)
+            )
+        }
+
+        do {
+            _ = try await engine.classifyBatch(requests, strategy: .individual)
+            XCTFail("Expected cancellation to propagate")
+        } catch is CancellationError {
+            let merchantCallCount = await intelligence.merchantCallCount()
+            XCTAssertEqual(merchantCallCount, 1)
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
+    func testSingleProviderCancellationPropagates() async {
+        let intelligence = CancellingIndividualMerchantClassificationIntelligence()
+        let engine = MerchantClassificationEngine(intelligence: intelligence)
+
+        do {
+            _ = try await engine.classify(
+                rawMerchant: "Merchant 0",
+                memo: nil,
+                category: "Software",
+                amount: 1
+            )
+            XCTFail("Expected cancellation to propagate")
+        } catch is CancellationError {
+            let merchantCallCount = await intelligence.merchantCallCount()
+            XCTAssertEqual(merchantCallCount, 1)
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
     }
 
     func testXLSXDraftDetectionAndMaterialization() throws {
@@ -458,7 +524,7 @@ private actor RecordingMerchantClassificationIntelligence: MerchantClassificatio
         memo: String?,
         category: String?,
         amount: Decimal
-    ) async -> MerchantClassificationResult? {
+    ) async throws -> MerchantClassificationResult? {
         MerchantClassificationResult(
             canonicalName: rawMerchant,
             serviceCategory: category ?? "Uncategorized",
@@ -470,7 +536,7 @@ private actor RecordingMerchantClassificationIntelligence: MerchantClassificatio
 
     func classifyMerchantsBatch(
         _ requests: [MerchantClassificationRequest]
-    ) async -> [String: MerchantClassificationResult]? {
+    ) async throws -> [String: MerchantClassificationResult]? {
         recordedBatchSizes.append(requests.count)
 
         return Dictionary(uniqueKeysWithValues: requests.map { request in
@@ -498,13 +564,13 @@ private actor FailingMerchantClassificationIntelligence: MerchantClassificationI
         memo: String?,
         category: String?,
         amount: Decimal
-    ) async -> MerchantClassificationResult? {
+    ) async throws -> MerchantClassificationResult? {
         nil
     }
 
     func classifyMerchantsBatch(
         _ requests: [MerchantClassificationRequest]
-    ) async -> [String: MerchantClassificationResult]? {
+    ) async throws -> [String: MerchantClassificationResult]? {
         nil
     }
 }
@@ -517,7 +583,7 @@ private actor PartiallyFailingBatchMerchantClassificationIntelligence: MerchantC
         memo: String?,
         category: String?,
         amount: Decimal
-    ) async -> MerchantClassificationResult? {
+    ) async throws -> MerchantClassificationResult? {
         MerchantClassificationResult(
             canonicalName: rawMerchant,
             serviceCategory: category ?? "Uncategorized",
@@ -529,7 +595,7 @@ private actor PartiallyFailingBatchMerchantClassificationIntelligence: MerchantC
 
     func classifyMerchantsBatch(
         _ requests: [MerchantClassificationRequest]
-    ) async -> [String: MerchantClassificationResult]? {
+    ) async throws -> [String: MerchantClassificationResult]? {
         batchCallCount += 1
 
         guard batchCallCount == 1 else {
@@ -557,7 +623,7 @@ private actor SubsetBatchMerchantClassificationIntelligence: MerchantClassificat
         memo: String?,
         category: String?,
         amount: Decimal
-    ) async -> MerchantClassificationResult? {
+    ) async throws -> MerchantClassificationResult? {
         MerchantClassificationResult(
             canonicalName: "AI \(rawMerchant)",
             serviceCategory: category ?? "Uncategorized",
@@ -569,7 +635,7 @@ private actor SubsetBatchMerchantClassificationIntelligence: MerchantClassificat
 
     func classifyMerchantsBatch(
         _ requests: [MerchantClassificationRequest]
-    ) async -> [String: MerchantClassificationResult]? {
+    ) async throws -> [String: MerchantClassificationResult]? {
         Dictionary(uniqueKeysWithValues: requests.dropFirst().map { request in
             (
                 request.rawMerchant,
@@ -582,5 +648,54 @@ private actor SubsetBatchMerchantClassificationIntelligence: MerchantClassificat
                 )
             )
         })
+    }
+}
+
+private actor CancellingBatchMerchantClassificationIntelligence: MerchantClassificationIntelligence {
+    private var callCount = 0
+
+    func classifyMerchant(
+        rawMerchant: String,
+        memo: String?,
+        category: String?,
+        amount: Decimal
+    ) async throws -> MerchantClassificationResult? {
+        nil
+    }
+
+    func classifyMerchantsBatch(
+        _ requests: [MerchantClassificationRequest]
+    ) async throws -> [String: MerchantClassificationResult]? {
+        callCount += 1
+        throw CancellationError()
+    }
+
+    func batchCallCount() -> Int {
+        callCount
+    }
+}
+
+private actor CancellingIndividualMerchantClassificationIntelligence: MerchantClassificationIntelligence {
+    private var callCount = 0
+
+    func classifyMerchant(
+        rawMerchant: String,
+        memo: String?,
+        category: String?,
+        amount: Decimal
+    ) async throws -> MerchantClassificationResult? {
+        callCount += 1
+        throw CancellationError()
+    }
+
+    func classifyMerchantsBatch(
+        _ requests: [MerchantClassificationRequest]
+    ) async throws -> [String: MerchantClassificationResult]? {
+        XCTFail("Individual strategy should not call batch classification")
+        return nil
+    }
+
+    func merchantCallCount() -> Int {
+        callCount
     }
 }

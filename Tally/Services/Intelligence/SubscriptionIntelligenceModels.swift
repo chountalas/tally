@@ -146,17 +146,18 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
     }
 
     func upcomingRenewals(days: Int) -> [Subscription] {
-        let cutoff = Calendar.current.date(byAdding: .day, value: days, to: .now)
+        let referenceDate = Date()
+        let cutoff = Calendar.current.date(byAdding: .day, value: days, to: referenceDate)
             ?? .distantFuture
-        return subscriptions
-            .filter {
-                $0.status == .active &&
-                    ($0.predictedNextChargeDate ?? .distantFuture) <= cutoff
-            }
-            .sorted {
-                ($0.predictedNextChargeDate ?? .distantFuture) <
-                    ($1.predictedNextChargeDate ?? .distantFuture)
-            }
+        let activeSubscriptions = DashboardMetrics.currentActiveSubscriptions(
+            from: subscriptions,
+            referenceDate: referenceDate
+        )
+        return DashboardMetrics.upcomingRenewals(
+            from: activeSubscriptions,
+            renewalCutoff: cutoff,
+            referenceDate: referenceDate
+        )
     }
 
     func subscriptionDetail(id: UUID) -> Subscription? {

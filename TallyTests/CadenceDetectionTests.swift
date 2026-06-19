@@ -122,4 +122,46 @@ final class CadenceDetectionTests: XCTestCase {
 
         XCTAssertEqual(status, .former)
     }
+
+    func testInferStatusDoesNotKeepAnnualRenewalsActiveUntilNextYear() {
+        let formatter = ISO8601DateFormatter()
+        let lastChargeDate = formatter.date(from: "2025-02-11T00:00:00Z")!
+        let referenceDate = formatter.date(from: "2026-06-18T18:00:00Z")!
+
+        let status = service.inferStatus(
+            lastChargeDate: lastChargeDate,
+            cadence: .annual,
+            referenceDate: referenceDate
+        )
+
+        XCTAssertEqual(status, .former)
+    }
+
+    func testInferStatusDoesNotKeepQuarterlyRenewalsActiveUntilNextQuarter() {
+        let formatter = ISO8601DateFormatter()
+        let lastChargeDate = formatter.date(from: "2026-01-01T00:00:00Z")!
+        let referenceDate = formatter.date(from: "2026-04-13T18:00:00Z")!
+
+        let status = service.inferStatus(
+            lastChargeDate: lastChargeDate,
+            cadence: .quarterly,
+            referenceDate: referenceDate
+        )
+
+        XCTAssertEqual(status, .former)
+    }
+
+    func testInferStatusDoesNotKeepSemiannualRenewalsActiveUntilNextCycle() {
+        let formatter = ISO8601DateFormatter()
+        let lastChargeDate = formatter.date(from: "2026-01-01T00:00:00Z")!
+        let referenceDate = formatter.date(from: "2026-07-13T18:00:00Z")!
+
+        let status = service.inferStatus(
+            lastChargeDate: lastChargeDate,
+            cadence: .semiannual,
+            referenceDate: referenceDate
+        )
+
+        XCTAssertEqual(status, .former)
+    }
 }

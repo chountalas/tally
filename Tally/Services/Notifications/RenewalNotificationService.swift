@@ -20,18 +20,27 @@ final class RenewalNotificationService {
             throw RenewalNotificationError.accessDenied
         }
 
-        let activeSubscriptions = subscriptions.filter { $0.status == .active }
+        let referenceDate = Date()
+        let activeSubscriptions = DashboardMetrics.currentActiveSubscriptions(
+            from: subscriptions,
+            referenceDate: referenceDate
+        )
+        let activeSubscriptionIDs = Set(activeSubscriptions.map(\.id))
         await clearTrackerNotifications()
 
         var scheduledCount = 0
 
         for subscription in subscriptions
-        where subscription.status != .active || subscription.predictedNextChargeDate == nil {
+        where activeSubscriptionIDs.contains(subscription.id) == false ||
+            subscription.predictedNextChargeDate == nil {
             subscription.lastNotificationScheduledAt = nil
         }
 
         for subscription in activeSubscriptions {
-            guard let renewalDate = subscription.predictedNextChargeDate else {
+            guard let renewalDate = DashboardMetrics.currentRenewalDate(
+                for: subscription,
+                referenceDate: referenceDate
+            ) else {
                 continue
             }
 

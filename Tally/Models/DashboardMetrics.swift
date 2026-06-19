@@ -51,8 +51,15 @@ struct DashboardMetrics {
         )
     }
 
-    init(subscriptions: [Subscription], transactions: [NormalizedTransaction]) {
-        let activeSubscriptions = subscriptions.filter { $0.status == .active }
+    init(
+        subscriptions: [Subscription],
+        transactions: [NormalizedTransaction],
+        referenceDate: Date = .now
+    ) {
+        let activeSubscriptions = Self.currentActiveSubscriptions(
+            from: subscriptions,
+            referenceDate: referenceDate
+        )
         let debitTransactions = transactions.filter { $0.transactionAmount < 0 }
         let transactionsBySubscription = Dictionary(
             grouping: debitTransactions.filter { $0.subscriptionID != nil }
@@ -66,15 +73,17 @@ struct DashboardMetrics {
         monthlyCount = activeSubscriptions.filter { $0.cadence == .monthly }.count
         needsReviewCount = subscriptions.filter { $0.status == .needsReview }.count
         let renewalCutoff =
-            Calendar.current.date(byAdding: .day, value: 90, to: .now) ?? .distantFuture
+            Calendar.current.date(byAdding: .day, value: 90, to: referenceDate) ?? .distantFuture
         upcomingRenewals = Self.upcomingRenewals(
             from: activeSubscriptions,
-            renewalCutoff: renewalCutoff
+            renewalCutoff: renewalCutoff,
+            referenceDate: referenceDate
         )
         probableRenewals = Self.probableRenewals(
             from: subscriptions,
             renewalCutoff: renewalCutoff,
-            transactionsBySubscription: transactionsBySubscription
+            transactionsBySubscription: transactionsBySubscription,
+            referenceDate: referenceDate
         )
         monthlySpend = DashboardMetrics.buildMonthlySpend(from: subscriptionDebitTransactions)
         yearlySpend = DashboardMetrics.buildYearlySpend(from: subscriptionDebitTransactions)
@@ -85,10 +94,11 @@ struct DashboardMetrics {
         actNowItems = DashboardMetrics.buildActNowItems(
             subscriptions: activeSubscriptions,
             transactionsBySubscription: transactionsBySubscription,
-            opportunities: opportunities
+            opportunities: opportunities,
+            referenceDate: referenceDate
         )
         overlapGroups = Self.overlapGroups(from: activeSubscriptions)
-        priceChangedSubscriptions = subscriptions
+        priceChangedSubscriptions = activeSubscriptions
             .filter { ($0.priceChangePercent ?? 0) > 0.05 }
             .sorted { ($0.priceChangePercent ?? 0) > ($1.priceChangePercent ?? 0) }
     }

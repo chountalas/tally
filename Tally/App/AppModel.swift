@@ -62,11 +62,13 @@ struct AIProviderStateResolver {
 
 struct DashboardMetricsSnapshot {
     let revision: LibraryRevision
+    let referenceDay: Date
     let metrics: DashboardMetrics
 }
 
 struct DashboardContentSnapshot {
     let revision: LibraryRevision
+    let referenceDay: Date
     let metrics: DashboardMetrics
     let reviewQueueSubscriptions: [Subscription]
     let upcomingRenewals: [Subscription]
@@ -84,22 +86,49 @@ private let dashboardMetricsLogger = Logger(
 final class DashboardMetricsProvider {
     private var cachedSnapshot: DashboardMetricsSnapshot?
     private var cachedContentSnapshot: DashboardContentSnapshot?
+    private let referenceDateProvider: () -> Date
+
+    init(referenceDateProvider: @escaping () -> Date = { Date() }) {
+        self.referenceDateProvider = referenceDateProvider
+    }
 
     func snapshot(
         subscriptions: [Subscription],
         transactions: [NormalizedTransaction],
         revision: LibraryRevision
     ) -> DashboardMetricsSnapshot {
-        if let cachedSnapshot, cachedSnapshot.revision == revision {
+        let referenceDate = referenceDateProvider()
+        let referenceDay = Self.referenceDay(for: referenceDate)
+        return snapshot(
+            subscriptions: subscriptions,
+            transactions: transactions,
+            revision: revision,
+            referenceDate: referenceDate,
+            referenceDay: referenceDay
+        )
+    }
+
+    private func snapshot(
+        subscriptions: [Subscription],
+        transactions: [NormalizedTransaction],
+        revision: LibraryRevision,
+        referenceDate: Date,
+        referenceDay: Date
+    ) -> DashboardMetricsSnapshot {
+        if let cachedSnapshot,
+           cachedSnapshot.revision == revision,
+           cachedSnapshot.referenceDay == referenceDay {
             return cachedSnapshot
         }
 
         let startedAt = Date()
         let snapshot = DashboardMetricsSnapshot(
             revision: revision,
+            referenceDay: referenceDay,
             metrics: DashboardMetrics(
                 subscriptions: subscriptions,
-                transactions: transactions
+                transactions: transactions,
+                referenceDate: referenceDate
             )
         )
         cachedSnapshot = snapshot
@@ -120,7 +149,11 @@ final class DashboardMetricsProvider {
         revision: LibraryRevision,
         previewBuilder: (Subscription, [NormalizedTransaction]) -> MerchantLearningPreview
     ) -> DashboardContentSnapshot {
-        if let cachedContentSnapshot, cachedContentSnapshot.revision == revision {
+        let referenceDate = referenceDateProvider()
+        let referenceDay = Self.referenceDay(for: referenceDate)
+        if let cachedContentSnapshot,
+           cachedContentSnapshot.revision == revision,
+           cachedContentSnapshot.referenceDay == referenceDay {
             return cachedContentSnapshot
         }
 
@@ -128,14 +161,18 @@ final class DashboardMetricsProvider {
         let metricsSnapshot = snapshot(
             subscriptions: subscriptions,
             transactions: transactions,
-            revision: revision
+            revision: revision,
+            referenceDate: referenceDate,
+            referenceDay: referenceDay
         )
         let metrics = metricsSnapshot.metrics
-        let activeSubscriptions = subscriptions
-            .filter { $0.status == .active }
+        let activeSubscriptions = DashboardMetrics.currentActiveSubscriptions(
+            from: subscriptions,
+            referenceDate: referenceDate
+        )
             .sorted {
-                ($0.predictedNextChargeDate ?? .distantFuture)
-                    < ($1.predictedNextChargeDate ?? .distantFuture)
+                (DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture)
+                    < (DashboardMetrics.currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
         let reviewQueueSubscriptions = Array(
             subscriptions
@@ -150,6 +187,7 @@ final class DashboardMetricsProvider {
         )
         let contentSnapshot = DashboardContentSnapshot(
             revision: revision,
+            referenceDay: referenceDay,
             metrics: metrics,
             reviewQueueSubscriptions: reviewQueueSubscriptions,
             upcomingRenewals: Array(metrics.upcomingRenewals.prefix(6)),
@@ -171,6 +209,10 @@ final class DashboardMetricsProvider {
             """
         )
         return contentSnapshot
+    }
+
+    private static func referenceDay(for date: Date, calendar: Calendar = .current) -> Date {
+        calendar.startOfDay(for: date)
     }
 }
 

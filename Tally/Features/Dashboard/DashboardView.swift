@@ -14,7 +14,6 @@ struct DashboardView: View {
     private var snapshot: DashboardContentSnapshot {
         appModel.dashboardContentSnapshot(subscriptions: subscriptions, transactions: transactions)
     }
-    private var activeSubscriptions: [Subscription] { subscriptions.filter { $0.status == .active } }
 
     var body: some View {
         ScrollView {
@@ -27,7 +26,12 @@ struct DashboardView: View {
                 // so count the suggested library directly to match the Subscriptions chip.
                 let reviewCount = subscriptions.filter { $0.libraryState == .suggested }.count
 
-                heroSection(metrics: metrics, upcoming: upcoming, overlap: overlap)
+                heroSection(
+                    metrics: metrics,
+                    upcoming: upcoming,
+                    overlap: overlap,
+                    referenceDate: snapshot.referenceDay
+                )
 
                 if reviewCount > 0 {
                     ReviewNudge(count: reviewCount) {
@@ -36,7 +40,7 @@ struct DashboardView: View {
                 }
 
                 if !upcoming.isEmpty {
-                    comingUpSection(upcoming)
+                    comingUpSection(upcoming, referenceDate: snapshot.referenceDay)
                 }
                 if !history.isEmpty {
                     SpendChart(history: history)
@@ -55,7 +59,13 @@ struct DashboardView: View {
 
     // MARK: Hero
 
-    private func heroSection(metrics: DashboardMetrics, upcoming: [Subscription], overlap: OverlapGroup?) -> some View {
+    private func heroSection(
+        metrics: DashboardMetrics,
+        upcoming: [Subscription],
+        overlap: OverlapGroup?,
+        referenceDate: Date
+    ) -> some View {
+        let heroContext = DashboardHeroContext(metrics: metrics)
         let monthly = metrics.monthlyRunRate
         let yearly = metrics.annualizedSpend
         return VStack(alignment: .leading, spacing: 0) {
@@ -68,7 +78,7 @@ struct DashboardView: View {
                 .foregroundStyle(Theme.Colors.textSecondary)
              + Text("\(monthly.tallyMoney(showCents: false)) a month")
                 .foregroundStyle(Theme.Colors.textPrimary).bold()
-             + Text(" across \(activeSubscriptions.count) subscriptions.")
+             + Text(" across \(heroContext.activeSubscriptionCount) subscriptions.")
                 .foregroundStyle(Theme.Colors.textSecondary))
                 .font(.system(size: 25, weight: .semibold))
                 .lineSpacing(3)
@@ -84,17 +94,31 @@ struct DashboardView: View {
              + Text(" a year.").foregroundStyle(Theme.Colors.textSecondary))
                 .font(.system(size: 15, weight: .medium))
 
-            heroStats(metrics: metrics, upcoming: upcoming, overlap: overlap)
+            heroStats(
+                metrics: metrics,
+                upcoming: upcoming,
+                overlap: overlap,
+                referenceDate: referenceDate
+            )
                 .padding(.top, 20)
         }
     }
 
-    private func heroStats(metrics: DashboardMetrics, upcoming: [Subscription], overlap: OverlapGroup?) -> some View {
+    private func heroStats(
+        metrics: DashboardMetrics,
+        upcoming: [Subscription],
+        overlap: OverlapGroup?,
+        referenceDate: Date
+    ) -> some View {
         HStack(spacing: 10) {
             if let next = upcoming.first {
+                let renewalDate = DashboardMetrics.currentRenewalDate(
+                    for: next,
+                    referenceDate: referenceDate
+                )
                 StatTile(icon: "calendar", label: "Next renewal") {
                     (Text(next.tallyName)
-                     + statUnit(next.predictedNextChargeDate.map { " · \($0.tallyRelativeDay)" } ?? ""))
+                     + statUnit(renewalDate.map { " · \($0.tallyRelativeDay)" } ?? ""))
                         .modifier(StatValueText())
                 }
             }
@@ -124,14 +148,16 @@ struct DashboardView: View {
 
     // MARK: Coming up
 
-    private func comingUpSection(_ upcoming: [Subscription]) -> some View {
+    private func comingUpSection(_ upcoming: [Subscription], referenceDate: Date) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHead("Coming up next") {
                 LinkButton(title: "See all") { appModel.selectedTab = .subscriptions }
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: .infinity), spacing: 12)], spacing: 12) {
                 ForEach(upcoming) { sub in
-                    RenewalCard(sub: sub) { appModel.tallySelectedSubscriptionID = sub.id }
+                    RenewalCard(sub: sub, referenceDate: referenceDate) {
+                        appModel.tallySelectedSubscriptionID = sub.id
+                    }
                 }
             }
         }
@@ -169,6 +195,14 @@ struct DashboardView: View {
         if days <= 0 { return "today" }
         if days == 1 { return "yesterday" }
         return "\(days) days ago"
+    }
+}
+
+struct DashboardHeroContext: Equatable {
+    let activeSubscriptionCount: Int
+
+    init(metrics: DashboardMetrics) {
+        activeSubscriptionCount = metrics.activeCount
     }
 }
 
@@ -270,11 +304,15 @@ private struct StatTile<Value: View>: View {
 
 private struct RenewalCard: View {
     let sub: Subscription
+    let referenceDate: Date
     let action: () -> Void
     @State private var grown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var days: Int { sub.tallyDaysUntilRenewal ?? 30 }
+    private var renewalDate: Date? {
+        DashboardMetrics.currentRenewalDate(for: sub, referenceDate: referenceDate)
+    }
+    private var days: Int { renewalDate?.tallyDaysFromNow ?? 30 }
     private var soon: Bool { days <= 7 }
     private var fraction: CGFloat { CGFloat(max(0.06, min(1, 1 - Double(days) / 30))) }
 
@@ -320,7 +358,7 @@ private struct RenewalCard: View {
     }
 
     private var renewLabel: String {
-        guard let date = sub.predictedNextChargeDate else { return "renews soon" }
+        guard let date = renewalDate else { return "renews soon" }
         return "\(date.tallyRelativeDay) · \(date.tallyShortDate)"
     }
 }

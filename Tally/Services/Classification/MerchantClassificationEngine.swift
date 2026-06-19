@@ -9,11 +9,11 @@ protocol MerchantClassificationIntelligence: Sendable {
         memo: String?,
         category: String?,
         amount: Decimal
-    ) async -> MerchantClassificationResult?
+    ) async throws -> MerchantClassificationResult?
 
     func classifyMerchantsBatch(
         _ requests: [MerchantClassificationRequest]
-    ) async -> [String: MerchantClassificationResult]?
+    ) async throws -> [String: MerchantClassificationResult]?
 }
 
 extension SubscriptionIntelligenceService: MerchantClassificationIntelligence {}
@@ -76,7 +76,8 @@ struct MerchantClassificationEngine: Sendable {
         category: String?,
         amount: Decimal,
         strategy: MerchantClassificationStrategy = .individual
-    ) async -> MerchantClassificationResult {
+    ) async throws -> MerchantClassificationResult {
+        try Task.checkCancellation()
         let heuristicResult = heuristic.classify(
             rawMerchant: rawMerchant,
             memo: memo,
@@ -92,13 +93,20 @@ struct MerchantClassificationEngine: Sendable {
             return heuristicResult
         }
 
-        if let result = await intelligence.classifyMerchant(
-            rawMerchant: rawMerchant,
-            memo: memo,
-            category: category,
-            amount: amount
-        ) {
-            return result
+        do {
+            if let result = try await intelligence.classifyMerchant(
+                rawMerchant: rawMerchant,
+                memo: memo,
+                category: category,
+                amount: amount
+            ) {
+                return result
+            }
+        } catch {
+            guard (error is CancellationError) == false, Task.isCancelled == false else {
+                throw error
+            }
+            return heuristicResult
         }
 
         return heuristicResult
@@ -107,7 +115,7 @@ struct MerchantClassificationEngine: Sendable {
     func classifyBatch(
         _ requests: [MerchantClassificationRequest],
         strategy: MerchantClassificationStrategy
-    ) async -> MerchantClassificationBatchResult {
+    ) async throws -> MerchantClassificationBatchResult {
         guard !requests.isEmpty else {
             return MerchantClassificationBatchResult(
                 results: [:],
@@ -127,9 +135,9 @@ struct MerchantClassificationEngine: Sendable {
                 currentCacheableRawMerchants: selectedProviderStatus.isReady ? Set(results.keys) : []
             )
         case .individual:
-            return await individualBatchResult(for: requests)
+            return try await individualBatchResult(for: requests)
         case .providerBatch:
-            return await providerBatchResult(for: requests)
+            return try await providerBatchResult(for: requests)
         }
     }
 
@@ -215,7 +223,7 @@ struct MerchantClassificationEngine: Sendable {
 
     private func individualBatchResult(
         for requests: [MerchantClassificationRequest]
-    ) async -> MerchantClassificationBatchResult {
+    ) async throws -> MerchantClassificationBatchResult {
         var results: [String: MerchantClassificationResult] = [:]
         var usedProvider = false
         var attemptedProvider = false
@@ -223,6 +231,7 @@ struct MerchantClassificationEngine: Sendable {
         var currentCacheableRawMerchants: Set<String> = []
 
         for request in requests {
+            try Task.checkCancellation()
             let heuristicResult = heuristic.classify(
                 rawMerchant: request.rawMerchant,
                 memo: request.memo,
@@ -237,16 +246,24 @@ struct MerchantClassificationEngine: Sendable {
             }
 
             attemptedProvider = true
-            if let result = await intelligence.classifyMerchant(
-                rawMerchant: request.rawMerchant,
-                memo: request.memo,
-                category: request.category,
-                amount: request.amount
-            ) {
-                results[request.rawMerchant] = result
-                usedProvider = true
-                currentCacheableRawMerchants.insert(request.rawMerchant)
-            } else {
+            do {
+                if let result = try await intelligence.classifyMerchant(
+                    rawMerchant: request.rawMerchant,
+                    memo: request.memo,
+                    category: request.category,
+                    amount: request.amount
+                ) {
+                    results[request.rawMerchant] = result
+                    usedProvider = true
+                    currentCacheableRawMerchants.insert(request.rawMerchant)
+                } else {
+                    results[request.rawMerchant] = heuristicResult
+                    providerFailed = true
+                }
+            } catch {
+                guard (error is CancellationError) == false, Task.isCancelled == false else {
+                    throw error
+                }
                 results[request.rawMerchant] = heuristicResult
                 providerFailed = true
             }
@@ -265,7 +282,7 @@ struct MerchantClassificationEngine: Sendable {
 
     private func providerBatchResult(
         for requests: [MerchantClassificationRequest]
-    ) async -> MerchantClassificationBatchResult {
+    ) async throws -> MerchantClassificationBatchResult {
         var results: [String: MerchantClassificationResult] = [:]
         let heuristics = heuristicResults(for: requests)
         var usedProviderBatch = false
@@ -289,9 +306,10 @@ struct MerchantClassificationEngine: Sendable {
         }
 
         for batchStart in stride(from: 0, to: aiEligibleRequests.count, by: providerBatchSize) {
+            try Task.checkCancellation()
             let batchEnd = min(batchStart + providerBatchSize, aiEligibleRequests.count)
             let batch = Array(aiEligibleRequests[batchStart..<batchEnd])
-            if let batchResults = await intelligence.classifyMerchantsBatch(batch),
+            if let batchResults = try await intelligence.classifyMerchantsBatch(batch),
                batchResults.isEmpty == false {
                 usedProviderBatch = true
                 for request in batch {

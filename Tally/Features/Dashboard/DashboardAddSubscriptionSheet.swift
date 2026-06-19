@@ -351,45 +351,56 @@ struct AddSubscriptionSheet: View {
         let subscriptionsSnapshot = subscriptions
 
         Task {
-            let suggestion = await draftAdvisor.suggest(
-                for: draftInput,
-                existingSubscriptions: subscriptionsSnapshot
-            )
+            do {
+                let suggestion = try await draftAdvisor.suggest(
+                    for: draftInput,
+                    existingSubscriptions: subscriptionsSnapshot
+                )
 
-            await MainActor.run {
-                isSuggestingDetails = false
+                await MainActor.run {
+                    isSuggestingDetails = false
 
-                guard let suggestion else {
+                    guard let suggestion else {
+                        suggestionSummary = "No strong suggestions yet. Add a bit more detail and try again."
+                        return
+                    }
+
+                    if serviceIdentifier.nilIfBlank == nil,
+                       let serviceIdentifier = suggestion.serviceIdentifier {
+                        self.serviceIdentifier = serviceIdentifier
+                    }
+
+                    if category.nilIfBlank == nil,
+                       let category = suggestion.category {
+                        self.category = category
+                    }
+
+                    if websiteURL.nilIfBlank == nil,
+                       let websiteURL = suggestion.websiteURL {
+                        self.websiteURL = websiteURL
+                    }
+
+                    if selectedReminderLeadDays == nil {
+                        selectedReminderLeadDays = suggestion.reminderDaysBefore
+                    }
+
+                    if selectedStatus == .former,
+                       replacementSubscriptionID == nil,
+                       suggestion.replacementSubscriptionID != editing?.id {
+                        replacementSubscriptionID = suggestion.replacementSubscriptionID
+                    }
+
+                    suggestionSummary = suggestion.summary
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    isSuggestingDetails = false
+                }
+            } catch {
+                await MainActor.run {
+                    isSuggestingDetails = false
                     suggestionSummary = "No strong suggestions yet. Add a bit more detail and try again."
-                    return
                 }
-
-                if serviceIdentifier.nilIfBlank == nil,
-                   let serviceIdentifier = suggestion.serviceIdentifier {
-                    self.serviceIdentifier = serviceIdentifier
-                }
-
-                if category.nilIfBlank == nil,
-                   let category = suggestion.category {
-                    self.category = category
-                }
-
-                if websiteURL.nilIfBlank == nil,
-                   let websiteURL = suggestion.websiteURL {
-                    self.websiteURL = websiteURL
-                }
-
-                if selectedReminderLeadDays == nil {
-                    selectedReminderLeadDays = suggestion.reminderDaysBefore
-                }
-
-                if selectedStatus == .former,
-                   replacementSubscriptionID == nil,
-                   suggestion.replacementSubscriptionID != editing?.id {
-                    replacementSubscriptionID = suggestion.replacementSubscriptionID
-                }
-
-                suggestionSummary = suggestion.summary
             }
         }
     }
@@ -440,22 +451,30 @@ struct ManualSubscriptionDraftAdvisor: Sendable {
     func suggest(
         for input: ManualSubscriptionDraftInput,
         existingSubscriptions: [Subscription]
-    ) async -> ManualSubscriptionDraftSuggestion? {
+    ) async throws -> ManualSubscriptionDraftSuggestion? {
         let trimmedDisplayName = input.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedDisplayName.isEmpty == false else {
             return nil
         }
 
-        let aiClassification = await intelligence.classifyMerchant(
-            rawMerchant: trimmedDisplayName,
-            memo: input.notes?.nilIfBlank,
-            category: input.category?.nilIfBlank,
-            amount: input.priceAmount ?? .zero
-        )
+        let aiClassification: MerchantClassificationResult?
+        do {
+            aiClassification = try await intelligence.classifyMerchant(
+                rawMerchant: trimmedDisplayName,
+                memo: input.notes?.nilIfBlank,
+                category: input.category?.nilIfBlank,
+                amount: input.priceAmount ?? .zero
+            )
+        } catch {
+            guard (error is CancellationError) == false, Task.isCancelled == false else {
+                throw error
+            }
+            aiClassification = nil
+        }
         let classification = if let aiClassification {
             aiClassification
         } else {
-            await engine.classify(
+            try await engine.classify(
                 rawMerchant: trimmedDisplayName,
                 memo: input.notes?.nilIfBlank,
                 category: input.category?.nilIfBlank,

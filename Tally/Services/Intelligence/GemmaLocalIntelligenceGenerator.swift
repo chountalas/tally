@@ -82,7 +82,7 @@ private struct GemmaBatchClassificationEnvelope: Decodable {
 struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
     let modelURL: URL
     private let runtime: any GemmaTextGeneratingRuntime
-    private let maxBatchClassificationRequests = 8
+    private let maxBatchClassificationRequests = 3
 
     var evidenceProviderKind: AIProviderKind? { .gemmaLocal }
 
@@ -200,8 +200,14 @@ struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
         }
 
         do {
-            return try await classifyMerchantsBatchChunk(requests)
-        } catch let error as GemmaRuntimeError {
+            try Task.checkCancellation()
+            let results = try await classifyMerchantsBatchChunk(requests)
+            try Task.checkCancellation()
+            return results
+        } catch {
+            guard (error is CancellationError) == false, Task.isCancelled == false else {
+                throw error
+            }
             guard requests.count > 1, shouldSplitBatch(after: error) else {
                 throw error
             }
@@ -221,9 +227,11 @@ struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
         _ requests: [MerchantClassificationRequest],
         chunkSize: Int
     ) async throws -> [String: MerchantClassificationResult] {
+        try Task.checkCancellation()
         var mergedResults: [String: MerchantClassificationResult] = [:]
 
         for chunkStart in stride(from: 0, to: requests.count, by: chunkSize) {
+            try Task.checkCancellation()
             let chunkEnd = min(chunkStart + chunkSize, requests.count)
             let chunk = Array(requests[chunkStart..<chunkEnd])
             let chunkResults = try await classifyMerchantsBatchChunked(chunk)
@@ -314,12 +322,13 @@ struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
         return results
     }
 
-    private func shouldSplitBatch(after error: GemmaRuntimeError) -> Bool {
-        if case .promptExceedsContextWindow = error {
+    private func shouldSplitBatch(after error: Error) -> Bool {
+        if let runtimeError = error as? GemmaRuntimeError,
+           case .promptExceedsContextWindow = runtimeError {
             return true
         }
 
-        return false
+        return true
     }
 
     func evaluateRecurringCluster(

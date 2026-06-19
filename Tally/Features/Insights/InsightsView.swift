@@ -11,7 +11,9 @@ struct InsightsView: View {
     private var metrics: DashboardMetrics {
         appModel.dashboardMetricsSnapshot(subscriptions: subscriptions, transactions: transactions).metrics
     }
-    private var active: [Subscription] { subscriptions.filter { $0.status == .active } }
+    private var active: [Subscription] {
+        DashboardMetrics.currentActiveSubscriptions(from: subscriptions)
+    }
 
     private var categories: [(name: String, value: Decimal)] {
         let grouped = Dictionary(grouping: active) { $0.tallyCategory }
@@ -21,7 +23,11 @@ struct InsightsView: View {
     }
 
     private var annuals: [Subscription] {
-        active.filter(\.tallyIsYearly).sorted { ($0.tallyDaysUntilRenewal ?? .max) < ($1.tallyDaysUntilRenewal ?? .max) }
+        let referenceDate = Date()
+        return active.filter(\.tallyIsYearly).sorted {
+            (DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
+                (DashboardMetrics.currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
+        }
     }
 
     var body: some View {
@@ -151,12 +157,13 @@ struct InsightsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         } rows: {
             ForEach(annuals) { sub in
+                let renewalDate = DashboardMetrics.currentRenewalDate(for: sub)
                 Button { appModel.tallySelectedSubscriptionID = sub.id } label: {
                     HStack(spacing: 12) {
                         MonogramTile(name: sub.tallyName, size: 34)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(sub.tallyName).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(Theme.Colors.textPrimary)
-                            if let d = sub.predictedNextChargeDate {
+                            if let d = renewalDate {
                                 Text("Renews \(d.tallyShortDate) · \(d.tallyRelativeDay)")
                                     .font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.Colors.textSecondary)
                             }

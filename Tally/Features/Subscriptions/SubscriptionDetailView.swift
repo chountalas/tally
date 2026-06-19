@@ -15,12 +15,21 @@ struct SubscriptionDetailView: View {
     }
 
     private var sub: Subscription { subscription }
-    private var isActive: Bool { sub.status == .active }
-    private var isNeedsReview: Bool { sub.status == .needsReview }
+    private var isCurrentActive: Bool {
+        DashboardMetrics.currentActiveSubscriptions(from: [sub]).contains { $0.id == sub.id }
+    }
+    private var displayStatus: SubscriptionStatus {
+        sub.status == .active && isCurrentActive == false ? .former : sub.status
+    }
+    private var currentRenewalDate: Date? {
+        DashboardMetrics.currentRenewalDate(for: sub)
+    }
+    private var isActive: Bool { displayStatus == .active }
+    private var isNeedsReview: Bool { displayStatus == .needsReview }
     /// A suggested (needs-review) item is still an ongoing detected charge, so it
-    /// shares the active layout for next-charge / tenure / renews — only `.former`
-    /// is treated as "ended".
-    private var isOngoing: Bool { sub.status != .former }
+    /// shares the active layout for next-charge / tenure / renews. Stale active
+    /// records render as ended until the next rebuild persists that status.
+    private var isOngoing: Bool { displayStatus != .former }
 
     var body: some View {
         ScrollView {
@@ -84,7 +93,7 @@ struct SubscriptionDetailView: View {
         let label: String
         let fg: Color
         let bg: Color
-        switch sub.status {
+        switch displayStatus {
         case .active:
             label = "Active"; fg = Theme.Colors.positive; bg = Theme.Colors.positive.opacity(0.16)
         case .needsReview:
@@ -116,14 +125,14 @@ struct SubscriptionDetailView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.6)
 
-            if isOngoing, let next = sub.predictedNextChargeDate {
+            if isOngoing, let next = currentRenewalDate {
                 detailFact(label: "Next charge") {
                     (Text("\(next.tallyShortDate) · ").foregroundStyle(Theme.Colors.textPrimary)
                      + Text(next.tallyRelativeDay).foregroundStyle(Theme.Colors.accent).bold())
                         .font(.system(size: 18, weight: .semibold))
                 }
             }
-            if let tenure = sub.tallyTenureMonths {
+            if let tenure = displayTenureMonths {
                 detailFact(label: isOngoing ? "With you for" : "You kept it for") {
                     Text(tallyTenureLabel(months: tenure))
                         .font(.system(size: 18, weight: .semibold))
@@ -146,6 +155,14 @@ struct SubscriptionDetailView: View {
             value()
         }
         .padding(.bottom, 4)
+    }
+
+    private var displayTenureMonths: Int? {
+        if let tenure = sub.tenureMonths, tenure > 0 { return tenure }
+        guard let start = sub.firstChargeDate else { return nil }
+        let end = isOngoing ? Date.now : (sub.lastChargeDate ?? Date.now)
+        let components = Calendar.current.dateComponents([.month], from: start, to: end)
+        return max(0, components.month ?? 0)
     }
 
     // MARK: Price callout
@@ -181,7 +198,7 @@ struct SubscriptionDetailView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: .infinity), spacing: 10)], spacing: 10) {
             factTile("Billing", sub.cadence.tallyBillingSummary)
             if isOngoing {
-                factTile("Renews on", sub.predictedNextChargeDate?.tallyShortDate ?? "—")
+                factTile("Renews on", currentRenewalDate?.tallyShortDate ?? "—")
             } else {
                 factTile("Last charged", sub.lastChargeDate?.tallyMonthName ?? "—")
             }
@@ -270,7 +287,7 @@ struct SubscriptionDetailView: View {
     private func recentCharges(count: Int = 6) -> [Charge] {
         let cal = Calendar.current
         let anchor: Date = isOngoing
-            ? (sub.cadence.tallyAdvanced(sub.predictedNextChargeDate ?? .now, by: -1, using: cal) ?? .now)
+            ? (sub.cadence.tallyAdvanced(currentRenewalDate ?? .now, by: -1, using: cal) ?? .now)
             : (sub.lastChargeDate ?? .now)
         let pct = sub.priceChangePercent ?? 0
         let oldAmount = pct > 0 ? sub.priceAmount * Decimal(1.0 / (1.0 + pct)) : sub.priceAmount

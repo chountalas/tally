@@ -92,6 +92,111 @@ struct SubscriptionIntelligenceServiceTests {
         #expect(items.contains(where: { $0.uniqueIdentifier.hasPrefix("renewal.") }))
     }
 
+    @MainActor
+    @Test func spotlightIndexerSkipsStaleAnnualRenewalItems() {
+        let stale = Subscription(
+            canonicalName: "Old Annual App",
+            displayName: "Old Annual App",
+            status: .active,
+            cadence: .annual,
+            priceAmount: Decimal(string: "120") ?? 120,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "10") ?? 10,
+            lastChargeDate: Calendar.current.date(byAdding: .day, value: -593, to: .now),
+            predictedNextChargeDate: Calendar.current.date(byAdding: .day, value: -228, to: .now),
+            confidenceScore: 0.92,
+            serviceCategory: "Software"
+        )
+        let indexer = SubscriptionSpotlightIndexer()
+
+        let items = indexer.searchableItems(for: [stale])
+        let subscriptionItem = items.first {
+            $0.uniqueIdentifier == "subscription.\(stale.id.uuidString)"
+        }
+
+        #expect(subscriptionItem != nil)
+        #expect(subscriptionItem?.attributeSet.contentDescription?.localizedStandardContains("Former") == true)
+        #expect(subscriptionItem?.attributeSet.contentDescription?.localizedStandardContains("Active") == false)
+        #expect(items.contains(where: { $0.uniqueIdentifier == "renewal.\(stale.id.uuidString)" }) == false)
+    }
+
+    @MainActor
+    @Test func spotlightIndexerDropsAnnualRenewalAfterGraceDayExpires() {
+        let calendar = Calendar.current
+        let beforeGraceExpires = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 8, hour: 12)
+        ) ?? .now
+        let afterGraceExpires = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 9, hour: 12)
+        ) ?? .now
+        let annual = Subscription(
+            canonicalName: "Annual App",
+            displayName: "Annual App",
+            status: .active,
+            cadence: .annual,
+            priceAmount: Decimal(string: "120") ?? 120,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "10") ?? 10,
+            lastChargeDate: calendar.date(from: DateComponents(year: 2025, month: 6, day: 17, hour: 12)),
+            predictedNextChargeDate: calendar.date(from: DateComponents(year: 2026, month: 6, day: 17, hour: 12)),
+            confidenceScore: 0.92,
+            serviceCategory: "Software"
+        )
+        let indexer = SubscriptionSpotlightIndexer()
+
+        let beforeItems = indexer.searchableItems(
+            for: [annual],
+            referenceDate: beforeGraceExpires
+        )
+        let afterItems = indexer.searchableItems(
+            for: [annual],
+            referenceDate: afterGraceExpires
+        )
+
+        #expect(beforeItems.contains(where: { $0.uniqueIdentifier == "renewal.\(annual.id.uuidString)" }))
+        #expect(afterItems.contains(where: { $0.uniqueIdentifier == "renewal.\(annual.id.uuidString)" }) == false)
+    }
+
+    @Test func priceChangeAnalysisIgnoresStaleActivePeersForAuditScore() {
+        let service = SubscriptionIntelligenceService(generator: nil)
+        let target = makeNetflixSubscription()
+        target.serviceCategory = "Software"
+        target.priceChangePercent = 0.11
+        let stalePeer = Subscription(
+            canonicalName: "Old Annual App",
+            displayName: "Old Annual App",
+            status: .active,
+            cadence: .annual,
+            priceAmount: Decimal(string: "120") ?? 120,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "10") ?? 10,
+            lastChargeDate: Calendar.current.date(byAdding: .day, value: -593, to: .now),
+            predictedNextChargeDate: Calendar.current.date(byAdding: .day, value: -228, to: .now),
+            confidenceScore: 0.92,
+            serviceCategory: "Software"
+        )
+        let transactions = makeNetflixTransactions(subscriptionID: target.id)
+        let tooling = LocalSubscriptionIntelligenceTooling(
+            subscriptions: [target, stalePeer],
+            transactions: transactions,
+            aliases: [],
+            classifications: []
+        )
+
+        let analysis = service.priceChangeAnalysis(
+            query: IntelligenceQuery(
+                kind: .priceChangeExplanation,
+                prompt: "Why did this price change?",
+                subscriptionID: target.id
+            ),
+            tooling: tooling,
+            subscriptions: tooling.subscriptions,
+            transactions: transactions
+        )
+
+        #expect(analysis?.score.reasons.contains { $0.localizedStandardContains("Overlaps") } == false)
+    }
+
     private func makeTooling() -> LocalSubscriptionIntelligenceTooling {
         let netflix = makeNetflixSubscription()
         netflix.priceChangePercent = 0.11
@@ -342,10 +447,10 @@ private struct ValidCopyGenerator: SubscriptionIntelligenceGenerating {
 
 @Suite("Manual subscription draft advisor")
 struct EmbeddedManualSubscriptionDraftAdvisorTests {
-    @Test func knownServiceSuggestionPrefillsIdentityAndCategory() async {
+    @Test func knownServiceSuggestionPrefillsIdentityAndCategory() async throws {
         let advisor = ManualSubscriptionDraftAdvisor()
 
-        let suggestion = await advisor.suggest(
+        let suggestion = try await advisor.suggest(
             for: ManualSubscriptionDraftInput(
                 displayName: "Netflix.com",
                 priceAmount: Decimal(string: "19.99"),
@@ -365,7 +470,7 @@ struct EmbeddedManualSubscriptionDraftAdvisorTests {
         #expect(suggestion?.reminderDaysBefore == nil)
     }
 
-    @Test func formerSubscriptionSuggestionLinksSingleCategoryReplacementAndReminder() async {
+    @Test func formerSubscriptionSuggestionLinksSingleCategoryReplacementAndReminder() async throws {
         let advisor = ManualSubscriptionDraftAdvisor()
         let replacement = Subscription(
             canonicalName: "YouTube Premium",
@@ -382,7 +487,7 @@ struct EmbeddedManualSubscriptionDraftAdvisorTests {
             serviceIdentifier: "brand-youtube"
         )
 
-        let suggestion = await advisor.suggest(
+        let suggestion = try await advisor.suggest(
             for: ManualSubscriptionDraftInput(
                 displayName: "Spotify",
                 priceAmount: Decimal(string: "119.99"),

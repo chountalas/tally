@@ -16,10 +16,22 @@ struct SubscriptionsView: View {
     @State private var scopedImportRecordID: UUID?
 
     private var active: [Subscription] {
-        subscriptions.filter { $0.status == .active }
-            .sorted { ($0.tallyDaysUntilRenewal ?? .max) < ($1.tallyDaysUntilRenewal ?? .max) }
+        let referenceDate = Date()
+        return DashboardMetrics.currentActiveSubscriptions(
+            from: subscriptions,
+            referenceDate: referenceDate
+        )
+            .sorted {
+                (DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
+                    (DashboardMetrics.currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
+            }
     }
-    private var former: [Subscription] { subscriptions.filter { $0.status == .former } }
+    private var former: [Subscription] {
+        let activeIDs = Set(active.map(\.id))
+        return subscriptions.filter {
+            $0.status == .former || ($0.status == .active && activeIDs.contains($0.id) == false)
+        }
+    }
     /// AI-detected charges awaiting a keep/skip decision (the review queue),
     /// scoped to a single import when the user drilled in from the Imports screen.
     private var review: [Subscription] {
@@ -289,6 +301,15 @@ private struct SubRow: View {
     let action: () -> Void
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var isCurrentActive: Bool {
+        DashboardMetrics.currentActiveSubscriptions(from: [sub]).contains { $0.id == sub.id }
+    }
+    private var displaysAsEnded: Bool {
+        sub.status == .former || (sub.status == .active && isCurrentActive == false)
+    }
+    private var renewalDate: Date? {
+        DashboardMetrics.currentRenewalDate(for: sub)
+    }
 
     var body: some View {
         Button(action: action) {
@@ -343,10 +364,13 @@ private struct SubRow: View {
 
     @ViewBuilder
     private var badges: some View {
-        if sub.status == .active, sub.tallyRenewsSoon, let date = sub.predictedNextChargeDate {
+        if isCurrentActive,
+           let date = renewalDate,
+           date.tallyDaysFromNow >= 0,
+           date.tallyDaysFromNow <= 7 {
             TallyBadge(text: "renews \(date.tallyRelativeDay)", kind: .soon)
         }
-        if sub.status == .former {
+        if displaysAsEnded {
             TallyBadge(text: "ended", kind: .ended)
         }
         if sub.tallyPriceWentUp {
@@ -358,14 +382,14 @@ private struct SubRow: View {
     }
 
     private var metaLine: String {
-        if sub.status == .former {
+        if displaysAsEnded {
             if let last = sub.lastChargeDate {
                 return "Last charged in \(last.tallyMonthName)"
             }
             return "No longer charging"
         }
         var line = "\(sub.priceAmount.tallyMoney(code: sub.priceCurrency)) \(sub.cadence.tallyBillingPhrase)"
-        if let date = sub.predictedNextChargeDate {
+        if let date = renewalDate {
             line += " · renews \(date.tallyShortDate)"
         }
         return line

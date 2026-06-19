@@ -16,46 +16,65 @@ struct SubscriptionSpotlightIndexer {
             sortBy: [SortDescriptor(\.displayName)]
         )
         let subscriptions = (try? context.fetch(descriptor)) ?? []
-        let signature = signature(for: subscriptions)
+        let referenceDate = Date()
+        let signature = signature(for: subscriptions, referenceDate: referenceDate)
 
         guard signature != Self.lastIndexedSignature else {
             return
         }
 
-        await reindex(subscriptions: subscriptions)
+        await reindex(subscriptions: subscriptions, referenceDate: referenceDate)
         Self.lastIndexedSignature = signature
     }
 
     @MainActor
-    func reindex(subscriptions: [Subscription]) async {
+    func reindex(subscriptions: [Subscription], referenceDate: Date = .now) async {
         do {
             try await deleteDomainItems()
-            try await indexItems(searchableItems(for: subscriptions))
+            try await indexItems(searchableItems(for: subscriptions, referenceDate: referenceDate))
         } catch {
             // Spotlight indexing is best-effort and should not interrupt app flows.
         }
     }
 
     @MainActor
-    func searchableItems(for subscriptions: [Subscription]) -> [CSSearchableItem] {
-        var items: [CSSearchableItem] = subscriptions.map(makeSubscriptionItem(for:))
-        items.append(contentsOf: subscriptions.compactMap(makeRenewalItem(for:)))
+    func searchableItems(
+        for subscriptions: [Subscription],
+        referenceDate: Date = .now
+    ) -> [CSSearchableItem] {
+        var items: [CSSearchableItem] = subscriptions.map {
+            makeSubscriptionItem(for: $0, referenceDate: referenceDate)
+        }
+        items.append(
+            contentsOf: DashboardMetrics.currentActiveSubscriptions(
+                from: subscriptions,
+                referenceDate: referenceDate
+            )
+                .compactMap { makeRenewalItem(for: $0, referenceDate: referenceDate) }
+        )
         return items
     }
 
-    private func makeSubscriptionItem(for subscription: Subscription) -> CSSearchableItem {
+    private func makeSubscriptionItem(
+        for subscription: Subscription,
+        referenceDate: Date
+    ) -> CSSearchableItem {
         let attributes = CSSearchableItemAttributeSet(contentType: .text)
+        let displayStatus = DashboardMetrics.displayStatus(
+            for: subscription,
+            referenceDate: referenceDate
+        )
         attributes.title = subscription.displayName
         attributes.contentDescription = [
             subscription.serviceCategory ?? "Uncategorized",
             subscription.priceAmount.currencyString(code: subscription.priceCurrency),
-            subscription.status.title
+            displayStatus.title
         ].joined(separator: " • ")
         attributes.keywords = [
             subscription.displayName,
             subscription.canonicalName,
             subscription.serviceCategory,
-            subscription.status.title,
+            displayStatus.title,
             "subscription"
         ].compactMap { $0 }
 
@@ -66,9 +85,12 @@ struct SubscriptionSpotlightIndexer {
         )
     }
 
-    private func makeRenewalItem(for subscription: Subscription) -> CSSearchableItem? {
+    private func makeRenewalItem(for subscription: Subscription, referenceDate: Date) -> CSSearchableItem? {
         guard subscription.status == .active,
-              let renewalDate = subscription.predictedNextChargeDate else {
+              let renewalDate = DashboardMetrics.currentRenewalDate(
+                for: subscription,
+                referenceDate: referenceDate
+              ) else {
             return nil
         }
 
@@ -117,16 +139,30 @@ struct SubscriptionSpotlightIndexer {
     }
 
     @MainActor
-    private func signature(for subscriptions: [Subscription]) -> String {
-        subscriptions.map {
+    private func signature(for subscriptions: [Subscription], referenceDate: Date) -> String {
+        let referenceDay = Calendar.current.startOfDay(for: referenceDate).ISO8601Format()
+        let activeRenewalIDs = Set(
+            DashboardMetrics.currentActiveSubscriptions(
+                from: subscriptions,
+                referenceDate: referenceDate
+            )
+                .compactMap { subscription in
+                    DashboardMetrics.currentRenewalDate(
+                        for: subscription,
+                        referenceDate: referenceDate
+                    ) == nil ? nil : subscription.id.uuidString
+                }
+        )
+        return ([referenceDay] + subscriptions.map {
             [
                 $0.id.uuidString,
                 $0.displayName,
                 $0.statusRawValue,
                 $0.predictedNextChargeDate?.ISO8601Format() ?? "none",
-                $0.priceAmount.description
+                $0.priceAmount.description,
+                activeRenewalIDs.contains($0.id.uuidString) ? "current-renewal" : "no-current-renewal"
             ].joined(separator: "::")
-        }
+        })
         .joined(separator: "|")
     }
 }

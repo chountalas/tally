@@ -584,7 +584,7 @@ struct AIProviderSelectionTests {
         let results = try await generator.classifyMerchantsBatch(requests)
 
         #expect(results.count == 9)
-        #expect(await runtime.callCount == 2)
+        #expect(await runtime.callCount == 3)
     }
 
     @Test func promptTooLargeBatchFallsBackToSmallerChunks() async throws {
@@ -605,6 +605,71 @@ struct AIProviderSelectionTests {
         #expect(results["Netflix"]?.canonicalName == "Netflix")
         #expect(results["Spotify"]?.canonicalName == "Spotify")
         #expect(await runtime.callCount == 3)
+    }
+
+    @Test func cancelledGemmaBatchDoesNotRetrySmallerChunks() async throws {
+        let runtime = CancellingGemmaRuntime()
+        let generator = GemmaLocalIntelligenceGenerator(
+            modelURL: URL(fileURLWithPath: "/tmp/gemma.gguf"),
+            runtime: runtime
+        )
+
+        do {
+            _ = try await generator.classifyMerchantsBatch([
+                MerchantClassificationRequest(rawMerchant: "Netflix", memo: "Plan", category: "Streaming", amount: 15.49),
+                MerchantClassificationRequest(rawMerchant: "Spotify", memo: "Plan", category: "Streaming", amount: 11.99)
+            ])
+            Issue.record("Expected cancellation to be rethrown")
+        } catch is CancellationError {
+            #expect(await runtime.callCount == 1)
+        }
+    }
+
+    @Test func preCancelledSmallGemmaBatchDoesNotStartRuntime() async throws {
+        let runtime = RecordingBatchGemmaRuntime()
+        let generator = GemmaLocalIntelligenceGenerator(
+            modelURL: URL(fileURLWithPath: "/tmp/gemma.gguf"),
+            runtime: runtime
+        )
+
+        let task = Task {
+            withUnsafeCurrentTask { currentTask in
+                currentTask?.cancel()
+            }
+            return try await generator.classifyMerchantsBatch([
+                MerchantClassificationRequest(rawMerchant: "Netflix", memo: "Plan", category: "Streaming", amount: 15.49)
+            ])
+        }
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected cancellation before Gemma runtime starts")
+        } catch is CancellationError {
+            #expect(await runtime.callCount == 0)
+        }
+    }
+
+    @Test func cancelledGemmaChunkedBatchStopsBeforeNextChunk() async throws {
+        let runtime = CancellingAfterFirstSuccessGemmaRuntime()
+        let generator = GemmaLocalIntelligenceGenerator(
+            modelURL: URL(fileURLWithPath: "/tmp/gemma.gguf"),
+            runtime: runtime
+        )
+        let requests = (0..<9).map { index in
+            MerchantClassificationRequest(
+                rawMerchant: "Merchant \(index)",
+                memo: "Monthly plan \(index)",
+                category: "Software",
+                amount: Decimal(string: "\(index + 1).99") ?? 0
+            )
+        }
+
+        do {
+            _ = try await generator.classifyMerchantsBatch(requests)
+            Issue.record("Expected cancellation before the second chunk")
+        } catch is CancellationError {
+            #expect(await runtime.callCount == 1)
+        }
     }
 
     @Test func merchantClassificationToleratesTrailingNonJSONOutput() async throws {
@@ -714,6 +779,60 @@ private struct MockGemmaRuntime: GemmaTextGeneratingRuntime {
     }
 }
 
+private actor CancellingGemmaRuntime: GemmaTextGeneratingRuntime {
+    private(set) var callCount = 0
+
+    func generateText(
+        modelURL: URL,
+        systemPrompt: String,
+        userPrompt: String,
+        maxTokens: Int,
+        temperature: Float
+    ) async throws -> String {
+        callCount += 1
+        throw CancellationError()
+    }
+}
+
+private actor CancellingAfterFirstSuccessGemmaRuntime: GemmaTextGeneratingRuntime {
+    private(set) var callCount = 0
+
+    func generateText(
+        modelURL: URL,
+        systemPrompt: String,
+        userPrompt: String,
+        maxTokens: Int,
+        temperature: Float
+    ) async throws -> String {
+        callCount += 1
+        if callCount == 1 {
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+        }
+
+        let merchants = RecordingBatchGemmaRuntime.extractMerchants(from: userPrompt)
+        let items = merchants.map { merchant in
+            """
+            {
+              "rawMerchant": "\(merchant)",
+              "canonicalName": "\(merchant)",
+              "serviceCategory": "Software",
+              "merchantKind": "software_or_saas",
+              "subscriptionAffinity": 0.88,
+              "confidence": 0.91
+            }
+            """
+        }.joined(separator: ",")
+
+        return """
+        {
+          "classifications": [\(items)]
+        }
+        """
+    }
+}
+
 private actor RecordingBatchGemmaRuntime: GemmaTextGeneratingRuntime {
     private(set) var callCount = 0
     private let maximumMerchantsPerPrompt: Int?
@@ -759,7 +878,7 @@ private actor RecordingBatchGemmaRuntime: GemmaTextGeneratingRuntime {
         """
     }
 
-    private static func extractMerchants(from userPrompt: String) -> [String] {
+    static func extractMerchants(from userPrompt: String) -> [String] {
         let requestPayload = String(requestSection(in: userPrompt))
         let pattern = #""rawMerchant":\s*"([^"]+)""#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {

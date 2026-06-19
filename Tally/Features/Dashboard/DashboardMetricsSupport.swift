@@ -1,27 +1,83 @@
 import Foundation
 
 extension DashboardMetrics {
+    static func currentActiveSubscriptions(
+        from subscriptions: [Subscription],
+        referenceDate: Date = .now
+    ) -> [Subscription] {
+        subscriptions.filter {
+            displayStatus(for: $0, referenceDate: referenceDate) == .active
+        }
+    }
+
+    static func displayStatus(
+        for subscription: Subscription,
+        referenceDate: Date = .now
+    ) -> SubscriptionStatus {
+        guard subscription.status == .active else {
+            return subscription.status
+        }
+        guard subscription.predictedNextChargeDate != nil else {
+            return .active
+        }
+        return currentRenewalDate(for: subscription, referenceDate: referenceDate) == nil
+            ? .former
+            : .active
+    }
+
+    static func currentRenewalDate(
+        for subscription: Subscription,
+        referenceDate: Date = .now
+    ) -> Date? {
+        guard let renewalDate = subscription.predictedNextChargeDate else {
+            return nil
+        }
+
+        if renewalDate >= staleRenewalCutoff(for: subscription, referenceDate: referenceDate) {
+            return renewalDate
+        }
+
+        guard subscription.cadence.allowsSecondMissTolerance,
+              let followingRenewalDate = subscription.cadence.advance(renewalDate),
+              followingRenewalDate >= staleRenewalCutoff(for: subscription, referenceDate: referenceDate)
+        else {
+            return nil
+        }
+
+        return followingRenewalDate
+    }
+
     static func upcomingRenewals(
         from subscriptions: [Subscription],
-        renewalCutoff: Date
+        renewalCutoff: Date,
+        referenceDate: Date = .now
     ) -> [Subscription] {
         subscriptions
-            .filter { ($0.predictedNextChargeDate ?? .distantFuture) < renewalCutoff }
+            .filter {
+                guard let renewalDate = currentRenewalDate(for: $0, referenceDate: referenceDate) else {
+                    return false
+                }
+                return renewalDate < renewalCutoff
+            }
             .sorted {
-                ($0.predictedNextChargeDate ?? .distantFuture) <
-                    ($1.predictedNextChargeDate ?? .distantFuture)
+                (currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
+                    (currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
     }
 
     static func probableRenewals(
         from subscriptions: [Subscription],
         renewalCutoff: Date,
-        transactionsBySubscription: [UUID: [NormalizedTransaction]]
+        transactionsBySubscription: [UUID: [NormalizedTransaction]],
+        referenceDate: Date = .now
     ) -> [Subscription] {
         subscriptions
             .filter { subscription in
                 guard subscription.status == .needsReview,
-                      let nextChargeDate = subscription.predictedNextChargeDate,
+                      let nextChargeDate = currentRenewalDate(
+                        for: subscription,
+                        referenceDate: referenceDate
+                      ),
                       nextChargeDate < renewalCutoff else {
                     return false
                 }
@@ -30,8 +86,8 @@ extension DashboardMetrics {
                 return linkedCount == 1
             }
             .sorted {
-                ($0.predictedNextChargeDate ?? .distantFuture) <
-                    ($1.predictedNextChargeDate ?? .distantFuture)
+                (currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
+                    (currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
     }
 
@@ -157,21 +213,25 @@ extension DashboardMetrics {
     static func buildActNowItems(
         subscriptions: [Subscription],
         transactionsBySubscription: [UUID: [NormalizedTransaction]],
-        opportunities: [SavingsOpportunity]
+        opportunities: [SavingsOpportunity],
+        referenceDate: Date = .now
     ) -> [RenewalDecisionItem] {
         let soon = subscriptions
-            .filter {
-                guard let date = $0.predictedNextChargeDate else { return false }
-                let cutoff = Calendar.current.date(byAdding: .day, value: 30, to: .now)
+            .compactMap { subscription -> (subscription: Subscription, renewalDate: Date)? in
+                guard let date = currentRenewalDate(
+                    for: subscription,
+                    referenceDate: referenceDate
+                ) else { return nil }
+                let cutoff = Calendar.current.date(byAdding: .day, value: 30, to: referenceDate)
                     ?? .distantFuture
-                return date <= cutoff
+                guard date <= cutoff else { return nil }
+                return (subscription, date)
             }
             .sorted {
-                ($0.predictedNextChargeDate ?? .distantFuture) <
-                    ($1.predictedNextChargeDate ?? .distantFuture)
+                $0.renewalDate < $1.renewalDate
             }
 
-        return soon.map { subscription in
+        return soon.map { subscription, renewalDate in
             let linkedTransactions = transactionsBySubscription[subscription.id] ?? []
             let overlap = subscription.serviceCategory
                 .map { category in
@@ -197,12 +257,12 @@ extension DashboardMetrics {
             return RenewalDecisionItem(
                 subscriptionID: subscription.id,
                 subscriptionName: subscription.displayName,
-                renewalDate: subscription.predictedNextChargeDate,
+                renewalDate: renewalDate,
                 price: subscription.priceAmount,
                 currencyCode: subscription.priceCurrency,
                 action: action,
                 detail: renewalDecisionDetail(
-                    renewalDate: subscription.predictedNextChargeDate,
+                    renewalDate: renewalDate,
                     action: action,
                     reasons: reasons
                 )
@@ -261,6 +321,19 @@ extension DashboardMetrics {
         return [renewalContext, reasonSummary]
             .compactMap { $0 }
             .joined(separator: " ")
+    }
+
+    private static func staleRenewalCutoff(
+        for subscription: Subscription,
+        referenceDate: Date,
+        calendar: Calendar = .current
+    ) -> Date {
+        let today = calendar.startOfDay(for: referenceDate)
+        return calendar.date(
+            byAdding: .day,
+            value: -subscription.cadence.renewalGraceWindowDays,
+            to: today
+        ) ?? .distantPast
     }
 
     private static func joinedReasons(_ reasons: [String]) -> String {

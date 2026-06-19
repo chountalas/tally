@@ -54,24 +54,33 @@ struct AuditRecommendationEntity: AppEntity {
 @MainActor
 struct SubscriptionEntityQuery: EntityQuery {
     func suggestedEntities() async throws -> [SubscriptionEntity] {
+        let referenceDate = Date()
         try AppIntentSubscriptionStore.subscriptions().map { subscription in
-            Self.makeEntity(subscription: subscription)
+            Self.makeEntity(subscription: subscription, referenceDate: referenceDate)
         }
     }
 
     func entities(for identifiers: [UUID]) async throws -> [SubscriptionEntity] {
+        let referenceDate = Date()
         try AppIntentSubscriptionStore.subscriptions()
             .filter { identifiers.contains($0.id) }
             .map { subscription in
-                Self.makeEntity(subscription: subscription)
+                Self.makeEntity(subscription: subscription, referenceDate: referenceDate)
             }
     }
 
-    private static func makeEntity(subscription: Subscription) -> SubscriptionEntity {
+    private static func makeEntity(
+        subscription: Subscription,
+        referenceDate: Date
+    ) -> SubscriptionEntity {
         let price = subscription.priceAmount.currencyString(
             code: subscription.priceCurrency
         )
-        let detail = price + " • " + subscription.status.title
+        let displayStatus = DashboardMetrics.displayStatus(
+            for: subscription,
+            referenceDate: referenceDate
+        )
+        let detail = price + " • " + displayStatus.title
 
         return SubscriptionEntity(
             id: subscription.id,
@@ -84,28 +93,39 @@ struct SubscriptionEntityQuery: EntityQuery {
 @MainActor
 struct RenewalEntityQuery: EntityQuery {
     func suggestedEntities() async throws -> [RenewalEntity] {
-        try AppIntentSubscriptionStore.subscriptions()
-            .filter { $0.status == .active && $0.predictedNextChargeDate != nil }
+        let referenceDate = Date()
+        DashboardMetrics.currentActiveSubscriptions(
+            from: try AppIntentSubscriptionStore.subscriptions(),
+            referenceDate: referenceDate
+        )
+            .filter { DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) != nil }
             .sorted {
-                ($0.predictedNextChargeDate ?? .distantFuture)
-                    < ($1.predictedNextChargeDate ?? .distantFuture)
+                (DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture)
+                    < (DashboardMetrics.currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
             .prefix(12)
             .compactMap { subscription in
-                Self.makeEntity(subscription: subscription)
+                Self.makeEntity(subscription: subscription, referenceDate: referenceDate)
             }
     }
 
     func entities(for identifiers: [UUID]) async throws -> [RenewalEntity] {
-        try AppIntentSubscriptionStore.subscriptions()
+        let referenceDate = Date()
+        DashboardMetrics.currentActiveSubscriptions(
+            from: try AppIntentSubscriptionStore.subscriptions(),
+            referenceDate: referenceDate
+        )
             .filter { identifiers.contains($0.id) }
             .compactMap { subscription in
-                Self.makeEntity(subscription: subscription)
+                Self.makeEntity(subscription: subscription, referenceDate: referenceDate)
             }
     }
 
-    private static func makeEntity(subscription: Subscription) -> RenewalEntity? {
-        guard let renewalDate = subscription.predictedNextChargeDate else {
+    private static func makeEntity(subscription: Subscription, referenceDate: Date) -> RenewalEntity? {
+        guard let renewalDate = DashboardMetrics.currentRenewalDate(
+            for: subscription,
+            referenceDate: referenceDate
+        ) else {
             return nil
         }
 
@@ -128,13 +148,13 @@ struct AuditRecommendationEntityQuery: EntityQuery {
     func suggestedEntities() async throws -> [AuditRecommendationEntity] {
         let subscriptions = try AppIntentSubscriptionStore.subscriptions()
         let transactions = try AppIntentSubscriptionStore.transactions()
+        let activeSubscriptions = DashboardMetrics.currentActiveSubscriptions(from: subscriptions)
 
-        return subscriptions
-            .filter { $0.status == .active }
+        return activeSubscriptions
             .map { subscription in
                 let score = AuditEngine.score(
                     subscription: subscription,
-                    allActive: subscriptions.filter { $0.status == .active },
+                    allActive: activeSubscriptions,
                     transactions: transactions
                 )
                 return AuditRecommendationEntity(
