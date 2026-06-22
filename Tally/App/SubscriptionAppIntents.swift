@@ -55,14 +55,14 @@ struct AuditRecommendationEntity: AppEntity {
 struct SubscriptionEntityQuery: EntityQuery {
     func suggestedEntities() async throws -> [SubscriptionEntity] {
         let referenceDate = Date()
-        try AppIntentSubscriptionStore.subscriptions().map { subscription in
+        return try AppIntentSubscriptionStore.subscriptions().map { subscription in
             Self.makeEntity(subscription: subscription, referenceDate: referenceDate)
         }
     }
 
     func entities(for identifiers: [UUID]) async throws -> [SubscriptionEntity] {
         let referenceDate = Date()
-        try AppIntentSubscriptionStore.subscriptions()
+        return try AppIntentSubscriptionStore.subscriptions()
             .filter { identifiers.contains($0.id) }
             .map { subscription in
                 Self.makeEntity(subscription: subscription, referenceDate: referenceDate)
@@ -94,7 +94,7 @@ struct SubscriptionEntityQuery: EntityQuery {
 struct RenewalEntityQuery: EntityQuery {
     func suggestedEntities() async throws -> [RenewalEntity] {
         let referenceDate = Date()
-        DashboardMetrics.currentActiveSubscriptions(
+        return DashboardMetrics.currentActiveSubscriptions(
             from: try AppIntentSubscriptionStore.subscriptions(),
             referenceDate: referenceDate
         )
@@ -111,7 +111,7 @@ struct RenewalEntityQuery: EntityQuery {
 
     func entities(for identifiers: [UUID]) async throws -> [RenewalEntity] {
         let referenceDate = Date()
-        DashboardMetrics.currentActiveSubscriptions(
+        return DashboardMetrics.currentActiveSubscriptions(
             from: try AppIntentSubscriptionStore.subscriptions(),
             referenceDate: referenceDate
         )

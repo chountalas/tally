@@ -220,12 +220,12 @@ extension SubscriptionIntelligenceService {
 
     func renewalEvidence(for renewals: [Subscription]) -> [EvidenceReference] {
         let referenceDate = Date()
-        renewals.map { subscription in
+        return renewals.map { subscription in
             let renewalDate = DashboardMetrics.currentRenewalDate(
                 for: subscription,
                 referenceDate: referenceDate
             )
-            EvidenceReference(
+            return EvidenceReference(
                 kind: .renewal,
                 referenceID: subscription.id.uuidString,
                 label: subscription.displayName,
