@@ -106,9 +106,12 @@ extension SubscriptionIntelligenceService {
             ? max(subscription.priceAmount.doubleValue, 0)
             : historicalPrices.reduce(0, +) / Double(historicalPrices.count)
         let change = baseline > 0 ? (latest - baseline) / baseline : 0
+        let currentActiveSubscriptions = DashboardMetrics.currentActiveSubscriptions(
+            from: subscriptions
+        )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: subscriptions.filter { $0.status == .active },
+            allActive: currentActiveSubscriptions,
             transactions: transactions
         )
 
@@ -134,7 +137,10 @@ extension SubscriptionIntelligenceService {
                     $0.canonicalName.localizedStandardContains(merchantName)
             }
         }
-        return subscriptions.first(where: { $0.priceChangePercent != nil })
+        return DashboardMetrics(
+            subscriptions: subscriptions,
+            transactions: tooling.allTransactions()
+        ).priceChangedSubscriptions.first
     }
 
     func priceChangeSummary(subscription: Subscription, change: Double) -> String {
@@ -226,7 +232,7 @@ extension SubscriptionIntelligenceService {
             return cachedSuggestion
         }
         if let recent = history.first {
-            return (await classifyMerchant(
+            return (try? await classifyMerchant(
                 rawMerchant: recent.merchantRaw,
                 memo: recent.memo,
                 category: recent.category,

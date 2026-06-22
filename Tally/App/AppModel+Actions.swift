@@ -1291,9 +1291,21 @@ extension AppModel {
             return .active
         }
 
-        let staleCutoff = Calendar.current.date(byAdding: .day, value: -30, to: .now)
-            ?? .distantPast
-        return nextCharge < staleCutoff ? .former : .active
+        let calendar = Calendar.current
+        let staleCutoff = calendar.date(
+            byAdding: .day,
+            value: -cadence.renewalGraceWindowDays,
+            to: calendar.startOfDay(for: .now)
+        ) ?? .distantPast
+        if nextCharge >= staleCutoff {
+            return .active
+        }
+
+        guard cadence.allowsSecondMissTolerance,
+              let followingChargeDate = cadence.advance(nextCharge, using: calendar) else {
+            return .former
+        }
+        return followingChargeDate >= staleCutoff ? .active : .former
     }
 }
 

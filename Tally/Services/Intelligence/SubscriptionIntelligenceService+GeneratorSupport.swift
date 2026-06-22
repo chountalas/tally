@@ -95,7 +95,7 @@ extension SubscriptionIntelligenceService {
         memo: String?,
         category: String?,
         amount: Decimal
-    ) async -> MerchantClassificationResult? {
+    ) async throws -> MerchantClassificationResult? {
         guard let generator else {
             return nil
         }
@@ -126,13 +126,16 @@ extension SubscriptionIntelligenceService {
             )
             return sanitized
         } catch {
+            guard (error is CancellationError) == false, Task.isCancelled == false else {
+                throw error
+            }
             return nil
         }
     }
 
     func classifyMerchantsBatch(
         _ requests: [MerchantClassificationRequest]
-    ) async -> [String: MerchantClassificationResult]? {
+    ) async throws -> [String: MerchantClassificationResult]? {
         guard let generator, requests.isEmpty == false else {
             return nil
         }
@@ -184,6 +187,9 @@ extension SubscriptionIntelligenceService {
 
             return resolved.isEmpty ? nil : resolved
         } catch {
+            guard (error is CancellationError) == false, Task.isCancelled == false else {
+                throw error
+            }
             return resolved.isEmpty ? nil : resolved
         }
     }

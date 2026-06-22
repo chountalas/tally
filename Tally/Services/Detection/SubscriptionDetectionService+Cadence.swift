@@ -154,6 +154,10 @@ extension SubscriptionDetectionService {
             return .active
         }
 
+        guard cadence.allowsSecondMissTolerance else {
+            return .former
+        }
+
         if let followingChargeDate = cadence.advance(nextChargeDate, using: calendar) {
             let daysUntilSecondMiss = calendar.dateComponents(
                 [.day],
@@ -196,19 +200,6 @@ extension SubscriptionDetectionService {
     }
 
     func graceWindow(for cadence: SubscriptionCadence) -> Int {
-        switch cadence {
-        case .monthly:
-            return 5
-        case .annual:
-            return 21
-        case .quarterly, .semiannual:
-            return 10
-        case .biweekly:
-            return 3
-        case .weekly:
-            return 2
-        case .unknown:
-            return 0
-        }
+        cadence.renewalGraceWindowDays
     }
 }

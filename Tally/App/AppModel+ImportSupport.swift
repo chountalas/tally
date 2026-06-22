@@ -53,7 +53,7 @@ extension AppModel {
             }
         }
 
-        let batchResult = await classifier.classifyBatch(
+        let batchResult = try await classifier.classifyBatch(
             requestsToClassify,
             strategy: requestedStrategy
         )

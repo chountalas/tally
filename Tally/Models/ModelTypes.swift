@@ -49,6 +49,32 @@ enum SubscriptionCadence: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    var renewalGraceWindowDays: Int {
+        switch self {
+        case .monthly:
+            return 5
+        case .annual:
+            return 21
+        case .quarterly, .semiannual:
+            return 10
+        case .biweekly:
+            return 3
+        case .weekly:
+            return 2
+        case .unknown:
+            return 0
+        }
+    }
+
+    var allowsSecondMissTolerance: Bool {
+        switch self {
+        case .monthly, .biweekly, .weekly:
+            return true
+        case .annual, .quarterly, .semiannual, .unknown:
+            return false
+        }
+    }
+
     var monthDivisor: Decimal? {
         switch self {
         case .monthly:

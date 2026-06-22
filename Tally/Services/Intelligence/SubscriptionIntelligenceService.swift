@@ -68,6 +68,7 @@ struct SubscriptionIntelligenceCacheSnapshot {
         let aliases = tooling.allAliases()
         let classifications = tooling.allClassifications()
         let overview = Self.libraryOverview(from: subscriptions)
+        let referenceDay = Calendar.current.startOfDay(for: .now).ISO8601Format()
         let libraryFingerprint = Self.libraryFingerprint(
             subscriptions: subscriptions,
             transactions: transactions,
@@ -83,6 +84,7 @@ struct SubscriptionIntelligenceCacheSnapshot {
             query.merchantName?.lowercased() ?? "none",
             query.rawMerchant?.lowercased() ?? "none",
             "\(query.days ?? 0)",
+            referenceDay,
             Self.subscriptionFingerprint(
                 subscriptionID: query.subscriptionID,
                 subscriptions: subscriptions
@@ -99,14 +101,15 @@ struct SubscriptionIntelligenceCacheSnapshot {
         from subscriptions: [Subscription]
     ) -> LibraryOverviewSnapshot {
         var monthlyRunRate = Decimal.zero
-        var activeCount = 0
+        let activeSubscriptions = DashboardMetrics.currentActiveSubscriptions(from: subscriptions)
+        let activeCount = activeSubscriptions.count
         var needsReviewCount = 0
 
+        for subscription in activeSubscriptions {
+            monthlyRunRate += subscription.normalizedMonthlyAmount
+        }
+
         for subscription in subscriptions {
-            if subscription.status == .active {
-                activeCount += 1
-                monthlyRunRate += subscription.normalizedMonthlyAmount
-            }
             if subscription.status == .needsReview {
                 needsReviewCount += 1
             }

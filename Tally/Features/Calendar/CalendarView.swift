@@ -15,7 +15,14 @@ struct CalendarView: View {
     private var calendar: Calendar { .current }
 
     private var activeSubs: [Subscription] {
-        subscriptions.filter { $0.status == .active && $0.predictedNextChargeDate != nil }
+        let referenceDate = Date()
+        return DashboardMetrics.currentActiveSubscriptions(
+            from: subscriptions,
+            referenceDate: referenceDate
+        )
+            .filter {
+                DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) != nil
+            }
     }
 
     private var viewMonth: Date {
@@ -50,10 +57,10 @@ struct CalendarView: View {
     }
 
     private func renewalDates(inVisibleMonthFor sub: Subscription) -> [Date] {
-        guard let predictedNextChargeDate = sub.predictedNextChargeDate else { return [] }
+        guard let currentRenewalDate = DashboardMetrics.currentRenewalDate(for: sub) else { return [] }
 
         var dates: [Date] = []
-        var current = calendar.startOfDay(for: predictedNextChargeDate)
+        var current = calendar.startOfDay(for: currentRenewalDate)
         let visibleStart = calendar.startOfDay(for: viewMonth)
         let visibleEnd = calendar.startOfDay(for: nextMonth)
         var guardCount = 0

@@ -187,6 +187,139 @@ struct DashboardMetricsRegressionTests {
         #expect(metrics.monthlySpend.first?.totalSpend == Decimal(string: "69.98"))
     }
 
+    @Test func staleOverdueRenewalsAreExcludedFromActiveDashboardRollups() {
+        let stale = makeSubscription(
+            name: "Grammarly",
+            price: 139.95,
+            cadence: .annual,
+            confidence: 0.91,
+            status: .active
+        )
+        stale.predictedNextChargeDate = Calendar.current.date(
+            byAdding: .day,
+            value: -228,
+            to: .now
+        )
+        stale.priceChangePercent = 0.32
+
+        let current = makeSubscription(
+            name: "iCloud",
+            price: 2.99,
+            cadence: .monthly,
+            confidence: 0.95,
+            status: .active
+        )
+        current.predictedNextChargeDate = Calendar.current.date(
+            byAdding: .day,
+            value: 9,
+            to: .now
+        )
+
+        let metrics = DashboardMetrics(
+            subscriptions: [stale, current],
+            transactions: []
+        )
+
+        #expect(metrics.activeCount == 1)
+        #expect(metrics.monthlyRunRate == current.normalizedMonthlyAmount)
+        #expect(metrics.upcomingRenewals.map(\.displayName) == ["iCloud"])
+        #expect(metrics.actNowItems.map(\.subscriptionName) == ["iCloud"])
+        #expect(metrics.priceChangedSubscriptions.isEmpty)
+        #expect(DashboardHeroContext(metrics: metrics).activeSubscriptionCount == 1)
+    }
+
+    @Test func shortCadenceSecondMissWindowStillCountsAsActive() {
+        let calendar = Calendar.current
+        let referenceDate = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 15, hour: 12)
+        ) ?? .now
+        let monthly = makeSubscription(
+            name: "Monthly Tool",
+            price: 12,
+            cadence: .monthly,
+            confidence: 0.92,
+            status: .active
+        )
+        monthly.predictedNextChargeDate = calendar.date(
+            byAdding: .day,
+            value: -10,
+            to: referenceDate
+        )
+
+        let metrics = DashboardMetrics(
+            subscriptions: [monthly],
+            transactions: [],
+            referenceDate: referenceDate
+        )
+
+        #expect(metrics.activeCount == 1)
+        #expect(metrics.monthlyRunRate == monthly.normalizedMonthlyAmount)
+        #expect(DashboardMetrics.currentActiveSubscriptions(
+            from: [monthly],
+            referenceDate: referenceDate
+        ).map(\.id) == [monthly.id])
+        #expect(metrics.upcomingRenewals.map(\.id) == [monthly.id])
+        #expect(metrics.actNowItems.map(\.subscriptionID) == [monthly.id])
+        #expect(metrics.actNowItems.first?.renewalDate == monthly.cadence.advance(
+            monthly.predictedNextChargeDate!,
+            using: calendar
+        ))
+    }
+
+    @MainActor
+    @Test func reviewConfirmedStatusUsesCadenceGraceForAnnualRenewals() {
+        let appModel = AppModel()
+        let expiredAnnualRenewal = Calendar.current.date(
+            byAdding: .day,
+            value: -22,
+            to: .now
+        )
+
+        let status = appModel.reviewConfirmedStatus(
+            lastChargeDate: nil,
+            cadence: .annual,
+            fallbackNextChargeDate: expiredAnnualRenewal
+        )
+
+        #expect(status == .former)
+    }
+
+    @MainActor
+    @Test func dashboardMetricsProviderInvalidatesStaleRenewalCacheOnNewDay() {
+        let calendar = Calendar.current
+        var referenceDate = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 8, hour: 12)
+        ) ?? .now
+        let provider = DashboardMetricsProvider(referenceDateProvider: { referenceDate })
+        let staleAfterToday = makeSubscription(
+            name: "Annual App",
+            price: 120,
+            cadence: .annual,
+            confidence: 0.91,
+            status: .active
+        )
+        staleAfterToday.predictedNextChargeDate = calendar.date(
+            from: DateComponents(year: 2026, month: 6, day: 17, hour: 12)
+        )
+
+        let firstSnapshot = provider.snapshot(
+            subscriptions: [staleAfterToday],
+            transactions: [],
+            revision: .initial
+        )
+        referenceDate = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 9, hour: 12)
+        ) ?? .now
+        let nextDaySnapshot = provider.snapshot(
+            subscriptions: [staleAfterToday],
+            transactions: [],
+            revision: .initial
+        )
+
+        #expect(firstSnapshot.metrics.activeCount == 1)
+        #expect(nextDaySnapshot.metrics.activeCount == 0)
+    }
+
     @Test func annualChangeFormatsDecimalPercentWithoutTruncatingToZero() {
         let formatter = ISO8601DateFormatter()
         let subscription = makeSubscription(
