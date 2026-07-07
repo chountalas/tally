@@ -8,6 +8,32 @@ struct AppDataExportSource {
     let aliases: [MerchantAlias]
     let templates: [ColumnMappingTemplate]
     let reviewRules: [SubscriptionReviewRule]
+    // Learned suppressions/overrides live here too; without them an
+    // export → wipe → reimport silently loses everything the user taught Tally.
+    let corrections: [MerchantCorrection]
+    let matchRules: [SubscriptionMatchRule]
+
+    init(
+        imports: [ImportRecord],
+        subscriptions: [Subscription],
+        transactions: [NormalizedTransaction],
+        classifications: [MerchantClassification],
+        aliases: [MerchantAlias],
+        templates: [ColumnMappingTemplate],
+        reviewRules: [SubscriptionReviewRule],
+        corrections: [MerchantCorrection] = [],
+        matchRules: [SubscriptionMatchRule] = []
+    ) {
+        self.imports = imports
+        self.subscriptions = subscriptions
+        self.transactions = transactions
+        self.classifications = classifications
+        self.aliases = aliases
+        self.templates = templates
+        self.reviewRules = reviewRules
+        self.corrections = corrections
+        self.matchRules = matchRules
+    }
 }
 
 struct AppDataExporter {
@@ -20,7 +46,9 @@ struct AppDataExporter {
             classifications: source.classifications.map(AppDataExportPayload.ClassificationSnapshot.init),
             aliases: source.aliases.map(AppDataExportPayload.AliasSnapshot.init),
             columnTemplates: source.templates.map(AppDataExportPayload.TemplateSnapshot.init),
-            reviewRules: source.reviewRules.map(AppDataExportPayload.ReviewRuleSnapshot.init)
+            reviewRules: source.reviewRules.map(AppDataExportPayload.ReviewRuleSnapshot.init),
+            corrections: source.corrections.map(AppDataExportPayload.CorrectionSnapshot.init),
+            matchRules: source.matchRules.map(AppDataExportPayload.MatchRuleSnapshot.init)
         )
 
         let encoder = JSONEncoder()
@@ -39,6 +67,8 @@ private struct AppDataExportPayload: Codable {
     let aliases: [AliasSnapshot]
     let columnTemplates: [TemplateSnapshot]
     let reviewRules: [ReviewRuleSnapshot]
+    let corrections: [CorrectionSnapshot]
+    let matchRules: [MatchRuleSnapshot]
 
     struct ImportSnapshot: Codable {
         let id: UUID
@@ -214,6 +244,54 @@ private struct AppDataExportPayload: Codable {
             notes = rule.notes
             isFalsePositive = rule.isFalsePositive
             isUserConfirmed = rule.isUserConfirmed
+            updatedAt = rule.updatedAt
+        }
+    }
+
+    struct CorrectionSnapshot: Codable {
+        let canonicalName: String
+        let isSubscription: Bool
+        let correctedCadence: String?
+        let updatedAt: Date
+
+        init(_ correction: MerchantCorrection) {
+            canonicalName = correction.canonicalName
+            isSubscription = correction.isSubscription
+            correctedCadence = correction.correctedCadenceRawValue
+            updatedAt = correction.updatedAt
+        }
+    }
+
+    struct MatchRuleSnapshot: Codable {
+        let canonicalName: String
+        let subscriptionID: UUID?
+        let allowedRawMerchantsJSON: String
+        let requiredTokensJSON: String
+        let excludedTokensJSON: String
+        let amountMinimum: Decimal?
+        let amountMaximum: Decimal?
+        let amountMedian: Decimal?
+        let currencyCode: String?
+        let priority: Int
+        let confidence: Double
+        let isNegativeRule: Bool
+        let createdFrom: String
+        let updatedAt: Date
+
+        init(_ rule: SubscriptionMatchRule) {
+            canonicalName = rule.canonicalName
+            subscriptionID = rule.subscriptionID
+            allowedRawMerchantsJSON = rule.allowedRawMerchantsJSON
+            requiredTokensJSON = rule.requiredTokensJSON
+            excludedTokensJSON = rule.excludedTokensJSON
+            amountMinimum = rule.amountMinimum
+            amountMaximum = rule.amountMaximum
+            amountMedian = rule.amountMedian
+            currencyCode = rule.currencyCode
+            priority = rule.priority
+            confidence = rule.confidence
+            isNegativeRule = rule.isNegativeRule
+            createdFrom = rule.createdFromRawValue
             updatedAt = rule.updatedAt
         }
     }

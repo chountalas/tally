@@ -15,6 +15,9 @@ struct SubscriptionsView: View {
     /// (Imports → "Review items"); scopes the review list to that import.
     @State private var scopedImportRecordID: UUID?
 
+    /// True while the bulk review clean-up is applying decisions.
+    @State private var isAutomatingReview = false
+
     private var active: [Subscription] {
         let referenceDate = Date()
         return DashboardMetrics.currentActiveSubscriptions(
@@ -101,6 +104,8 @@ struct SubscriptionsView: View {
 
                 if filter == .review {
                     reviewSection
+                } else if groups.allSatisfy(\.items.isEmpty) {
+                    emptyState
                 } else {
                     ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                         if !group.items.isEmpty {
@@ -142,6 +147,40 @@ struct SubscriptionsView: View {
         }
     }
 
+    // MARK: Empty state
+
+    /// Shown when the chosen filter has nothing to list, so the screen never
+    /// bottoms out at a bare total card. Copy adapts to the active filter.
+    private var emptyState: some View {
+        let (symbol, title, message): (String, String, String) = {
+            switch filter {
+            case .active:
+                return ("sparkles", "No active subscriptions",
+                        "Nothing is charging you right now. Import a statement and Tally will spot your recurring charges.")
+            case .ended:
+                return ("clock.arrow.circlepath", "Nothing ended yet",
+                        "Subscriptions you cancel or that stop charging will show up here.")
+            case .yearly:
+                return ("calendar", "No yearly subscriptions",
+                        "Annual plans Tally detects will be grouped here so the big once-a-year charges don't surprise you.")
+            case .all, .review:
+                return ("tray", "No subscriptions yet",
+                        "Import a bank or card statement and Tally will find the subscriptions hiding in it.")
+            }
+        }()
+
+        return VStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: symbol).font(.system(size: 30, weight: .light)).foregroundStyle(Theme.Colors.accent)
+            Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.Colors.textPrimary)
+            Text(message)
+                .font(.system(size: 13.5, weight: .medium)).foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+        .padding(.top, 14)
+    }
+
     // MARK: Review queue
 
     @ViewBuilder
@@ -159,13 +198,75 @@ struct SubscriptionsView: View {
             .padding(.top, 14)
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Keep the ones you recognize. Skip anything that isn't really a subscription.")
-                    .font(.system(size: 13.5, weight: .medium))
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 16)
-                    .padding(.bottom, 10)
+                HStack(alignment: .center) {
+                    Text("Keep the ones you recognize. Skip anything that isn't really a subscription.")
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Spacer(minLength: Theme.Spacing.md)
+                    tidyUpButton
+                }
+                .padding(.horizontal, 4)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
                 reviewCard(review)
+            }
+        }
+    }
+
+    /// One-tap clean-up of the review queue: high-confidence detections are
+    /// kept, obvious noise is skipped, and anything genuinely ambiguous stays
+    /// in the list for a manual decision.
+    @ViewBuilder
+    private var tidyUpButton: some View {
+        let plan = appModel.reviewAutomationPlan(
+            subscriptions: subscriptions,
+            transactions: transactions
+        )
+        let decidableCount = plan.confirmCandidates.count + plan.suppressCandidates.count
+        if decidableCount > 0 {
+            Button {
+                applyReviewAutomation(plan)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "wand.and.stars").font(.system(size: 12, weight: .bold))
+                    Text(isAutomatingReview ? "Tidying up…" : "Tidy up \(decidableCount) for me")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(Theme.Colors.accent)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(Theme.Colors.accent.opacity(0.1)))
+                .overlay(Capsule().strokeBorder(Theme.Colors.accent.opacity(0.4), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .disabled(isAutomatingReview)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private func applyReviewAutomation(_ plan: ReviewAutomationPlan) {
+        guard isAutomatingReview == false else { return }
+        isAutomatingReview = true
+        let candidates = plan.confirmCandidates + plan.suppressCandidates
+        Task {
+            defer { isAutomatingReview = false }
+            do {
+                let result = try await appModel.applyAutomatedReviewDecisions(
+                    candidates,
+                    in: modelContext
+                )
+                var parts: [String] = []
+                if result.confirmedCount > 0 { parts.append("kept \(result.confirmedCount)") }
+                if result.suppressedCount > 0 { parts.append("skipped \(result.suppressedCount)") }
+                let remaining = review.count
+                let summary = parts.isEmpty
+                    ? "Nothing could be decided automatically."
+                    : "Tidied up the review list: \(parts.joined(separator: ", "))."
+                appModel.infoMessage = remaining > 0
+                    ? summary + " \(remaining) still need your call."
+                    : summary
+            } catch {
+                appModel.importErrorMessage = error.localizedDescription
             }
         }
     }

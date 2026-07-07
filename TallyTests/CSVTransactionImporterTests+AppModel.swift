@@ -93,6 +93,109 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testStoredTemplateIsReappliedWhenHeadersMatch() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Txn Date",
+            descriptionColumn: "Details",
+            amountColumn: "Value",
+            merchantColumn: "Details",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let draft = TransactionImportDraft(
+            fileName: "reuse.csv",
+            headers: ["Txn Date", "Details", "Value"],
+            previewRows: [],
+            rawRows: [["Txn Date": "2025-01-01", "Details": "Netflix", "Value": "15.49"]],
+            suggestedMapping: ColumnMappingConfig(
+                dateColumn: "Txn Date",
+                descriptionColumn: nil,
+                amountColumn: "Value",
+                merchantColumn: nil,
+                categoryColumn: nil,
+                accountColumn: nil,
+                currencyColumn: nil,
+                debitSignConvention: .negative
+            ),
+            confidence: 0.33
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, storedMapping)
+        XCTAssertEqual(resolved.confidence, 1.0)
+    }
+
+    @MainActor
+    func testStoredTemplateIsIgnoredWhenColumnsMissing() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Legacy Date",
+            descriptionColumn: nil,
+            amountColumn: "Legacy Amount",
+            merchantColumn: "Legacy Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: nil,
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let draft = TransactionImportDraft(
+            fileName: "fresh.csv",
+            headers: ["Date", "Merchant", "Amount"],
+            previewRows: [],
+            rawRows: [["Date": "2025-01-01", "Merchant": "Netflix", "Amount": "-15.49"]],
+            suggestedMapping: guessedMapping,
+            confidence: 0.66
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
+        XCTAssertEqual(resolved.confidence, 0.66)
+    }
+
+    @MainActor
+    func testImportResultMessageReportsInsertedUpdatedUnchanged() {
+        let appModel = AppModel.testing()
+        var summary = SourceTransactionUpsertSummary()
+        summary.insertedCount = 3
+        summary.updatedCount = 2
+        summary.unchangedCount = 5
+
+        let message = appModel.importResultMessage(importFileName: "bank.csv", upsertSummary: summary)
+
+        XCTAssertTrue(message.contains("3 new"))
+        XCTAssertTrue(message.contains("2 updated"))
+        XCTAssertTrue(message.contains("5 unchanged"))
+        XCTAssertTrue(message.contains("10 transactions"))
+    }
+
+    @MainActor
     func testNavigationExposesTransactionsTabAndRoutesToIt() {
         let appModel = AppModel.testing()
 

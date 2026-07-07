@@ -24,7 +24,7 @@ struct SubscriptionCopilotSheet: View {
     @State var actionMessage: String?
     @State var pendingAction: IntelligenceActionSuggestion?
 
-    var intelligence: SubscriptionIntelligenceService { SubscriptionIntelligenceService() }
+    let intelligenceTask: Task<SubscriptionIntelligenceService, Never>
 
     init(
         title: String = "Ask Tally",
@@ -34,6 +34,9 @@ struct SubscriptionCopilotSheet: View {
         self.title = title
         self.seedQuery = seedQuery
         self.suggestionQueries = suggestionQueries
+        intelligenceTask = Task.detached(priority: .userInitiated) {
+            SubscriptionIntelligenceService()
+        }
         _promptText = State(initialValue: seedQuery?.prompt ?? "")
     }
 

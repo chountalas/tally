@@ -84,12 +84,29 @@ final class LibraryResetService {
             // Local subscription state is about to be deleted, so cleanup failure should not block the reset.
         }
 
+        // Delete every library model so a reset is a true clean slate. Anything
+        // left behind (suppressions, dedup identities, detection evidence) would
+        // silently carry over — e.g. a merchant the user suppressed before the
+        // reset would stay suppressed. `ColumnMappingTemplate` is the one
+        // exception, gated by `includeTemplates`, so a plain "clear imported
+        // data" keeps the user's saved column mappings.
         try context.delete(model: Subscription.self)
         try context.delete(model: NormalizedTransaction.self)
         try context.delete(model: ImportRecord.self)
         try context.delete(model: MerchantClassification.self)
+        try context.delete(model: MerchantCorrection.self)
         try context.delete(model: MerchantAlias.self)
         try context.delete(model: SubscriptionReviewRule.self)
+        try context.delete(model: ManualSubscription.self)
+        try context.delete(model: SourceTransactionIdentity.self)
+        try context.delete(model: MerchantIdentity.self)
+        try context.delete(model: MerchantIdentityMember.self)
+        try context.delete(model: ServiceProfile.self)
+        try context.delete(model: SubscriptionScheduleExpectation.self)
+        try context.delete(model: SubscriptionMatchRule.self)
+        try context.delete(model: SubscriptionOccurrence.self)
+        try context.delete(model: SubscriptionDetectionEvidence.self)
+        try context.delete(model: DetectionRun.self)
 
         if includeTemplates {
             try context.delete(model: ColumnMappingTemplate.self)

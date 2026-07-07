@@ -60,21 +60,25 @@ struct CalendarView: View {
         guard let currentRenewalDate = DashboardMetrics.currentRenewalDate(for: sub) else { return [] }
 
         var dates: [Date] = []
-        var current = calendar.startOfDay(for: currentRenewalDate)
+        // Always advance from the anchor date so month-end renewals keep their
+        // day (Jan 31 → Feb 28 → Mar 31) instead of sticking to the clamp.
+        let anchor = calendar.startOfDay(for: currentRenewalDate)
         let visibleStart = calendar.startOfDay(for: viewMonth)
         let visibleEnd = calendar.startOfDay(for: nextMonth)
-        var guardCount = 0
 
-        while current < visibleEnd && guardCount < 800 {
+        var current = anchor
+        var period = 0
+        while current < visibleEnd && period < 800 {
             if current >= visibleStart {
                 dates.append(current)
             }
-            guard let next = sub.cadence.tallyAdvanced(current, by: 1, using: calendar),
+            period += 1
+            guard let next = sub.cadence.tallyAdvanced(anchor, by: period, using: calendar)
+                .map(calendar.startOfDay(for:)),
                   next > current else {
                 break
             }
             current = next
-            guardCount += 1
         }
 
         return dates

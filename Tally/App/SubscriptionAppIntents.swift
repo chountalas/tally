@@ -284,22 +284,29 @@ private enum AppIntentURL {
     }
 }
 
+@MainActor
 private enum AppIntentSubscriptionStore {
-    @MainActor
+    private static let containerResult: Result<ModelContainer, Error> = Result {
+        try ModelContainerFactory.makePersistentSharedContainer()
+    }
+
     static func subscriptions() throws -> [Subscription] {
-        let container = try ModelContainerFactory.makeSharedContainer()
+        let container = try container()
         return try container.mainContext.fetch(
             FetchDescriptor<Subscription>(sortBy: [SortDescriptor(\.displayName)])
         )
     }
 
-    @MainActor
     static func transactions() throws -> [NormalizedTransaction] {
-        let container = try ModelContainerFactory.makeSharedContainer()
+        let container = try container()
         return try container.mainContext.fetch(
             FetchDescriptor<NormalizedTransaction>(
                 sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
             )
         )
+    }
+
+    private static func container() throws -> ModelContainer {
+        try containerResult.get()
     }
 }

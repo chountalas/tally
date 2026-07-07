@@ -1,6 +1,8 @@
 import Foundation
 
 extension DashboardMetrics {
+    static let priceIncreaseThreshold = 0.05
+
     static func currentActiveSubscriptions(
         from subscriptions: [Subscription],
         referenceDate: Date = .now
@@ -173,27 +175,11 @@ extension DashboardMetrics {
 
         for subscription in subscriptions {
             guard let linkedTransactions = transactionsBySubscription[subscription.id],
-                  linkedTransactions.count >= 2,
-                  let latest = linkedTransactions.max(by: { $0.transactionDate < $1.transactionDate }) else {
+                  linkedTransactions.count >= 2 else {
                 continue
             }
 
-            let earlierAmounts = linkedTransactions
-                .filter { $0.id != latest.id }
-                .map { abs(($0.transactionAmount as NSDecimalNumber).doubleValue) }
-
-            guard !earlierAmounts.isEmpty else {
-                continue
-            }
-
-            let baseline = earlierAmounts.reduce(0, +) / Double(earlierAmounts.count)
-            let latestAmount = abs((latest.transactionAmount as NSDecimalNumber).doubleValue)
-            guard baseline > 0 else {
-                continue
-            }
-
-            let percentChange = (latestAmount - baseline) / baseline
-            guard percentChange >= 0.08 else {
+            guard let percentChange = priceIncreasePercent(in: linkedTransactions) else {
                 continue
             }
 
@@ -271,9 +257,13 @@ extension DashboardMetrics {
     }
 
     static func hasPriceIncrease(in transactions: [NormalizedTransaction]) -> Bool {
+        priceIncreasePercent(in: transactions) != nil
+    }
+
+    static func priceIncreasePercent(in transactions: [NormalizedTransaction]) -> Double? {
         guard transactions.count >= 2,
               let latest = transactions.max(by: { $0.transactionDate < $1.transactionDate }) else {
-            return false
+            return nil
         }
 
         let earlier = transactions
@@ -281,16 +271,17 @@ extension DashboardMetrics {
             .map { abs(($0.transactionAmount as NSDecimalNumber).doubleValue) }
 
         guard !earlier.isEmpty else {
-            return false
+            return nil
         }
 
         let average = earlier.reduce(0, +) / Double(earlier.count)
         let latestAmount = abs((latest.transactionAmount as NSDecimalNumber).doubleValue)
         guard average > 0 else {
-            return false
+            return nil
         }
 
-        return ((latestAmount - average) / average) >= 0.08
+        let percentChange = (latestAmount - average) / average
+        return percentChange >= priceIncreaseThreshold ? percentChange : nil
     }
 
     private static func renewalDecisionDetail(

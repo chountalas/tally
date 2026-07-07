@@ -375,6 +375,26 @@ final class AppModel {
         importPreparationToken = preparationToken
         try? context.save()
 
+        if let source = bankFeedTransactionSource(for: url) {
+            Task { [url, importRecordID = importRecord.id] in
+                let outcome = await Task.detached(priority: .userInitiated) {
+                    await BankFeedImportPreparationService.prepareDrafts(from: url, source: source)
+                }.value
+
+                guard preparationToken == self.importPreparationToken else {
+                    return
+                }
+
+                await self.finishBankFeedImportPreparation(
+                    outcome,
+                    importRecordID: importRecordID,
+                    source: source,
+                    into: context
+                )
+            }
+            return
+        }
+
         Task { [url, importRecordID = importRecord.id] in
             let outcome = await Task.detached(priority: .userInitiated) {
                 ImportPreparationService.prepareDraft(from: url)
@@ -405,7 +425,8 @@ final class AppModel {
             importRecord.mappingSignature = mapping.signature
             importRecord.errorMessage = nil
 
-            let seeds = try csvImporter.materializeTransactions(from: importDraft, mapping: mapping)
+            let materialized = try csvImporter.materializeSeeds(from: importDraft, mapping: mapping)
+            let seeds = materialized.seeds
             let classificationLoadResult = try await loadClassifications(for: seeds, context: context)
             importRecord.status = .analyzed
             importRecord.importedTransactionCount = seeds.count
@@ -425,8 +446,9 @@ final class AppModel {
             )
             try context.save()
             completeImportSuccess(
-                seedCount: seeds.count,
                 importFileName: importRecord.fileName,
+                upsertSummary: upsertSummary,
+                skippedRowCount: materialized.skippedRowCount,
                 classificationLoadResult: classificationLoadResult,
                 importSummary: detectionReport.summary(for: importRecord.id)
             )
@@ -455,7 +477,222 @@ final class AppModel {
 
 }
 
+private enum BankFeedImportPreparationService {
+    static func prepareDrafts(
+        from url: URL,
+        source: TransactionSource
+    ) async -> BankFeedImportPreparationOutcome {
+        do {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer {
+                if scoped {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            try validateImportFileSize(at: url)
+            let data = try Data(contentsOf: url)
+            guard let text = decodeImportText(from: data) else {
+                throw BankFeedImportPreparationError.unreadableContent
+            }
+
+            let drafts = try await OFXTransactionSourceAdapter(
+                text: text,
+                source: source
+            ).prepareTransactions()
+            return .success(drafts)
+        } catch {
+            return .failure(error.localizedDescription)
+        }
+    }
+
+    private static func validateImportFileSize(at url: URL) throws {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        if fileSize > ImportPreparationService.maxImportFileSizeBytes {
+            throw BankFeedImportPreparationError.fileTooLarge(
+                actualBytes: fileSize,
+                maxBytes: ImportPreparationService.maxImportFileSizeBytes
+            )
+        }
+    }
+
+    private static func decodeImportText(from data: Data) -> String? {
+        let encodings: [String.Encoding] = [
+            .utf8,
+            .unicode,
+            .utf16LittleEndian,
+            .utf16BigEndian,
+            .windowsCP1252,
+            .macOSRoman,
+            .isoLatin1
+        ]
+
+        for encoding in encodings {
+            if let text = String(data: data, encoding: encoding) {
+                return text
+            }
+        }
+
+        return nil
+    }
+}
+
+private enum BankFeedImportPreparationOutcome: Sendable {
+    case success([SourceTransactionDraft])
+    case failure(String)
+}
+
+private enum BankFeedImportPreparationError: LocalizedError {
+    case unreadableContent
+    case fileTooLarge(actualBytes: Int64, maxBytes: Int64)
+
+    var errorDescription: String? {
+        switch self {
+        case .unreadableContent:
+            return "The selected OFX/QFX file could not be decoded."
+        case let .fileTooLarge(actualBytes, maxBytes):
+            let actualMB = Double(actualBytes) / 1_000_000
+            let maxMB = Double(maxBytes) / 1_000_000
+            return "The selected file is \(actualMB.formatted(.number.precision(.fractionLength(1)))) MB. Tally supports imports up to \(maxMB.formatted(.number.precision(.fractionLength(0)))) MB."
+        }
+    }
+}
+
 private extension AppModel {
+    func bankFeedTransactionSource(for url: URL) -> TransactionSource? {
+        switch url.pathExtension.lowercased() {
+        case "ofx":
+            return .ofx
+        case "qfx":
+            return .qfx
+        default:
+            return nil
+        }
+    }
+
+    func finishBankFeedImportPreparation(
+        _ outcome: BankFeedImportPreparationOutcome,
+        importRecordID: UUID,
+        source: TransactionSource,
+        into context: ModelContext
+    ) async {
+        defer { isPreparingImport = false }
+
+        let importRecord: ImportRecord?
+        do {
+            importRecord = try self.importRecord(withID: importRecordID, in: context)
+        } catch {
+            currentImportRecord = nil
+            importErrorMessage = "Failed to load import record: \(error.localizedDescription)"
+            return
+        }
+
+        guard let importRecord else {
+            currentImportRecord = nil
+            if case let .failure(message) = outcome {
+                importErrorMessage = message
+            }
+            return
+        }
+
+        switch outcome {
+        case let .success(drafts):
+            await commitBankFeedImport(
+                drafts,
+                importRecord: importRecord,
+                source: source,
+                context: context
+            )
+        case let .failure(message):
+            importRecord.status = .failed
+            importRecord.mappingSignature = "\(source.rawValue)_adapter"
+            importRecord.errorMessage = message
+            try? context.save()
+
+            currentImportRecord = nil
+            importErrorMessage = message
+        }
+    }
+
+    func commitBankFeedImport(
+        _ drafts: [SourceTransactionDraft],
+        importRecord: ImportRecord,
+        source: TransactionSource,
+        context: ModelContext
+    ) async {
+        classificationStatusMessage = nil
+        importDraft = nil
+
+        do {
+            importRecord.status = .classifying
+            importRecord.mappingSignature = "\(source.rawValue)_adapter"
+            importRecord.errorMessage = nil
+
+            let seeds = drafts.map(\.seed)
+            let classificationLoadResult = try await loadClassifications(
+                for: seeds,
+                context: context
+            )
+            let materializations = sourceMaterializations(
+                for: drafts,
+                classifications: classificationLoadResult.results
+            )
+            let upsertSummary = try await SourceTransactionUpsertService().upsert(
+                materializations,
+                importRecordID: importRecord.id,
+                into: context
+            )
+            importRecord.status = .analyzed
+            importRecord.importedTransactionCount = upsertSummary.reconciledCount
+
+            let detectionReport = try await saveChangesAndRefreshSubscriptions(in: context)
+            applyImportSummary(
+                from: detectionReport,
+                to: importRecord
+            )
+            try context.save()
+            completeImportSuccess(
+                importFileName: importRecord.fileName,
+                upsertSummary: upsertSummary,
+                skippedRowCount: 0,
+                classificationLoadResult: classificationLoadResult,
+                importSummary: detectionReport.summary(for: importRecord.id)
+            )
+        } catch {
+            importRecord.status = .failed
+            importRecord.errorMessage = error.localizedDescription
+            try? context.save()
+
+            currentImportRecord = nil
+            importErrorMessage = error.localizedDescription
+        }
+    }
+
+    func sourceMaterializations(
+        for drafts: [SourceTransactionDraft],
+        classifications: [String: MerchantClassificationResult]
+    ) -> [SourceTransactionMaterialization] {
+        drafts.map { draft in
+            let classification = transactionClassification(
+                for: draft.seed,
+                classifications: classifications
+            )
+
+            return SourceTransactionMaterialization(
+                draft: draft,
+                merchantNormalized: classification.canonicalName,
+                category: resolvedTransactionCategory(
+                    sourceCategory: draft.seed.category,
+                    classification: classification
+                ),
+                merchantKind: classification.merchantKind,
+                merchantSubscriptionAffinity: classification.subscriptionAffinity,
+                classificationConfidence: classification.confidence
+            )
+        }
+    }
+
     func prepareImportRecord(
         for importDraft: TransactionImportDraft,
         mapping: ColumnMappingConfig,
@@ -573,8 +810,9 @@ private extension AppModel {
     }
 
     func completeImportSuccess(
-        seedCount: Int,
         importFileName: String,
+        upsertSummary: SourceTransactionUpsertSummary,
+        skippedRowCount: Int,
         classificationLoadResult: ClassificationLoadResult,
         importSummary: SubscriptionDetectionImportSummary
     ) {
@@ -585,7 +823,13 @@ private extension AppModel {
             uniqueMerchantCount: classificationLoadResult.uniqueMerchantCount,
             fallbackReason: classificationLoadResult.fallbackReason
         )
-        let baseMessage = "Imported \(seedCount) transactions from \(importFileName)."
+        let baseMessage = importResultMessage(
+            importFileName: importFileName,
+            upsertSummary: upsertSummary
+        )
+        let skippedMessage = skippedRowCount > 0
+            ? "Skipped \(skippedRowCount) rows (unreadable date or amount)."
+            : nil
         let detectionMessage = """
         Found \(importSummary.detectedCount) subscriptions and \
         \(importSummary.needsReviewCount) items to review.
@@ -596,7 +840,7 @@ private extension AppModel {
         let suppressedMessage = importSummary.suppressedCount > 0
             ? "Held back \(importSummary.suppressedCount) noisy recurring signals."
             : nil
-        infoMessage = [baseMessage, detectionMessage, recoveredMessage, suppressedMessage]
+        infoMessage = [baseMessage, skippedMessage, detectionMessage, recoveredMessage, suppressedMessage]
             .compactMap { $0 }
             .joined(separator: " ")
     }

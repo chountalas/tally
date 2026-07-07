@@ -203,6 +203,8 @@ struct TransactionsView: View {
         var types: [UTType] = [.commaSeparatedText, .text]
         if let xls = UTType(filenameExtension: "xls") { types.append(xls) }
         if let xlsx = UTType(filenameExtension: "xlsx") { types.append(xlsx) }
+        if let ofx = UTType(filenameExtension: "ofx") { types.append(ofx) }
+        if let qfx = UTType(filenameExtension: "qfx") { types.append(qfx) }
         return types
     }
 
@@ -245,15 +247,32 @@ private struct MerchantTransactionsView: View {
                     .buttonStyle(.plain)
                 }
 
-                VStack(spacing: 0) {
-                    ForEach(sortedTransactions) { transaction in
-                        TransactionRow(transaction: transaction)
-                        if transaction.id != sortedTransactions.last?.id {
-                            HairlineDivider()
+                if sortedTransactions.isEmpty {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "tray")
+                            .font(.system(size: 28))
+                            .foregroundStyle(Theme.Colors.textTertiary)
+                        Text("No transactions for this merchant")
+                            .font(Theme.Typography.callout)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        Text("Charges from \(merchantName) will appear here once they're imported.")
+                            .font(Theme.Typography.footnote)
+                            .foregroundStyle(Theme.Colors.textTertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Spacing.section)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(sortedTransactions) { transaction in
+                            TransactionRow(transaction: transaction)
+                            if transaction.id != sortedTransactions.last?.id {
+                                HairlineDivider()
+                            }
                         }
                     }
+                    .featureCard()
                 }
-                .featureCard()
             }
             .padding(.horizontal, Theme.Spacing.xxl)
             .padding(.vertical, Theme.Spacing.xl)

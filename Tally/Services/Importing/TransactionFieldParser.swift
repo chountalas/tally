@@ -1,19 +1,26 @@
 import Foundation
 
 struct TransactionFieldParser {
+    enum DateComponentOrder {
+        case monthFirst
+        case dayFirst
+    }
+
     private nonisolated(unsafe) static let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         return formatter
     }()
 
-    private static let dateFormats = [
-        "yyyy-MM-dd",
-        "M/d/yyyy",
-        "MM/dd/yyyy",
-        "d/M/yyyy",
-        "MMM d, yyyy",
-        "MMMM d, yyyy"
-    ]
+    private static let currencySymbols = ["$", "€", "£", "¥", "₹", "₩", "¢"]
+
+    private let dateComponentOrder: DateComponentOrder
+    private let dateFormatters: [DateFormatter]
+
+    init(dateComponentOrder: DateComponentOrder = .monthFirst, timeZone: TimeZone = .current) {
+        self.dateComponentOrder = dateComponentOrder
+        self.dateFormatters = Self.dateFormats(order: dateComponentOrder)
+            .map { Self.makeDateFormatter(format: $0, timeZone: timeZone) }
+    }
 
     private static func makeDateFormatter(format: String, timeZone: TimeZone) -> DateFormatter {
         let formatter = DateFormatter()
@@ -23,8 +30,41 @@ struct TransactionFieldParser {
         return formatter
     }
 
-    private static func dateFormatters(timeZone: TimeZone) -> [DateFormatter] {
-        dateFormats.map { makeDateFormatter(format: $0, timeZone: timeZone) }
+    private static func dateFormats(order: DateComponentOrder) -> [String] {
+        var formats = [
+            "yyyy-MM-dd",
+            "yyyy/MM/dd",
+            "yyyy.MM.dd"
+        ]
+        formats.append(contentsOf: numericDateFormats(order: order))
+        formats.append(contentsOf: [
+            "MMM d, yyyy",
+            "MMMM d, yyyy",
+            "MMM d yyyy",
+            "d MMM yyyy",
+            "d MMMM yyyy"
+        ])
+        return formats
+    }
+
+    private static func numericDateFormats(order: DateComponentOrder) -> [String] {
+        // Four-digit years are listed before two-digit years so that a value like
+        // 06/07/2026 matches the yyyy variant instead of being partially consumed by yy.
+        let years = ["yyyy", "yy"]
+        let separators = ["/", "-", "."]
+        let dayFirstPairs = [("dd", "MM"), ("d", "M"), ("MM", "dd"), ("M", "d")]
+        let monthFirstPairs = [("MM", "dd"), ("M", "d"), ("dd", "MM"), ("d", "M")]
+        let orderedPairs = order == .dayFirst ? dayFirstPairs : monthFirstPairs
+
+        var formats: [String] = []
+        for year in years {
+            for separator in separators {
+                for (first, second) in orderedPairs {
+                    formats.append("\(first)\(separator)\(second)\(separator)\(year)")
+                }
+            }
+        }
+        return formats
     }
 
     func parseDate(_ rawValue: String) throws -> Date {
@@ -40,17 +80,65 @@ struct TransactionFieldParser {
             return nil
         }
 
-        if let isoDate = Self.isoFormatter.date(from: trimmed) {
+        if let date = parseDateCandidate(trimmed) {
+            return date
+        }
+
+        // Retry after removing a trailing time component (e.g. "2026-06-07 13:45:00").
+        if let dateOnly = Self.strippingTimeSuffix(from: trimmed), dateOnly != trimmed {
+            return parseDateCandidate(dateOnly)
+        }
+
+        return nil
+    }
+
+    private func parseDateCandidate(_ value: String) -> Date? {
+        if let isoDate = Self.isoFormatter.date(from: value) {
             return isoDate
         }
 
-        for formatter in Self.dateFormatters(timeZone: .current) {
-            if let date = formatter.date(from: trimmed) {
+        for formatter in dateFormatters {
+            if let date = formatter.date(from: value) {
                 return date
             }
         }
 
         return nil
+    }
+
+    private static func strippingTimeSuffix(from value: String) -> String? {
+        let pattern = #"[ T]\d{1,2}:\d{2}(:\d{2})?.*$"#
+        guard let range = value.range(of: pattern, options: .regularExpression) else {
+            return nil
+        }
+        let stripped = String(value[..<range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return stripped.isEmpty ? nil : stripped
+    }
+
+    /// Detects whether a set of sampled date strings are day-first (e.g. dd/MM/yyyy).
+    /// A file is treated as day-first as soon as any ambiguous value has a leading
+    /// component greater than 12, which cannot be a month.
+    static func inferDateComponentOrder(fromSamples values: [String]) -> DateComponentOrder {
+        for value in values where firstNumericComponentExceedsTwelve(value) {
+            return .dayFirst
+        }
+        return .monthFirst
+    }
+
+    private static func firstNumericComponentExceedsTwelve(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dateOnly = strippingTimeSuffix(from: trimmed) ?? trimmed
+        let separators = CharacterSet(charactersIn: "/-.")
+        let components = dateOnly.components(separatedBy: separators)
+        guard components.count == 3 else {
+            return false
+        }
+        // A four-digit leading component is an ISO-style year, not an ambiguous day.
+        guard components[0].count <= 2, let first = Int(components[0]) else {
+            return false
+        }
+        return first > 12 && first <= 31
     }
 
     func parseAmount(_ rawValue: String) throws -> Decimal {
@@ -61,22 +149,29 @@ struct TransactionFieldParser {
     }
 
     func tryParseAmount(_ rawValue: String) -> Decimal? {
-        let trimmed = rawValue
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-
-        let isParentheticalNegative = trimmed.hasPrefix("(") && trimmed.hasSuffix(")")
-        let sanitized = trimmed
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-            .replacingOccurrences(of: "+", with: "")
-
-        guard sanitized.range(of: #"^-?\d+(\.\d+)?$"#, options: .regularExpression) != nil else {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             return nil
         }
 
-        guard var decimal = Decimal(string: sanitized) else {
+        let isParentheticalNegative = trimmed.hasPrefix("(") && trimmed.hasSuffix(")")
+
+        var working = Self.strippingCurrency(from: trimmed)
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+            .replacingOccurrences(of: "+", with: "")
+            .replacingOccurrences(of: " ", with: "")
+        guard !working.isEmpty else {
+            return nil
+        }
+
+        working = Self.normalizeDecimalSeparators(in: working)
+
+        guard working.range(of: #"^-?\d+(\.\d+)?$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+
+        guard var decimal = Decimal(string: working) else {
             return nil
         }
 
@@ -85,6 +180,62 @@ struct TransactionFieldParser {
         }
 
         return decimal
+    }
+
+    private static func strippingCurrency(from value: String) -> String {
+        var result = value
+        for symbol in currencySymbols {
+            result = result.replacingOccurrences(of: symbol, with: "")
+        }
+        // Remove standalone ISO 4217 currency codes (USD, EUR, CAD, ...).
+        result = result.replacingOccurrences(
+            of: #"(?i)\b[a-z]{3}\b"#,
+            with: "",
+            options: .regularExpression
+        )
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Normalizes thousands and decimal separators to a plain `1234.56` form,
+    /// handling European decimal commas (`1.234,56` and `1234,56`).
+    private static func normalizeDecimalSeparators(in value: String) -> String {
+        let hasComma = value.contains(",")
+        let hasDot = value.contains(".")
+
+        if hasComma, hasDot {
+            guard let lastComma = value.lastIndex(of: ","),
+                  let lastDot = value.lastIndex(of: ".") else {
+                return value
+            }
+            if lastComma > lastDot {
+                // Comma is the decimal separator, dots group thousands.
+                return value
+                    .replacingOccurrences(of: ".", with: "")
+                    .replacingOccurrences(of: ",", with: ".")
+            }
+            // Dot is the decimal separator, commas group thousands.
+            return value.replacingOccurrences(of: ",", with: "")
+        }
+
+        if hasComma {
+            let parts = value.components(separatedBy: ",")
+            if parts.count == 2, (1...2).contains(parts[1].count) {
+                // A comma trailed by one or two digits is a decimal comma.
+                return value.replacingOccurrences(of: ",", with: ".")
+            }
+            // Otherwise the commas group thousands.
+            return value.replacingOccurrences(of: ",", with: "")
+        }
+
+        if hasDot {
+            let parts = value.components(separatedBy: ".")
+            if parts.count > 2 {
+                // Multiple dots can only be thousands separators.
+                return value.replacingOccurrences(of: ".", with: "")
+            }
+        }
+
+        return value
     }
 }
 

@@ -68,6 +68,12 @@ struct RootTabView: View {
                     }
                 )
             ) {
+                if subscriptions.contains(where: { $0.libraryState == .suggested }) {
+                    Button("Review now") {
+                        appModel.clearMessage()
+                        appModel.openSubscriptionLibrary(state: .suggested)
+                    }
+                }
                 Button("OK", role: .cancel) { appModel.clearMessage() }
             } message: {
                 Text(

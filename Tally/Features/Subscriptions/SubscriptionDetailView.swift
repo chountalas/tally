@@ -10,6 +10,8 @@ struct SubscriptionDetailView: View {
 
     let subscription: Subscription
 
+    @State private var isConfirmingRemoval = false
+
     init(subscription: Subscription) {
         self.subscription = subscription
     }
@@ -48,6 +50,23 @@ struct SubscriptionDetailView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .scrollIndicators(.hidden)
+        .confirmationDialog(
+            "Remove \(sub.tallyName) from your list?",
+            isPresented: $isConfirmingRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                do {
+                    try appModel.removeSubscription(id: sub.id, in: modelContext)
+                    appModel.tallySelectedSubscriptionID = nil
+                } catch {
+                    appModel.importErrorMessage = error.localizedDescription
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes it from your list and stops Tally from detecting \(sub.tallyName) in future imports. You can't undo this.")
+        }
     }
 
     // MARK: Back
@@ -335,12 +354,7 @@ struct SubscriptionDetailView: View {
                     }
                 } else {
                     TallyActionButton(title: "Remove from list", systemImage: "trash", kind: .danger) {
-                        do {
-                            try appModel.removeSubscription(id: sub.id, in: modelContext)
-                            appModel.tallySelectedSubscriptionID = nil
-                        } catch {
-                            appModel.importErrorMessage = error.localizedDescription
-                        }
+                        isConfirmingRemoval = true
                     }
                 }
             }
@@ -354,16 +368,30 @@ struct SubscriptionDetailView: View {
     private func scheduleRenewalReminder() {
         try? modelContext.save()
         let context = modelContext
+        let name = sub.tallyName
         Task { @MainActor in
             let service = RenewalNotificationService()
             let granted = (try? await service.requestAccess()) ?? false
-            guard granted else { return }
+            guard granted else {
+                // Denied (or undetermined) authorization silently does nothing
+                // otherwise, so tell the user why no reminder was set.
+                appModel.importErrorMessage =
+                    "Tally can't set a reminder without notification permission. " +
+                    "Turn on notifications for Tally in System Settings, then try again."
+                return
+            }
             // The service clears every pending renewal notification and rebuilds
             // the set from the subscriptions it's handed, so pass the full set —
             // passing only this one would wipe the reminders other subscriptions
             // already have.
             let all = (try? context.fetch(FetchDescriptor<Subscription>())) ?? []
-            _ = try? await service.schedule(subscriptions: all, context: context)
+            do {
+                _ = try await service.schedule(subscriptions: all, context: context)
+                appModel.infoMessage = "You'll get a reminder before \(name) renews."
+            } catch {
+                appModel.importErrorMessage =
+                    "Tally couldn't schedule the reminder. \(error.localizedDescription)"
+            }
         }
     }
 }

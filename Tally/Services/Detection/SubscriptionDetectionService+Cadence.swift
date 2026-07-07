@@ -76,7 +76,37 @@ extension SubscriptionDetectionService {
             return true
         }
 
-        return keywordSupport >= 0.7 && affinity >= 0.65 && excludedCount == 0
+        if keywordSupport >= 0.7, affinity >= 0.65, excludedCount == 0 {
+            return true
+        }
+
+        return hasMatchedAmountSparseSignals(transactions, excludedCount: excludedCount)
+    }
+
+    /// Two charges with matching amounts from a merchant free of negative
+    /// signals are strong recurring evidence even when the merchant is not in
+    /// the known-brand table. Scoring still routes these to needs-review; this
+    /// only stops them from being dropped before evaluation.
+    func hasMatchedAmountSparseSignals(
+        _ transactions: [NormalizedTransaction],
+        excludedCount: Int
+    ) -> Bool {
+        guard excludedCount == 0,
+              transactions.contains(where: isFinancialMovement) == false,
+              transactions.contains(where: isRecurringBillOrNonSubscriptionSpend) == false,
+              transactions.contains(where: hasCommerceNoiseSignals) == false,
+              transactions.contains(where: hasMarketplaceOrderSignals) == false else {
+            return false
+        }
+
+        let amounts = transactions.map { abs(($0.transactionAmount as NSDecimalNumber).doubleValue) }
+        guard let minAmount = amounts.min(),
+              let maxAmount = amounts.max(),
+              minAmount >= 2.99 else {
+            return false
+        }
+
+        return maxAmount - minAmount <= max(0.01, maxAmount * 0.01)
     }
 
     func minimumOccurrences(for cadence: SubscriptionCadence) -> Int {

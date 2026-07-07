@@ -306,6 +306,7 @@ extension SubscriptionCopilotSheet {
             activeQueryKey = nil
         }
 
+        let intelligence = await intelligenceTask.value
         response = await intelligence.respond(to: resolvedQuery, using: tooling)
     }
 

@@ -4,7 +4,8 @@ struct TabularTransactionDraftBuilder {
     func makeDraft(
         fileName: String,
         headers: [String],
-        rows: [[String: String]]
+        rows: [[String: String]],
+        warnings: [String] = []
     ) throws -> TransactionImportDraft {
         guard !headers.isEmpty else {
             throw CSVImportError.emptyFile
@@ -29,7 +30,8 @@ struct TabularTransactionDraftBuilder {
             previewRows: preview,
             rawRows: filteredRows,
             suggestedMapping: mapping.config,
-            confidence: mapping.confidence
+            confidence: mapping.confidence,
+            warnings: warnings
         )
     }
 
@@ -37,33 +39,52 @@ struct TabularTransactionDraftBuilder {
         from draft: TransactionImportDraft,
         mapping: ColumnMappingConfig
     ) throws -> [NormalizedTransactionSeed] {
-        let parser = TransactionFieldParser()
+        try materializeSeeds(from: draft, mapping: mapping).seeds
+    }
 
-        let seeds = try draft.rawRows.compactMap { row -> NormalizedTransactionSeed? in
+    func materializeSeeds(
+        from draft: TransactionImportDraft,
+        mapping: ColumnMappingConfig
+    ) throws -> MaterializedTransactionSeeds {
+        let parser = dateAwareParser(for: draft.rawRows, dateColumn: mapping.dateColumn)
+
+        var seeds: [NormalizedTransactionSeed] = []
+        var skippedRowCount = 0
+
+        for row in draft.rawRows {
             let dateValue = row[mapping.dateColumn] ?? ""
             let amountValue = row[mapping.amountColumn] ?? ""
             let merchantValue = row[mapping.merchantColumn ?? ""] ??
                 row[mapping.descriptionColumn ?? ""] ??
                 ""
 
+            // Blank rows are silently ignored; they are not "unreadable".
             guard !merchantValue.isEmpty else {
-                return nil
+                continue
             }
 
-            let transactionDate = try parser.parseDate(dateValue)
-            var amount = try parser.parseAmount(amountValue)
+            // A single unparseable date or amount skips just that row rather
+            // than aborting the whole file. The count is surfaced to the user.
+            guard let transactionDate = parser.tryParseDate(dateValue),
+                  var amount = parser.tryParseAmount(amountValue) else {
+                skippedRowCount += 1
+                continue
+            }
+
             if mapping.debitSignConvention == .positive {
                 amount *= -1
             }
 
-            return NormalizedTransactionSeed(
-                transactionDate: transactionDate,
-                transactionAmount: amount,
-                merchantRaw: merchantValue,
-                category: row[mapping.categoryColumn ?? ""],
-                accountName: row[mapping.accountColumn ?? ""],
-                memo: row[mapping.descriptionColumn ?? ""],
-                currency: row[mapping.currencyColumn ?? ""]
+            seeds.append(
+                NormalizedTransactionSeed(
+                    transactionDate: transactionDate,
+                    transactionAmount: amount,
+                    merchantRaw: merchantValue,
+                    category: row[mapping.categoryColumn ?? ""],
+                    accountName: row[mapping.accountColumn ?? ""],
+                    memo: row[mapping.descriptionColumn ?? ""],
+                    currency: row[mapping.currencyColumn ?? ""]
+                )
             )
         }
 
@@ -71,7 +92,19 @@ struct TabularTransactionDraftBuilder {
             throw CSVImportError.noUsableTransactions
         }
 
-        return seeds.sorted { $0.transactionDate < $1.transactionDate }
+        return MaterializedTransactionSeeds(
+            seeds: seeds.sorted { $0.transactionDate < $1.transactionDate },
+            skippedRowCount: skippedRowCount
+        )
+    }
+
+    func dateAwareParser(
+        for rows: [[String: String]],
+        dateColumn: String
+    ) -> TransactionFieldParser {
+        let dateSamples = rows.compactMap { $0[dateColumn] }
+        let order = TransactionFieldParser.inferDateComponentOrder(fromSamples: dateSamples)
+        return TransactionFieldParser(dateComponentOrder: order)
     }
 
     func previewValidation(
@@ -79,7 +112,7 @@ struct TabularTransactionDraftBuilder {
         mapping: ColumnMappingConfig,
         sampleLimit: Int = 200
     ) -> ImportMappingValidationSummary {
-        let parser = TransactionFieldParser()
+        let parser = dateAwareParser(for: draft.rawRows, dateColumn: mapping.dateColumn)
         let sampleRows = Array(draft.rawRows.prefix(sampleLimit))
         let merchantColumn = mapping.merchantColumn ?? mapping.descriptionColumn ?? ""
         let stats = previewValidationStats(
@@ -88,7 +121,7 @@ struct TabularTransactionDraftBuilder {
             merchantColumn: merchantColumn,
             parser: parser
         )
-        let warnings = previewValidationWarnings(for: stats)
+        let warnings = draft.warnings + previewValidationWarnings(for: stats)
 
         return ImportMappingValidationSummary(
             sampleRowCount: sampleRows.count,

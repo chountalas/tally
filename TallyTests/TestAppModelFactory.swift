@@ -18,6 +18,7 @@ extension AppModel {
 
         let preferences = AIProviderPreferences(userDefaults: defaults)
         preferences.selectedKind = selectedProviderKind
+        preferences.isAIGenerationDisabled = true
 
         return AppModel(
             aiProviderPreferences: preferences,

@@ -1,15 +1,21 @@
+import EventKit
 import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Subscription.displayName) private var subscriptions: [Subscription]
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceOption = .system
     @State private var isConfirmingReset = false
     @State private var exportDocument: AppDataExportDocument?
     @State private var isExporting = false
     @State private var exportErrorMessage: String?
     @State private var dataOperationMessage: String?
+    @State private var calendarOperationMessage: String?
+    @State private var calendarAuthorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    @State private var calendarService = RenewalCalendarService()
+    @State private var isSyncingCalendar = false
     @State private var libraryCounts = LibraryCounts()
 
     var body: some View {
@@ -32,6 +38,11 @@ struct SettingsView: View {
                         .padding(.vertical, Theme.Spacing.xxl)
 
                     librarySection
+
+                    EditorialDivider()
+                        .padding(.vertical, Theme.Spacing.xxl)
+
+                    calendarSection
 
                     EditorialDivider()
                         .padding(.vertical, Theme.Spacing.xxl)
@@ -87,6 +98,19 @@ struct SettingsView: View {
             } message: {
                 Text(dataOperationMessage ?? "")
             }
+            .alert(
+                "Calendar",
+                isPresented: Binding(
+                    get: { calendarOperationMessage != nil },
+                    set: { newValue in
+                        if !newValue { calendarOperationMessage = nil }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) { calendarOperationMessage = nil }
+            } message: {
+                Text(calendarOperationMessage ?? "")
+            }
             .fileExporter(
                 isPresented: $isExporting,
                 document: exportDocument,
@@ -100,6 +124,7 @@ struct SettingsView: View {
             .task {
                 refreshLibraryCounts()
                 appModel.refreshIntelligenceProviderState()
+                refreshCalendarAuthorizationStatus()
             }
         }
     }
@@ -240,11 +265,51 @@ struct SettingsView: View {
     }
     #endif
 
+    private var calendarSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            sectionHeading(
+                title: "Calendar",
+                subtitle: "Create one all-day renewal event per active subscription in a Tally calendar."
+            )
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                PreferenceValueRow(
+                    title: "Permission",
+                    value: calendarPermissionTitle,
+                    detail: calendarPermissionDetail,
+                    tone: calendarPermissionTone
+                )
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        calendarActions
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        calendarActions
+                    }
+                }
+            }
+            .featureCard()
+        }
+    }
+
     private var dataSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             sectionHeading(title: "Data", subtitle: "Export the library before making broader structural changes.")
 
             VStack(spacing: 0) {
+                PreferenceActionRow(
+                    title: appModel.isRefreshingAnalysis ? "Re-scanning transactions..." : "Re-scan my transactions",
+                    detail: "Run subscription detection again using the transactions already stored on this Mac.",
+                    tone: .accent
+                ) {
+                    Task { await refreshSubscriptionAnalysis() }
+                }
+
+                HairlineDivider()
+                    .padding(.leading, Theme.Spacing.xl)
+
                 PreferenceActionRow(
                     title: "Export data as JSON",
                     detail: "Create a portable archive of imports, subscriptions, transactions, aliases, and review rules.",
@@ -254,6 +319,25 @@ struct SettingsView: View {
                 }
             }
             .featureCard()
+        }
+    }
+
+    @ViewBuilder
+    private var calendarActions: some View {
+        PreferenceTextAction(
+            title: isSyncingCalendar ? "Syncing..." : "Sync now",
+            tone: .accent,
+            isDisabled: isSyncingCalendar
+        ) {
+            Task { await syncCalendar() }
+        }
+
+        PreferenceTextAction(
+            title: "Remove synced events",
+            tone: .destructive,
+            isDisabled: isSyncingCalendar || subscriptions.allSatisfy { $0.calendarEventIdentifier == nil }
+        ) {
+            removeSyncedCalendarEvents()
         }
     }
 
@@ -294,7 +378,9 @@ struct SettingsView: View {
                 classifications: try modelContext.fetch(FetchDescriptor<MerchantClassification>()),
                 aliases: try modelContext.fetch(FetchDescriptor<MerchantAlias>()),
                 templates: try modelContext.fetch(FetchDescriptor<ColumnMappingTemplate>()),
-                reviewRules: try modelContext.fetch(FetchDescriptor<SubscriptionReviewRule>())
+                reviewRules: try modelContext.fetch(FetchDescriptor<SubscriptionReviewRule>()),
+                corrections: try modelContext.fetch(FetchDescriptor<MerchantCorrection>()),
+                matchRules: try modelContext.fetch(FetchDescriptor<SubscriptionMatchRule>())
             ))
             exportDocument = AppDataExportDocument(data: data)
             isExporting = true
@@ -316,6 +402,48 @@ struct SettingsView: View {
         }
     }
 
+    private func refreshSubscriptionAnalysis() async {
+        await appModel.refreshSubscriptionAnalysis(in: modelContext)
+        refreshLibraryCounts()
+    }
+
+    private func syncCalendar() async {
+        guard !isSyncingCalendar else { return }
+
+        isSyncingCalendar = true
+        defer {
+            isSyncingCalendar = false
+            refreshCalendarAuthorizationStatus()
+        }
+
+        do {
+            let summary = try await calendarService.syncRenewals(
+                for: subscriptions,
+                context: modelContext
+            )
+            calendarOperationMessage = summary.message
+        } catch {
+            calendarOperationMessage = error.localizedDescription
+        }
+    }
+
+    private func removeSyncedCalendarEvents() {
+        do {
+            try calendarService.clearSyncedEvents(
+                for: subscriptions,
+                context: modelContext
+            )
+            refreshCalendarAuthorizationStatus()
+            calendarOperationMessage = "Removed Tally calendar events from synced subscriptions."
+        } catch {
+            calendarOperationMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshCalendarAuthorizationStatus() {
+        calendarAuthorizationStatus = calendarService.authorizationStatus()
+    }
+
     private func refreshLibraryCounts() {
         libraryCounts = LibraryCounts(
             imports: (try? modelContext.fetchCount(FetchDescriptor<ImportRecord>())) ?? 0,
@@ -323,6 +451,53 @@ struct SettingsView: View {
             transactions: (try? modelContext.fetchCount(FetchDescriptor<NormalizedTransaction>())) ?? 0,
             reviewRules: (try? modelContext.fetchCount(FetchDescriptor<SubscriptionReviewRule>())) ?? 0
         )
+    }
+
+    private var calendarPermissionTitle: String {
+        switch calendarAuthorizationStatus {
+        case .fullAccess:
+            return "Full access"
+        case .writeOnly:
+            return "Write-only"
+        case .notDetermined:
+            return "Not requested"
+        case .denied:
+            return "Denied"
+        case .restricted:
+            return "Restricted"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+
+    private var calendarPermissionDetail: String {
+        switch calendarAuthorizationStatus {
+        case .fullAccess:
+            return "Ready to create, update, and remove renewal events in the Tally calendar."
+        case .writeOnly:
+            return "Tally needs full calendar access to update and remove synced renewal events. Change this in System Settings."
+        case .notDetermined:
+            return "Sync now will ask macOS for calendar access."
+        case .denied:
+            return "Open System Settings and allow Tally full calendar access to sync renewals."
+        case .restricted:
+            return "Calendar access is restricted on this Mac."
+        @unknown default:
+            return "Calendar permission state is unavailable."
+        }
+    }
+
+    private var calendarPermissionTone: PreferenceTone {
+        switch calendarAuthorizationStatus {
+        case .fullAccess:
+            return .positive
+        case .notDetermined:
+            return .secondary
+        case .writeOnly, .denied, .restricted:
+            return .warning
+        @unknown default:
+            return .secondary
+        }
     }
 }
 

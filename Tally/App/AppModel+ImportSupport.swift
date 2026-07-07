@@ -113,9 +113,10 @@ extension AppModel {
 
         switch outcome {
         case let .success(draft):
-            importDraft = draft
+            let resolvedDraft = draftApplyingStoredTemplate(draft, context: context)
+            importDraft = resolvedDraft
             importRecord.status = .needsMapping
-            importRecord.mappingSignature = draft.suggestedMapping.signature
+            importRecord.mappingSignature = resolvedDraft.suggestedMapping.signature
             importRecord.errorMessage = nil
             try? context.save()
 
@@ -204,6 +205,75 @@ extension AppModel {
 
         score += min(seed.memo?.count ?? 0, 40) / 20
         return score
+    }
+
+    /// Re-applies a previously saved column mapping when the incoming file's headers
+    /// match a stored template, so the user does not have to remap familiar exports.
+    /// Falls back to the guessed mapping when no template's columns still exist.
+    func draftApplyingStoredTemplate(
+        _ draft: TransactionImportDraft,
+        context: ModelContext
+    ) -> TransactionImportDraft {
+        guard let config = matchingTemplateConfig(forHeaders: draft.headers, context: context) else {
+            return draft
+        }
+
+        return TransactionImportDraft(
+            id: draft.id,
+            fileName: draft.fileName,
+            headers: draft.headers,
+            previewRows: draft.previewRows,
+            rawRows: draft.rawRows,
+            suggestedMapping: config,
+            confidence: 1.0
+        )
+    }
+
+    func matchingTemplateConfig(
+        forHeaders headers: [String],
+        context: ModelContext
+    ) -> ColumnMappingConfig? {
+        let templates: [ColumnMappingTemplate]
+        do {
+            templates = try context.fetch(FetchDescriptor<ColumnMappingTemplate>())
+        } catch {
+            return nil
+        }
+
+        let headerSet = Set(headers)
+        return templates
+            .sorted { $0.createdAt > $1.createdAt }
+            .map(\.config)
+            .first { templateColumnsExist(in: headerSet, config: $0) }
+    }
+
+    private func templateColumnsExist(
+        in headerSet: Set<String>,
+        config: ColumnMappingConfig
+    ) -> Bool {
+        var columns = [config.dateColumn, config.amountColumn]
+        columns.append(
+            contentsOf: [
+                config.descriptionColumn,
+                config.merchantColumn,
+                config.categoryColumn,
+                config.accountColumn,
+                config.currencyColumn
+            ].compactMap { $0 }
+        )
+        return columns.allSatisfy { headerSet.contains($0) }
+    }
+
+    func importResultMessage(
+        importFileName: String,
+        upsertSummary: SourceTransactionUpsertSummary
+    ) -> String {
+        let breakdown = [
+            "\(upsertSummary.insertedCount) new",
+            "\(upsertSummary.updatedCount) updated",
+            "\(upsertSummary.unchangedCount) unchanged"
+        ].joined(separator: ", ")
+        return "Imported \(upsertSummary.reconciledCount) transactions from \(importFileName) (\(breakdown))."
     }
 
     func upsertTemplate(from mapping: ColumnMappingConfig, context: ModelContext) throws {
