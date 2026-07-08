@@ -219,7 +219,7 @@ struct SubscriptionsView: View {
     @ViewBuilder
     private var tidyUpButton: some View {
         let plan = appModel.reviewAutomationPlan(
-            subscriptions: subscriptions,
+            subscriptions: review,
             transactions: transactions,
             scopedImportRecordID: scopedImportRecordID
         )

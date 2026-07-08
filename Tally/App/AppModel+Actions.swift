@@ -883,7 +883,7 @@ extension AppModel {
         transactions: [NormalizedTransaction]
     ) -> ReviewAutomationPlan {
         let reviewSubscriptions = subscriptions
-            .filter { $0.status == .needsReview }
+            .filter { $0.libraryState == .suggested && $0.status == .needsReview }
             .sorted {
                 if $0.confidenceScore == $1.confidenceScore {
                     return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending

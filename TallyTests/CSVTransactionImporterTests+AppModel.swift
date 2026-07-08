@@ -555,6 +555,71 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testReviewAutomationPlanIgnoresHiddenIgnoredReviewItems() throws {
+        let appModel = AppModel.testing()
+        let visibleCandidate = makeAutomationSubscription(
+            name: "GitHub",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.91,
+            category: "Software"
+        )
+        let ignoredCandidate = makeAutomationSubscription(
+            name: "Dropbox",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.92,
+            category: "Software"
+        )
+        ignoredCandidate.libraryState = .ignored
+
+        let transactions = [
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -2,
+                subscriptionID: visibleCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -1,
+                subscriptionID: visibleCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -2,
+                subscriptionID: ignoredCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -1,
+                subscriptionID: ignoredCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            )
+        ]
+
+        let plan = appModel.reviewAutomationPlan(
+            subscriptions: [visibleCandidate, ignoredCandidate],
+            transactions: transactions
+        )
+
+        XCTAssertEqual(plan.confirmCandidates.map(\.displayName), ["GitHub"])
+        XCTAssertTrue(plan.suppressCandidates.isEmpty)
+        XCTAssertTrue(plan.manualCandidates.isEmpty)
+        XCTAssertEqual(plan.totalReviewCount, 1)
+    }
+
+    @MainActor
     func testAutomatedReviewConfirmationDoesNotDeleteUntouchedSubscriptions() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
