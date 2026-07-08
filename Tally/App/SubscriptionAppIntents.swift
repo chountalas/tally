@@ -285,8 +285,9 @@ private enum AppIntentURL {
 }
 
 @MainActor
-private enum AppIntentSubscriptionStore {
-    private static let containerResult: Result<ModelContainer, Error> = Result {
+enum AppIntentSubscriptionStore {
+    private static var cachedContainer: ModelContainer?
+    private static var makeContainer: () throws -> ModelContainer = {
         try ModelContainerFactory.makePersistentSharedContainer()
     }
 
@@ -307,6 +308,26 @@ private enum AppIntentSubscriptionStore {
     }
 
     private static func container() throws -> ModelContainer {
-        try containerResult.get()
+        if let cachedContainer {
+            return cachedContainer
+        }
+
+        let container = try makeContainer()
+        cachedContainer = container
+        return container
     }
+
+    #if DEBUG
+    static func configureForTesting(makeContainer: @escaping () throws -> ModelContainer) {
+        cachedContainer = nil
+        self.makeContainer = makeContainer
+    }
+
+    static func resetTestingConfiguration() {
+        cachedContainer = nil
+        makeContainer = {
+            try ModelContainerFactory.makePersistentSharedContainer()
+        }
+    }
+    #endif
 }

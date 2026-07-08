@@ -41,6 +41,7 @@
 		34FB9694A7F23473A19A3387 /* XLSBinaryTransactionImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40ACDE416CA5DD771796036C /* XLSBinaryTransactionImporter.swift */; };
 		35E01697689E259017AC5351 /* GemmaModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6212B594D59CA9944F895A /* GemmaModelManager.swift */; };
 		37C8A618C375CDCB34E8BF51 /* llama.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 0F02C962BF0094149EFD5235 /* llama.framework */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		3963A56FB39540442D061BD3 /* AppIntentSubscriptionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D4AD3D39915BAB88C0DABD4 /* AppIntentSubscriptionStoreTests.swift */; };
 		3A573BAC9ECA618E0FF05307 /* HeuristicMerchantClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 223A9CF0C8072CB4587A3C15 /* HeuristicMerchantClassifier.swift */; };
 		3AA473F1C286E2E1A2EC968E /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 515F92CE131E5A51CCBF3228 /* UserNotifications.framework */; };
 		3AA5446A181DD1ECE9BCEDBE /* ImportReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFB8E15D3DC347B90D7FED5A /* ImportReviewSheet.swift */; };
@@ -196,6 +197,7 @@
 		24998C8BC686BA437EBBDCDD /* XLSXTransactionImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XLSXTransactionImporter.swift; sourceTree = "<group>"; };
 		2748EDBA9A6FC124993C4FCA /* TestAppModelFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestAppModelFactory.swift; sourceTree = "<group>"; };
 		29DCBF9F4D7255E2F26C587C /* SubscriptionEvidenceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionEvidenceModels.swift; sourceTree = "<group>"; };
+		2D4AD3D39915BAB88C0DABD4 /* AppIntentSubscriptionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentSubscriptionStoreTests.swift; sourceTree = "<group>"; };
 		2D6D46B36BEC3BD766D8CEE9 /* TallyKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TallyKit.swift; sourceTree = "<group>"; };
 		2E11006388257E98B0C7BC44 /* AppDataExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataExporter.swift; sourceTree = "<group>"; };
 		2E33DE5E3DDBE28110EC94FB /* Tally.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tally.xcconfig; sourceTree = "<group>"; };
@@ -410,6 +412,7 @@
 			children = (
 				2245F92CD9353EF8158B3EC5 /* AIProviderSelectionTests.swift */,
 				CA849838446688EE72F591A4 /* AppDataExporterTests.swift */,
+				2D4AD3D39915BAB88C0DABD4 /* AppIntentSubscriptionStoreTests.swift */,
 				5F57082345B0FB6F0692002A /* AuditEngineTests.swift */,
 				D030CF4D49F52C81C8B19971 /* BankFeedTransactionAdapterTests.swift */,
 				8BAC47C68412832BFED7151E /* CadenceDetectionTests.swift */,
@@ -857,6 +860,7 @@
 			files = (
 				6496D1224FF87050E4C1030A /* AIProviderSelectionTests.swift in Sources */,
 				C8D06F6227CCAC056464770D /* AppDataExporterTests.swift in Sources */,
+				3963A56FB39540442D061BD3 /* AppIntentSubscriptionStoreTests.swift in Sources */,
 				18CCA69C15A411614EA44566 /* AuditEngineTests.swift in Sources */,
 				9FC9CE105A2399558C652C1B /* BankFeedTransactionAdapterTests.swift in Sources */,
 				DE7F5EFE8A2A2CA39E0A167F /* CSVTransactionImporterTests+AppModel.swift in Sources */,

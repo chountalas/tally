@@ -12,6 +12,7 @@ struct TransactionFieldParser {
     }()
 
     private static let currencySymbols = ["$", "€", "£", "¥", "₹", "₩", "¢"]
+    private static let currencyCodes = Set(Locale.commonISOCurrencyCodes.map { $0.uppercased() })
 
     private let dateComponentOrder: DateComponentOrder
     private let dateFormatters: [(format: String, formatter: DateFormatter)]
@@ -220,13 +221,40 @@ struct TransactionFieldParser {
         for symbol in currencySymbols {
             result = result.replacingOccurrences(of: symbol, with: "")
         }
-        // Remove standalone ISO 4217 currency codes (USD, EUR, CAD, ...).
-        result = result.replacingOccurrences(
-            of: #"(?i)\b[a-z]{3}\b"#,
-            with: "",
-            options: .regularExpression
-        )
+        result = strippingCurrencyCodes(from: result)
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func strippingCurrencyCodes(from value: String) -> String {
+        let pattern = #"\b[A-Za-z]{3}\b"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return value
+        }
+
+        let matches = expression.matches(
+            in: value,
+            range: NSRange(value.startIndex..<value.endIndex, in: value)
+        )
+        guard matches.isEmpty == false else {
+            return value
+        }
+
+        var result = ""
+        var currentIndex = value.startIndex
+        for match in matches {
+            guard let range = Range(match.range, in: value) else {
+                continue
+            }
+
+            result += value[currentIndex..<range.lowerBound]
+            let token = String(value[range])
+            if currencyCodes.contains(token.uppercased()) == false {
+                result += token
+            }
+            currentIndex = range.upperBound
+        }
+        result += value[currentIndex...]
+        return result
     }
 
     /// Normalizes thousands and decimal separators to a plain `1234.56` form,

@@ -320,8 +320,12 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertEqual(parser.tryParseAmount("€1.234,56"), Decimal(string: "1234.56"))
         XCTAssertEqual(parser.tryParseAmount("$1,234.56"), Decimal(string: "1234.56"))
         XCTAssertEqual(parser.tryParseAmount("12.50 USD"), Decimal(string: "12.50"))
+        XCTAssertEqual(parser.tryParseAmount("CAD 12.50"), Decimal(string: "12.50"))
         XCTAssertEqual(parser.tryParseAmount("-£12.00"), Decimal(string: "-12.00"))
         XCTAssertEqual(parser.tryParseAmount("(45,00)"), Decimal(string: "-45.00"))
+        XCTAssertNil(parser.tryParseAmount("ACH 123456"))
+        XCTAssertNil(parser.tryParseAmount("May 2026"))
+        XCTAssertNil(parser.tryParseAmount("fee 9.99"))
     }
 
     func testMappingIsLowConfidenceWhenNoAmountColumnParses() throws {
