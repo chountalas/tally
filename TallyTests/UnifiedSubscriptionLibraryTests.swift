@@ -169,7 +169,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
     }
 
-    func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
+    func testCalendarCleanupFailureDoesNotBlockLocalCancellationButBlocksRemoval() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
         var cleanupAttempts = 0
@@ -206,12 +206,17 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         try context.save()
 
         try appModel.cancelSubscription(id: activeSubscription.id, in: context)
-        try appModel.removeSubscription(id: formerSubscription.id, in: context)
+        XCTAssertThrowsError(try appModel.removeSubscription(id: formerSubscription.id, in: context)) { error in
+            XCTAssertTrue(error is RenewalCalendarError)
+        }
 
         XCTAssertEqual(cleanupAttempts, 2)
         XCTAssertEqual(activeSubscription.status, .former)
         XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
-        XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
+        XCTAssertEqual(
+            appModel.subscription(withID: formerSubscription.id, in: context)?.calendarEventIdentifier,
+            "old-event-to-clear"
+        )
     }
 
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
