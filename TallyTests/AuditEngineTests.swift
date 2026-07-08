@@ -266,7 +266,7 @@ struct DashboardMetricsRegressionTests {
         ))
     }
 
-    @Test func projectedRenewalDatesPreserveOriginalMonthEndBillingAnchor() throws {
+    @Test func projectedRenewalDatesAdvanceFromCurrentMonthEndRenewal() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
         func date(_ year: Int, _ month: Int, _ day: Int) throws -> Date {
@@ -297,7 +297,7 @@ struct DashboardMetricsRegressionTests {
         )
 
         let renewal = try #require(marchRenewals.first)
-        #expect(calendar.component(.day, from: renewal) == 31)
+        #expect(calendar.component(.day, from: renewal) == 29)
         #expect(marchRenewals.count == 1)
     }
 

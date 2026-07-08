@@ -80,7 +80,6 @@ extension DashboardMetrics {
             return []
         }
 
-        let anchor = calendar.startOfDay(for: subscription.lastChargeDate ?? currentRenewalDate)
         let displayStart = calendar.startOfDay(for: currentRenewalDate)
         let visibleStart = calendar.startOfDay(for: viewMonth)
         let visibleEnd = calendar.startOfDay(
@@ -88,22 +87,9 @@ extension DashboardMetrics {
         )
 
         var dates: [Date] = []
-        var period = 0
-        var previous: Date?
-        while period < 800 {
-            let projected: Date?
-            if period == 0 {
-                projected = anchor
-            } else {
-                projected = subscription.cadence.tallyAdvanced(anchor, by: period, using: calendar)
-            }
-
-            guard let current = projected.map(calendar.startOfDay(for:)) else {
-                break
-            }
-            if let previous, current <= previous {
-                break
-            }
+        var current = displayStart
+        var iterations = 0
+        while iterations < 800 {
             if current >= visibleEnd {
                 break
             }
@@ -111,8 +97,13 @@ extension DashboardMetrics {
                 dates.append(current)
             }
 
-            previous = current
-            period += 1
+            guard let next = subscription.cadence.tallyAdvanced(current, by: 1, using: calendar)
+                .map(calendar.startOfDay(for:)),
+                  next > current else {
+                break
+            }
+            current = next
+            iterations += 1
         }
 
         return dates

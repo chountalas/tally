@@ -32,6 +32,9 @@ final class RenewalCalendarService {
                 }
                 subscription.calendarEventIdentifier = nil
                 subscription.lastCalendarSyncAt = syncedAt
+                if context.hasChanges {
+                    try context.save()
+                }
                 continue
             }
 
@@ -50,9 +53,20 @@ final class RenewalCalendarService {
             ) ?? event.startDate
             event.notes = "Created by Tally."
 
-            try eventStore.save(event, span: .thisEvent, commit: true)
-            subscription.calendarEventIdentifier = event.eventIdentifier
-            subscription.lastCalendarSyncAt = syncedAt
+            do {
+                try eventStore.save(event, span: .thisEvent, commit: true)
+                subscription.calendarEventIdentifier = event.eventIdentifier
+                subscription.lastCalendarSyncAt = syncedAt
+                if context.hasChanges {
+                    try context.save()
+                }
+            } catch {
+                if existingEvent == nil, let eventIdentifier = event.eventIdentifier,
+                   let createdEvent = eventStore.event(withIdentifier: eventIdentifier) {
+                    try? eventStore.remove(createdEvent, span: .thisEvent)
+                }
+                throw error
+            }
 
             if existingEvent == nil {
                 summary.createdCount += 1
