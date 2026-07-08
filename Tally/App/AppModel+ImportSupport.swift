@@ -214,8 +214,13 @@ extension AppModel {
         _ draft: TransactionImportDraft,
         context: ModelContext
     ) -> TransactionImportDraft {
-        guard let config = matchingTemplateConfig(forHeaders: draft.headers, context: context) else {
+        guard var config = matchingTemplateConfig(forHeaders: draft.headers, context: context) else {
             return draft
+        }
+
+        let reusedTemplateSign = config.debitSignConvention == draft.suggestedMapping.debitSignConvention
+        if !reusedTemplateSign {
+            config.debitSignConvention = draft.suggestedMapping.debitSignConvention
         }
 
         return TransactionImportDraft(
@@ -225,7 +230,7 @@ extension AppModel {
             previewRows: draft.previewRows,
             rawRows: draft.rawRows,
             suggestedMapping: config,
-            confidence: 1.0
+            confidence: reusedTemplateSign ? 1.0 : draft.confidence
         )
     }
 

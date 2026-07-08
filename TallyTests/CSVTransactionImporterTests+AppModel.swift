@@ -124,7 +124,7 @@ extension CSVTransactionImporterTests {
                 categoryColumn: nil,
                 accountColumn: nil,
                 currencyColumn: nil,
-                debitSignConvention: .negative
+                debitSignConvention: .positive
             ),
             confidence: 0.33
         )
@@ -133,6 +133,53 @@ extension CSVTransactionImporterTests {
 
         XCTAssertEqual(resolved.suggestedMapping, storedMapping)
         XCTAssertEqual(resolved.confidence, 1.0)
+    }
+
+    @MainActor
+    func testStoredTemplateKeepsInferredDebitSignWhenHeaderOnlyMatchDisagrees() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Description",
+            amountColumn: "Amount",
+            merchantColumn: "Description",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: nil,
+            amountColumn: "Amount",
+            merchantColumn: "Description",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let draft = TransactionImportDraft(
+            fileName: "other-bank.csv",
+            headers: ["Date", "Description", "Amount"],
+            previewRows: [],
+            rawRows: [["Date": "2025-01-01", "Description": "Netflix", "Amount": "-15.49"]],
+            suggestedMapping: guessedMapping,
+            confidence: 0.68
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping.dateColumn, storedMapping.dateColumn)
+        XCTAssertEqual(resolved.suggestedMapping.amountColumn, storedMapping.amountColumn)
+        XCTAssertEqual(resolved.suggestedMapping.merchantColumn, storedMapping.merchantColumn)
+        XCTAssertEqual(resolved.suggestedMapping.debitSignConvention, .negative)
+        XCTAssertEqual(resolved.confidence, 0.68)
     }
 
     @MainActor
