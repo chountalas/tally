@@ -32,6 +32,16 @@ struct SubscriptionDetailView: View {
     /// shares the active layout for next-charge / tenure / renews. Stale active
     /// records render as ended until the next rebuild persists that status.
     private var isOngoing: Bool { displayStatus != .former }
+    private var isManualRecord: Bool {
+        sub.creationPath == .manual || sub.libraryState == .manual
+    }
+    private var removalMessage: String {
+        if isManualRecord {
+            return "This deletes it from your list. You can't undo this."
+        }
+
+        return "This deletes it from your list and stops Tally from detecting \(sub.tallyName) in future imports. You can't undo this."
+    }
 
     var body: some View {
         ScrollView {
@@ -65,7 +75,7 @@ struct SubscriptionDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This deletes it from your list and stops Tally from detecting \(sub.tallyName) in future imports. You can't undo this.")
+            Text(removalMessage)
         }
     }
 
