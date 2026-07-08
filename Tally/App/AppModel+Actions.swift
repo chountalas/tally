@@ -939,6 +939,30 @@ extension AppModel {
         )
     }
 
+    func reviewAutomationPlan(
+        subscriptions: [Subscription],
+        transactions: [NormalizedTransaction],
+        scopedImportRecordID: UUID?
+    ) -> ReviewAutomationPlan {
+        guard let scopedImportRecordID else {
+            return reviewAutomationPlan(subscriptions: subscriptions, transactions: transactions)
+        }
+
+        let scopedSubscriptionIDs = Set(transactions.compactMap { transaction in
+            transaction.importRecordID == scopedImportRecordID ? transaction.subscriptionID : nil
+        })
+        guard scopedSubscriptionIDs.isEmpty == false else {
+            return .empty
+        }
+
+        return reviewAutomationPlan(
+            subscriptions: subscriptions.filter { scopedSubscriptionIDs.contains($0.id) },
+            transactions: transactions.filter { transaction in
+                transaction.subscriptionID.map { scopedSubscriptionIDs.contains($0) } ?? false
+            }
+        )
+    }
+
     @discardableResult
     func applyAutomatedReviewDecisions(
         _ candidates: [ReviewAutomationCandidate],

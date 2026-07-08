@@ -220,7 +220,8 @@ struct SubscriptionsView: View {
     private var tidyUpButton: some View {
         let plan = appModel.reviewAutomationPlan(
             subscriptions: subscriptions,
-            transactions: transactions
+            transactions: transactions,
+            scopedImportRecordID: scopedImportRecordID
         )
         let decidableCount = plan.confirmCandidates.count + plan.suppressCandidates.count
         if decidableCount > 0 {

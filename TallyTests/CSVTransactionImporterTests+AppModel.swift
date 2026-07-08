@@ -475,6 +475,86 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testReviewAutomationPlanScopesToImportReviewItems() throws {
+        let appModel = AppModel.testing()
+        let firstImport = ImportRecord(
+            fileName: "first.csv",
+            sourceType: "csv",
+            status: .analyzed,
+            mappingSignature: "first"
+        )
+        let secondImport = ImportRecord(
+            fileName: "second.csv",
+            sourceType: "csv",
+            status: .analyzed,
+            mappingSignature: "second"
+        )
+        let firstCandidate = makeAutomationSubscription(
+            name: "GitHub",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.91,
+            category: "Software"
+        )
+        let secondCandidate = makeAutomationSubscription(
+            name: "Dropbox",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.92,
+            category: "Software"
+        )
+        let transactions = [
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -2,
+                subscriptionID: firstCandidate.id,
+                importRecordID: firstImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -1,
+                subscriptionID: firstCandidate.id,
+                importRecordID: firstImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -2,
+                subscriptionID: secondCandidate.id,
+                importRecordID: secondImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -1,
+                subscriptionID: secondCandidate.id,
+                importRecordID: secondImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            )
+        ]
+
+        let plan = appModel.reviewAutomationPlan(
+            subscriptions: [firstCandidate, secondCandidate],
+            transactions: transactions,
+            scopedImportRecordID: firstImport.id
+        )
+
+        XCTAssertEqual(plan.confirmCandidates.map(\.displayName), ["GitHub"])
+        XCTAssertTrue(plan.suppressCandidates.isEmpty)
+        XCTAssertTrue(plan.manualCandidates.isEmpty)
+        XCTAssertEqual(plan.totalReviewCount, 1)
+    }
+
+    @MainActor
     func testAutomatedReviewConfirmationDoesNotDeleteUntouchedSubscriptions() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
