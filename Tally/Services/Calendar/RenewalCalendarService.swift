@@ -110,7 +110,9 @@ final class RenewalCalendarService {
     }
 
     private func tallyCalendar() throws -> EKCalendar {
-        if let calendar = eventStore.calendars(for: .event).first(where: { $0.title == calendarTitle }) {
+        if let calendar = eventStore.calendars(for: .event).first(
+            where: { $0.title == calendarTitle && $0.allowsContentModifications }
+        ) {
             return calendar
         }
 

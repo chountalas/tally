@@ -290,8 +290,8 @@ struct TransactionFieldParser {
 
         if hasDot {
             let parts = value.components(separatedBy: ".")
-            if parts.count > 2 {
-                // Multiple dots can only be thousands separators.
+            if parts.count > 2 || (parts.count == 2 && parts[1].count == 3) {
+                // Dots followed by three digits are thousands separators.
                 return value.replacingOccurrences(of: ".", with: "")
             }
         }
