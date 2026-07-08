@@ -20,12 +20,17 @@ final class RenewalCalendarService {
 
         let tallyCalendar = try tallyCalendar()
         let syncedAt = Date()
+        let systemCalendar = Calendar.current
         var summary = RenewalCalendarSyncSummary()
 
         for subscription in subscriptions {
             guard
-                DashboardMetrics.displayStatus(for: subscription) == .active,
-                let renewalDate = DashboardMetrics.currentRenewalDate(for: subscription)
+                DashboardMetrics.displayStatus(for: subscription, referenceDate: syncedAt) == .active,
+                let renewalDate = Self.upcomingCalendarRenewalDate(
+                    for: subscription,
+                    referenceDate: syncedAt,
+                    calendar: systemCalendar
+                )
             else {
                 if try removeSyncedEvent(for: subscription) {
                     summary.removedCount += 1
@@ -45,8 +50,8 @@ final class RenewalCalendarService {
             event.calendar = tallyCalendar
             event.title = "\(subscription.displayName) renewal"
             event.isAllDay = true
-            event.startDate = Calendar.current.startOfDay(for: renewalDate)
-            event.endDate = Calendar.current.date(
+            event.startDate = systemCalendar.startOfDay(for: renewalDate)
+            event.endDate = systemCalendar.date(
                 byAdding: .day,
                 value: 1,
                 to: event.startDate
@@ -77,6 +82,37 @@ final class RenewalCalendarService {
 
         try context.save()
         return summary
+    }
+
+    static func upcomingCalendarRenewalDate(
+        for subscription: Subscription,
+        referenceDate: Date = .now,
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard let renewalDate = DashboardMetrics.currentRenewalDate(
+            for: subscription,
+            referenceDate: referenceDate
+        ) else {
+            return nil
+        }
+
+        let today = calendar.startOfDay(for: referenceDate)
+        var scheduledDate = calendar.startOfDay(for: renewalDate)
+        var iterations = 0
+
+        while scheduledDate < today {
+            guard iterations < 800,
+                  let next = subscription.cadence.advance(scheduledDate, using: calendar)
+                    .map(calendar.startOfDay(for:)),
+                  next > scheduledDate else {
+                return nil
+            }
+
+            scheduledDate = next
+            iterations += 1
+        }
+
+        return scheduledDate
     }
 
     func clearSyncedEvents(for subscriptions: [Subscription], context: ModelContext) throws {

@@ -791,6 +791,60 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(snapshot?.detailLabel, "Expected renewal was 13 days ago.")
     }
 
+    func testCalendarRenewalDateAdvancesOverdueActiveRenewals() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone.current
+
+        let subscription = Subscription(
+            canonicalName: "Figma",
+            displayName: "Figma",
+            status: .active,
+            libraryState: .confirmed,
+            cadence: .monthly,
+            priceAmount: 15,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: 15,
+            lastChargeDate: date(2026, 3, 15, calendar: calendar),
+            predictedNextChargeDate: date(2026, 4, 15, calendar: calendar),
+            confidenceScore: 0.91
+        )
+
+        let renewalDate = RenewalCalendarService.upcomingCalendarRenewalDate(
+            for: subscription,
+            referenceDate: date(2026, 4, 18, calendar: calendar),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(renewalDate, date(2026, 5, 15, calendar: calendar))
+    }
+
+    func testCalendarRenewalDateKeepsFutureRenewals() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone.current
+
+        let subscription = Subscription(
+            canonicalName: "Linear",
+            displayName: "Linear",
+            status: .active,
+            libraryState: .confirmed,
+            cadence: .monthly,
+            priceAmount: 10,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: 10,
+            lastChargeDate: date(2026, 4, 15, calendar: calendar),
+            predictedNextChargeDate: date(2026, 5, 15, calendar: calendar),
+            confidenceScore: 0.9
+        )
+
+        let renewalDate = RenewalCalendarService.upcomingCalendarRenewalDate(
+            for: subscription,
+            referenceDate: date(2026, 4, 18, calendar: calendar),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(renewalDate, date(2026, 5, 15, calendar: calendar))
+    }
+
     func testRecurringSaaSClusterPromotesToConfirmedInsteadOfLingeringInReview() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
