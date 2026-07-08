@@ -59,6 +59,30 @@ final class LibraryResetServiceTests: XCTestCase {
         try assertStoreEmpty(Subscription.self, in: context)
     }
 
+    func testClearLibraryQueuesCalendarCleanupWhenAccessDenied() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        seedOneOfEachModel(in: context)
+        let subscription = try XCTUnwrap(try context.fetch(FetchDescriptor<Subscription>()).first)
+        subscription.calendarEventIdentifier = "event-to-clear-after-reset"
+        try context.save()
+
+        var recordedPendingIDs: [String] = []
+        let service = LibraryResetService(
+            calendarEventCleaner: { _, _ in
+                throw RenewalCalendarError.accessDenied
+            },
+            pendingCalendarEventRecorder: { identifiers in
+                recordedPendingIDs.append(contentsOf: identifiers)
+            }
+        )
+
+        _ = try service.clearLibrary(in: context, includeTemplates: false)
+
+        XCTAssertEqual(recordedPendingIDs, ["event-to-clear-after-reset"])
+        try assertStoreEmpty(Subscription.self, in: context)
+    }
+
     // MARK: Helpers
 
     private func assertStoreEmpty<T: PersistentModel>(

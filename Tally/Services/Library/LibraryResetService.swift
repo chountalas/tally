@@ -52,15 +52,23 @@ struct LibraryResetSummary {
 
 @MainActor
 final class LibraryResetService {
-    private let calendarService: RenewalCalendarService
     private let notificationService: RenewalNotificationService
+    private let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
+    private let pendingCalendarEventRecorder: ([String]) -> Void
 
     init(
         calendarService: RenewalCalendarService = RenewalCalendarService(),
-        notificationService: RenewalNotificationService = RenewalNotificationService()
+        notificationService: RenewalNotificationService = RenewalNotificationService(),
+        calendarEventCleaner: (([Subscription], ModelContext) throws -> Void)? = nil,
+        pendingCalendarEventRecorder: @escaping ([String]) -> Void = { identifiers in
+            PendingCalendarEventCleanupStore.record(identifiers)
+        }
     ) {
-        self.calendarService = calendarService
         self.notificationService = notificationService
+        self.calendarEventCleaner = calendarEventCleaner ?? { subscriptions, context in
+            try calendarService.clearSyncedEvents(for: subscriptions, context: context)
+        }
+        self.pendingCalendarEventRecorder = pendingCalendarEventRecorder
     }
 
     func clearLibrary(in context: ModelContext, includeTemplates: Bool = false) throws -> LibraryResetSummary {
@@ -73,9 +81,10 @@ final class LibraryResetService {
         let templates = includeTemplates ? try context.fetch(FetchDescriptor<ColumnMappingTemplate>()) : []
 
         do {
-            try calendarService.clearSyncedEvents(for: subscriptions, context: context)
+            try calendarEventCleaner(subscriptions, context)
         } catch RenewalCalendarError.accessDenied {
             // Local subscription state is about to be deleted, so cleanup failure should not block the reset.
+            pendingCalendarEventRecorder(subscriptions.compactMap(\.calendarEventIdentifier))
         }
 
         do {
