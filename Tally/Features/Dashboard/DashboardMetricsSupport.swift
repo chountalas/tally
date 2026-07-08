@@ -67,6 +67,57 @@ extension DashboardMetrics {
             }
     }
 
+    static func projectedRenewalDates(
+        for subscription: Subscription,
+        inVisibleMonth viewMonth: Date,
+        calendar: Calendar = .current,
+        referenceDate: Date = .now
+    ) -> [Date] {
+        guard let currentRenewalDate = currentRenewalDate(
+            for: subscription,
+            referenceDate: referenceDate
+        ) else {
+            return []
+        }
+
+        let anchor = calendar.startOfDay(for: subscription.lastChargeDate ?? currentRenewalDate)
+        let displayStart = calendar.startOfDay(for: currentRenewalDate)
+        let visibleStart = calendar.startOfDay(for: viewMonth)
+        let visibleEnd = calendar.startOfDay(
+            for: calendar.date(byAdding: .month, value: 1, to: visibleStart) ?? visibleStart
+        )
+
+        var dates: [Date] = []
+        var period = 0
+        var previous: Date?
+        while period < 800 {
+            let projected: Date?
+            if period == 0 {
+                projected = anchor
+            } else {
+                projected = subscription.cadence.tallyAdvanced(anchor, by: period, using: calendar)
+            }
+
+            guard let current = projected.map(calendar.startOfDay(for:)) else {
+                break
+            }
+            if let previous, current <= previous {
+                break
+            }
+            if current >= visibleEnd {
+                break
+            }
+            if current >= visibleStart, current >= displayStart {
+                dates.append(current)
+            }
+
+            previous = current
+            period += 1
+        }
+
+        return dates
+    }
+
     static func probableRenewals(
         from subscriptions: [Subscription],
         renewalCutoff: Date,

@@ -52,36 +52,12 @@ struct CalendarView: View {
         return result
     }
 
-    private var nextMonth: Date {
-        calendar.date(byAdding: .month, value: 1, to: viewMonth) ?? viewMonth
-    }
-
     private func renewalDates(inVisibleMonthFor sub: Subscription) -> [Date] {
-        guard let currentRenewalDate = DashboardMetrics.currentRenewalDate(for: sub) else { return [] }
-
-        var dates: [Date] = []
-        // Always advance from the anchor date so month-end renewals keep their
-        // day (Jan 31 → Feb 28 → Mar 31) instead of sticking to the clamp.
-        let anchor = calendar.startOfDay(for: currentRenewalDate)
-        let visibleStart = calendar.startOfDay(for: viewMonth)
-        let visibleEnd = calendar.startOfDay(for: nextMonth)
-
-        var current = anchor
-        var period = 0
-        while current < visibleEnd && period < 800 {
-            if current >= visibleStart {
-                dates.append(current)
-            }
-            period += 1
-            guard let next = sub.cadence.tallyAdvanced(anchor, by: period, using: calendar)
-                .map(calendar.startOfDay(for:)),
-                  next > current else {
-                break
-            }
-            current = next
-        }
-
-        return dates
+        DashboardMetrics.projectedRenewalDates(
+            for: sub,
+            inVisibleMonth: viewMonth,
+            calendar: calendar
+        )
     }
 
     var body: some View {

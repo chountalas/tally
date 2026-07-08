@@ -266,6 +266,76 @@ struct DashboardMetricsRegressionTests {
         ))
     }
 
+    @Test func projectedRenewalDatesPreserveOriginalMonthEndBillingAnchor() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        func date(_ year: Int, _ month: Int, _ day: Int) throws -> Date {
+            try #require(calendar.date(from: DateComponents(
+                timeZone: calendar.timeZone,
+                year: year,
+                month: month,
+                day: day,
+                hour: 12
+            )))
+        }
+
+        let subscription = makeSubscription(
+            name: "Month End Tool",
+            price: 12,
+            cadence: .monthly,
+            confidence: 0.92,
+            status: .active
+        )
+        subscription.lastChargeDate = try date(2024, 1, 31)
+        subscription.predictedNextChargeDate = try date(2024, 2, 29)
+
+        let marchRenewals = DashboardMetrics.projectedRenewalDates(
+            for: subscription,
+            inVisibleMonth: try date(2024, 3, 1),
+            calendar: calendar,
+            referenceDate: try date(2024, 2, 1)
+        )
+
+        let renewal = try #require(marchRenewals.first)
+        #expect(calendar.component(.day, from: renewal) == 31)
+        #expect(marchRenewals.count == 1)
+    }
+
+    @Test func priceChangedSubscriptionsUseDisplayedPersistedPercent() {
+        let formatter = ISO8601DateFormatter()
+        let subscription = makeSubscription(
+            name: "Storage App",
+            price: 20,
+            cadence: .monthly,
+            status: .active
+        )
+        let oldCharge = makeTransaction(
+            id: UUID(),
+            date: formatter.date(from: "2026-01-05T00:00:00Z") ?? .now,
+            amount: Decimal(string: "-10.00") ?? -10,
+            subscriptionID: subscription.id
+        )
+        let newCharge = makeTransaction(
+            id: UUID(),
+            date: formatter.date(from: "2026-02-05T00:00:00Z") ?? .now,
+            amount: Decimal(string: "-20.00") ?? -20,
+            subscriptionID: subscription.id
+        )
+
+        let metricsWithoutDisplayedChange = DashboardMetrics(
+            subscriptions: [subscription],
+            transactions: [oldCharge, newCharge]
+        )
+        #expect(metricsWithoutDisplayedChange.priceChangedSubscriptions.isEmpty)
+
+        subscription.priceChangePercent = 1.0
+        let metricsWithDisplayedChange = DashboardMetrics(
+            subscriptions: [subscription],
+            transactions: [oldCharge, newCharge]
+        )
+        #expect(metricsWithDisplayedChange.priceChangedSubscriptions.map(\.id) == [subscription.id])
+    }
+
     @MainActor
     @Test func reviewConfirmedStatusUsesCadenceGraceForAnnualRenewals() {
         let appModel = AppModel()
