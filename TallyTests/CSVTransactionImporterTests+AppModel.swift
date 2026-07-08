@@ -234,6 +234,50 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testStoredTemplateIsIgnoredWhenOnlyNormalizedHeadersMatch() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Txn Date",
+            descriptionColumn: "Details",
+            amountColumn: "Value",
+            merchantColumn: "Details",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "txn-date",
+            descriptionColumn: "details",
+            amountColumn: "value",
+            merchantColumn: "details",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        let draft = TransactionImportDraft(
+            fileName: "normalized-only.csv",
+            headers: ["txn-date", "details", "value"],
+            previewRows: [],
+            rawRows: [["txn-date": "2025-01-01", "details": "Netflix", "value": "15.49"]],
+            suggestedMapping: guessedMapping,
+            confidence: 0.61
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
+        XCTAssertEqual(resolved.confidence, 0.61)
+    }
+
+    @MainActor
     func testStoredTemplatePreservesDraftWarnings() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

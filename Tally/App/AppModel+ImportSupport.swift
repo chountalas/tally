@@ -246,7 +246,7 @@ extension AppModel {
             return nil
         }
 
-        let headerSet = normalizedHeaderSet(for: headers)
+        let headerSet = Set(headers)
         return templates
             .sorted { $0.createdAt > $1.createdAt }
             .map(\.config)
@@ -257,7 +257,7 @@ extension AppModel {
         in headerSet: Set<String>,
         config: ColumnMappingConfig
     ) -> Bool {
-        normalizedHeaderSet(for: templateColumns(from: config)) == headerSet
+        Set(templateColumns(from: config)) == headerSet
     }
 
     private func templateColumns(from config: ColumnMappingConfig) -> [String] {
@@ -270,10 +270,6 @@ extension AppModel {
             config.accountColumn,
             config.currencyColumn
         ].compactMap { $0 }
-    }
-
-    private func normalizedHeaderSet(for headers: [String]) -> Set<String> {
-        Set(headers.map(\.normalizedColumnName).filter { !$0.isEmpty })
     }
 
     func importResultMessage(
