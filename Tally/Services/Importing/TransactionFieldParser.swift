@@ -188,10 +188,11 @@ struct TransactionFieldParser {
             return nil
         }
 
-        let isParentheticalNegative = trimmed.hasPrefix("(") && trimmed.hasSuffix(")")
         let singleDotGroupsThousands = Self.singleDotGroupsThousands(in: trimmed)
 
         var working = Self.strippingCurrency(from: trimmed)
+        let isParentheticalNegative = working.hasPrefix("(") && working.hasSuffix(")")
+        working = working
             .replacingOccurrences(of: "(", with: "")
             .replacingOccurrences(of: ")", with: "")
             .replacingOccurrences(of: "+", with: "")

@@ -325,6 +325,8 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertEqual(parser.tryParseAmount("CAD 12.50"), Decimal(string: "12.50"))
         XCTAssertEqual(parser.tryParseAmount("-£12.00"), Decimal(string: "-12.00"))
         XCTAssertEqual(parser.tryParseAmount("(45,00)"), Decimal(string: "-45.00"))
+        XCTAssertEqual(parser.tryParseAmount("USD (12.34)"), Decimal(string: "-12.34"))
+        XCTAssertEqual(parser.tryParseAmount("$ (12.34)"), Decimal(string: "-12.34"))
         XCTAssertNil(parser.tryParseAmount("ACH 123456"))
         XCTAssertNil(parser.tryParseAmount("May 2026"))
         XCTAssertNil(parser.tryParseAmount("fee 9.99"))
