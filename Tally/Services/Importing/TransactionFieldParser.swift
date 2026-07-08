@@ -189,6 +189,7 @@ struct TransactionFieldParser {
         }
 
         let isParentheticalNegative = trimmed.hasPrefix("(") && trimmed.hasSuffix(")")
+        let singleDotGroupsThousands = Self.singleDotGroupsThousands(in: trimmed)
 
         var working = Self.strippingCurrency(from: trimmed)
             .replacingOccurrences(of: "(", with: "")
@@ -199,7 +200,10 @@ struct TransactionFieldParser {
             return nil
         }
 
-        working = Self.normalizeDecimalSeparators(in: working)
+        working = Self.normalizeDecimalSeparators(
+            in: working,
+            singleDotGroupsThousands: singleDotGroupsThousands
+        )
 
         guard working.range(of: #"^-?\d+(\.\d+)?$"#, options: .regularExpression) != nil else {
             return nil
@@ -259,7 +263,10 @@ struct TransactionFieldParser {
 
     /// Normalizes thousands and decimal separators to a plain `1234.56` form,
     /// handling European decimal commas (`1.234,56` and `1234,56`).
-    private static func normalizeDecimalSeparators(in value: String) -> String {
+    private static func normalizeDecimalSeparators(
+        in value: String,
+        singleDotGroupsThousands: Bool
+    ) -> String {
         let hasComma = value.contains(",")
         let hasDot = value.contains(".")
 
@@ -290,13 +297,17 @@ struct TransactionFieldParser {
 
         if hasDot {
             let parts = value.components(separatedBy: ".")
-            if parts.count > 2 || (parts.count == 2 && parts[1].count == 3) {
+            if parts.count > 2 || (singleDotGroupsThousands && parts.count == 2 && parts[1].count == 3) {
                 // Dots followed by three digits are thousands separators.
                 return value.replacingOccurrences(of: ".", with: "")
             }
         }
 
         return value
+    }
+
+    private static func singleDotGroupsThousands(in value: String) -> Bool {
+        value.contains("€")
     }
 }
 

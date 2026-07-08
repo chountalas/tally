@@ -315,6 +315,7 @@ final class CSVTransactionImporterTests: XCTestCase {
     func testParserHandlesEuropeanDecimalCommaAndCurrencies() throws {
         let parser = TransactionFieldParser()
         XCTAssertEqual(parser.tryParseAmount("1.234,56"), Decimal(string: "1234.56"))
+        XCTAssertEqual(parser.tryParseAmount("1.234"), Decimal(string: "1.234"))
         XCTAssertEqual(parser.tryParseAmount("€1.234"), Decimal(string: "1234"))
         XCTAssertEqual(parser.tryParseAmount("1234,56"), Decimal(string: "1234.56"))
         XCTAssertEqual(parser.tryParseAmount("1,234.56"), Decimal(string: "1234.56"))
