@@ -252,7 +252,12 @@ enum TabularHeaderDetector {
     }
 
     private static func headerScore(_ row: [String], followedBy followingRows: [[String]]) -> Double {
-        let parser = TransactionFieldParser()
+        let dateParser = TransactionFieldParser(
+            dateComponentOrder: TransactionFieldParser.inferDateComponentOrder(
+                fromSamples: followingRows.flatMap { $0 }
+            )
+        )
+        let amountParser = TransactionFieldParser()
         let labels = row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard labels.count >= 2 else {
@@ -266,8 +271,8 @@ enum TabularHeaderDetector {
 
         let labelLikeCount = labels.filter { value in
             value.containsLetter &&
-                parser.tryParseDate(value) == nil &&
-                parser.tryParseAmount(value) == nil
+                dateParser.tryParseDate(value) == nil &&
+                amountParser.tryParseAmount(value) == nil
         }.count
         guard Double(labelLikeCount) / Double(labels.count) >= 0.6 else {
             return 0
@@ -280,8 +285,8 @@ enum TabularHeaderDetector {
                 return false
             }
 
-            let hasDate = values.contains { parser.tryParseDate($0) != nil }
-            let hasAmount = values.contains { parser.tryParseAmount($0) != nil }
+            let hasDate = values.contains { dateParser.tryParseDate($0) != nil }
+            let hasAmount = values.contains { amountParser.tryParseAmount($0) != nil }
             return hasDate && hasAmount
         }
         guard hasTransactionData else {

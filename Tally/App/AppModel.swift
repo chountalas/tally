@@ -500,6 +500,9 @@ private enum BankFeedImportPreparationService {
                 text: text,
                 source: source
             ).prepareTransactions()
+            guard drafts.isEmpty == false else {
+                throw BankFeedImportPreparationError.noUsableTransactions
+            }
             return .success(drafts)
         } catch {
             return .failure(error.localizedDescription)
@@ -545,12 +548,15 @@ private enum BankFeedImportPreparationOutcome: Sendable {
 
 private enum BankFeedImportPreparationError: LocalizedError {
     case unreadableContent
+    case noUsableTransactions
     case fileTooLarge(actualBytes: Int64, maxBytes: Int64)
 
     var errorDescription: String? {
         switch self {
         case .unreadableContent:
             return "The selected OFX/QFX file could not be decoded."
+        case .noUsableTransactions:
+            return "The selected OFX/QFX file did not contain any usable transactions."
         case let .fileTooLarge(actualBytes, maxBytes):
             let actualMB = Double(actualBytes) / 1_000_000
             let maxMB = Double(maxBytes) / 1_000_000

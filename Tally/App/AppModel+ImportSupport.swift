@@ -230,7 +230,8 @@ extension AppModel {
             previewRows: draft.previewRows,
             rawRows: draft.rawRows,
             suggestedMapping: config,
-            confidence: reusedTemplateSign ? 1.0 : draft.confidence
+            confidence: reusedTemplateSign ? 1.0 : draft.confidence,
+            warnings: draft.warnings
         )
     }
 

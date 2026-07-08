@@ -183,6 +183,41 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testStoredTemplatePreservesDraftWarnings() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: nil,
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let draft = TransactionImportDraft(
+            fileName: "reuse.csv",
+            headers: ["Date", "Merchant", "Amount"],
+            previewRows: [],
+            rawRows: [["Date": "2025-01-01", "Merchant": "Netflix", "Amount": "-15.49"]],
+            suggestedMapping: storedMapping,
+            confidence: 0.9,
+            warnings: ["Skipped 2 leading preamble rows before the detected header row."]
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, storedMapping)
+        XCTAssertEqual(resolved.warnings, draft.warnings)
+    }
+
+    @MainActor
     func testStoredTemplateIsIgnoredWhenColumnsMissing() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

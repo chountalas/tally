@@ -69,6 +69,39 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testEmptyOFXImportFailsInsteadOfReportingSuccess() async throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("ofx")
+        let text = """
+        <OFX>
+        <BANKTRANLIST>
+        </BANKTRANLIST>
+        </OFX>
+        """
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        appModel.prepareImport(from: url, into: context)
+        try await waitForImportPreparation(toFinish: appModel)
+
+        let imports = try context.fetch(FetchDescriptor<ImportRecord>())
+        let transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
+
+        XCTAssertNil(appModel.importDraft)
+        XCTAssertEqual(imports.count, 1)
+        XCTAssertEqual(imports.first?.status, .failed)
+        XCTAssertEqual(imports.first?.sourceType, "ofx")
+        XCTAssertTrue(transactions.isEmpty)
+        XCTAssertTrue(
+            appModel.importErrorMessage?.localizedCaseInsensitiveContains("usable transactions") == true
+        )
+    }
+
+    @MainActor
     private func waitForImportPreparation(toFinish appModel: AppModel) async throws {
         for _ in 0..<100 where appModel.isPreparingImport {
             try await Task.sleep(nanoseconds: 50_000_000)
