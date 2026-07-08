@@ -14,12 +14,13 @@ struct TransactionFieldParser {
     private static let currencySymbols = ["$", "€", "£", "¥", "₹", "₩", "¢"]
 
     private let dateComponentOrder: DateComponentOrder
-    private let dateFormatters: [DateFormatter]
+    private let dateFormatters: [(format: String, formatter: DateFormatter)]
 
     init(dateComponentOrder: DateComponentOrder = .monthFirst, timeZone: TimeZone = .current) {
         self.dateComponentOrder = dateComponentOrder
-        self.dateFormatters = Self.dateFormats(order: dateComponentOrder)
-            .map { Self.makeDateFormatter(format: $0, timeZone: timeZone) }
+        self.dateFormatters = Self.dateFormats(order: dateComponentOrder).map { format in
+            (format, Self.makeDateFormatter(format: format, timeZone: timeZone))
+        }
     }
 
     private static func makeDateFormatter(format: String, timeZone: TimeZone) -> DateFormatter {
@@ -27,6 +28,7 @@ struct TransactionFieldParser {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = format
+        formatter.isLenient = false
         return formatter
     }
 
@@ -48,8 +50,8 @@ struct TransactionFieldParser {
     }
 
     private static func numericDateFormats(order: DateComponentOrder) -> [String] {
-        // Four-digit years are listed before two-digit years so that a value like
-        // 06/07/2026 matches the yyyy variant instead of being partially consumed by yy.
+        // Four-digit years stay before two-digit years, but parseDateCandidate
+        // filters these formats by the actual year token length.
         let years = ["yyyy", "yy"]
         let separators = ["/", "-", "."]
         let dayFirstPairs = [("dd", "MM"), ("d", "M"), ("MM", "dd"), ("M", "d")]
@@ -97,13 +99,44 @@ struct TransactionFieldParser {
             return isoDate
         }
 
-        for formatter in dateFormatters {
+        let trailingYearLength = Self.trailingNumericYearLength(in: value)
+        for entry in dateFormatters {
+            if let trailingYearLength {
+                guard entry.format.hasSuffix("yyyy") || entry.format.hasSuffix("yy") else {
+                    continue
+                }
+                if entry.format.hasSuffix("yyyy"), trailingYearLength != 4 {
+                    continue
+                }
+                if !entry.format.hasSuffix("yyyy"),
+                   entry.format.hasSuffix("yy"),
+                   trailingYearLength != 2 {
+                    continue
+                }
+            }
+
+            let formatter = entry.formatter
             if let date = formatter.date(from: value) {
                 return date
             }
         }
 
         return nil
+    }
+
+    private static func trailingNumericYearLength(in value: String) -> Int? {
+        let pattern = #"^\d{1,2}([/\-.])\d{1,2}\1(\d{2}|\d{4})$"#
+        guard
+            let expression = try? NSRegularExpression(pattern: pattern),
+            let match = expression.firstMatch(
+                in: value,
+                range: NSRange(value.startIndex..<value.endIndex, in: value)
+            ),
+            let range = Range(match.range(at: 2), in: value)
+        else {
+            return nil
+        }
+        return value[range].count
     }
 
     private static func strippingTimeSuffix(from value: String) -> String? {

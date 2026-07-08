@@ -300,9 +300,16 @@ final class CSVTransactionImporterTests: XCTestCase {
         XCTAssertNotNil(parser.tryParseDate("2025/03/05"))
         XCTAssertNotNil(parser.tryParseDate("05.03.2025"))
         XCTAssertNotNil(parser.tryParseDate("05-03-2025"))
-        XCTAssertNotNil(parser.tryParseDate("3/5/25"))
         XCTAssertNotNil(parser.tryParseDate("2025-03-05 13:45:00"))
         XCTAssertNotNil(parser.tryParseDate("2025-03-05T13:45:00"))
+
+        let twoDigitYear = try? XCTUnwrap(parser.tryParseDate("3/5/25"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let components = calendar.dateComponents([.year, .month, .day], from: twoDigitYear ?? .distantPast)
+        XCTAssertEqual(components.year, 2025)
+        XCTAssertEqual(components.month, 3)
+        XCTAssertEqual(components.day, 5)
     }
 
     func testParserHandlesEuropeanDecimalCommaAndCurrencies() throws {

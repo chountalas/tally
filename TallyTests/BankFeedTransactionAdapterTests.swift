@@ -60,6 +60,56 @@ final class BankFeedTransactionAdapterTests: XCTestCase {
         XCTAssertEqual(drafts.map(\.externalTransactionID), ["ofx-1", "ofx-2"])
     }
 
+    func testOFXAdapterPreservesAccountScopeAcrossStatementSections() async throws {
+        let text = """
+        <OFX>
+        <BANKMSGSRSV1>
+        <STMTTRNRS>
+        <STMTRS>
+        <CURDEF>USD
+        <BANKACCTFROM>
+        <ACCTID>checking-1
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+        <STMTTRN>
+        <TRNTYPE>DEBIT
+        <DTPOSTED>20260514000000
+        <TRNAMT>-20.00
+        <FITID>checking-txn
+        <NAME>STRIPE* OPENAI
+        </STMTTRN>
+        </BANKTRANLIST>
+        </STMTRS>
+        </STMTTRNRS>
+        <STMTTRNRS>
+        <STMTRS>
+        <CURDEF>USD
+        <BANKACCTFROM>
+        <ACCTID>savings-2
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+        <STMTTRN>
+        <TRNTYPE>DEBIT
+        <DTPOSTED>20260515000000
+        <TRNAMT>-35.00
+        <FITID>savings-txn
+        <NAME>APPLE.COM/BILL
+        </STMTTRN>
+        </BANKTRANLIST>
+        </STMTRS>
+        </STMTTRNRS>
+        </BANKMSGSRSV1>
+        </OFX>
+        """
+
+        let drafts = try await OFXTransactionSourceAdapter(text: text).prepareTransactions()
+
+        XCTAssertEqual(drafts.count, 2)
+        XCTAssertEqual(drafts.map(\.externalTransactionID), ["checking-txn", "savings-txn"])
+        XCTAssertEqual(drafts.map(\.externalAccountID), ["checking-1", "savings-2"])
+        XCTAssertEqual(drafts.map(\.seed.accountName), ["checking-1", "savings-2"])
+    }
+
     func testSimpleFINAdapterProducesSourceDrafts() async throws {
         let json = """
         {
