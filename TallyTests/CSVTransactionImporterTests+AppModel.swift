@@ -183,6 +183,57 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testStoredTemplateIsIgnoredWhenIncomingHeadersAreMoreSpecific() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Description",
+            amountColumn: "Amount",
+            merchantColumn: "Description",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Description",
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let draft = TransactionImportDraft(
+            fileName: "more-specific.csv",
+            headers: ["Date", "Merchant", "Description", "Amount"],
+            previewRows: [],
+            rawRows: [
+                [
+                    "Date": "2025-01-01",
+                    "Merchant": "Netflix",
+                    "Description": "NETFLIX.COM",
+                    "Amount": "-15.49"
+                ]
+            ],
+            suggestedMapping: guessedMapping,
+            confidence: 0.72
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
+        XCTAssertEqual(resolved.confidence, 0.72)
+    }
+
+    @MainActor
     func testStoredTemplatePreservesDraftWarnings() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

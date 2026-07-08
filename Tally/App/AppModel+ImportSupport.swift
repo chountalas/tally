@@ -208,8 +208,8 @@ extension AppModel {
     }
 
     /// Re-applies a previously saved column mapping when the incoming file's headers
-    /// match a stored template, so the user does not have to remap familiar exports.
-    /// Falls back to the guessed mapping when no template's columns still exist.
+    /// exactly match a stored template, so the user does not have to remap familiar exports.
+    /// Falls back to the guessed mapping when only a generic subset matches.
     func draftApplyingStoredTemplate(
         _ draft: TransactionImportDraft,
         context: ModelContext
@@ -246,28 +246,34 @@ extension AppModel {
             return nil
         }
 
-        let headerSet = Set(headers)
+        let headerSet = normalizedHeaderSet(for: headers)
         return templates
             .sorted { $0.createdAt > $1.createdAt }
             .map(\.config)
-            .first { templateColumnsExist(in: headerSet, config: $0) }
+            .first { templateColumnsExactlyMatch(in: headerSet, config: $0) }
     }
 
-    private func templateColumnsExist(
+    private func templateColumnsExactlyMatch(
         in headerSet: Set<String>,
         config: ColumnMappingConfig
     ) -> Bool {
-        var columns = [config.dateColumn, config.amountColumn]
-        columns.append(
-            contentsOf: [
-                config.descriptionColumn,
-                config.merchantColumn,
-                config.categoryColumn,
-                config.accountColumn,
-                config.currencyColumn
-            ].compactMap { $0 }
-        )
-        return columns.allSatisfy { headerSet.contains($0) }
+        normalizedHeaderSet(for: templateColumns(from: config)) == headerSet
+    }
+
+    private func templateColumns(from config: ColumnMappingConfig) -> [String] {
+        [
+            config.dateColumn,
+            config.descriptionColumn,
+            config.amountColumn,
+            config.merchantColumn,
+            config.categoryColumn,
+            config.accountColumn,
+            config.currencyColumn
+        ].compactMap { $0 }
+    }
+
+    private func normalizedHeaderSet(for headers: [String]) -> Set<String> {
+        Set(headers.map(\.normalizedColumnName).filter { !$0.isEmpty })
     }
 
     func importResultMessage(
