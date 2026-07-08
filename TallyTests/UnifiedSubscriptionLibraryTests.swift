@@ -98,6 +98,77 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(legacy.replacementSubscriptionID, replacement.id)
     }
 
+    func testCancelSubscriptionClearsSyncedCalendarEventBeforeMarkingFormer() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        var cleanedIDs: [UUID] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
+            cleanedIDs = subscriptions.map(\.id)
+            XCTAssertEqual(subscriptions.first?.status, .active)
+            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
+            subscriptions.forEach {
+                $0.calendarEventIdentifier = nil
+                $0.lastCalendarSyncAt = nil
+            }
+        })
+
+        let subscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .active,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        subscription.calendarEventIdentifier = "event-to-clear"
+        subscription.lastCalendarSyncAt = .now
+        try context.save()
+
+        try appModel.cancelSubscription(id: subscription.id, in: context)
+
+        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertNil(subscription.calendarEventIdentifier)
+        XCTAssertNil(subscription.lastCalendarSyncAt)
+        XCTAssertEqual(subscription.status, .former)
+    }
+
+    func testRemoveSubscriptionClearsSyncedCalendarEventBeforeDeleting() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        var cleanedIDs: [UUID] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
+            cleanedIDs = subscriptions.map(\.id)
+            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
+            subscriptions.forEach {
+                $0.calendarEventIdentifier = nil
+                $0.lastCalendarSyncAt = nil
+            }
+        })
+
+        let subscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Old Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .former,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        subscription.calendarEventIdentifier = "event-to-clear"
+        subscription.lastCalendarSyncAt = .now
+        try context.save()
+
+        try appModel.removeSubscription(id: subscription.id, in: context)
+
+        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
+    }
+
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

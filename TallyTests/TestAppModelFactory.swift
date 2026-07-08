@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 @testable import Tally
 
 extension AppModel {
@@ -8,6 +9,7 @@ extension AppModel {
         gemmaModelManager: GemmaModelManager? = nil,
         libraryResetService: LibraryResetService = LibraryResetService(),
         dashboardMetricsProvider: DashboardMetricsProvider? = nil,
+        calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { _, _ in },
         csvImporter: CSVTransactionImporter = CSVTransactionImporter(),
         xlsxImporter: XLSXTransactionImporter = XLSXTransactionImporter(),
         xlsImporter: XLSBinaryTransactionImporter = XLSBinaryTransactionImporter()
@@ -25,6 +27,7 @@ extension AppModel {
             gemmaModelManager: gemmaModelManager ?? Self.emptyGemmaModelManager(),
             libraryResetService: libraryResetService,
             dashboardMetricsProvider: dashboardMetricsProvider,
+            calendarEventCleaner: calendarEventCleaner,
             csvImporter: csvImporter,
             xlsxImporter: xlsxImporter,
             xlsImporter: xlsImporter

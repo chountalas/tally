@@ -262,6 +262,7 @@ final class AppModel {
     @ObservationIgnored let gemmaModelManager: GemmaModelManager
     @ObservationIgnored let aiProviderStateResolver: AIProviderStateResolver
     @ObservationIgnored let dashboardMetricsProvider: DashboardMetricsProvider
+    @ObservationIgnored let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
 
     @ObservationIgnored
     private var backgroundAutomationIntelligence: SubscriptionIntelligenceService {
@@ -294,6 +295,9 @@ final class AppModel {
         gemmaModelManager: GemmaModelManager = GemmaModelManager(),
         libraryResetService: LibraryResetService = LibraryResetService(),
         dashboardMetricsProvider: DashboardMetricsProvider? = nil,
+        calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { subscriptions, context in
+            try RenewalCalendarService().clearSyncedEvents(for: subscriptions, context: context)
+        },
         csvImporter: CSVTransactionImporter = CSVTransactionImporter(),
         xlsxImporter: XLSXTransactionImporter = XLSXTransactionImporter(),
         xlsImporter: XLSBinaryTransactionImporter = XLSBinaryTransactionImporter()
@@ -303,6 +307,7 @@ final class AppModel {
         self.gemmaModelManager = gemmaModelManager
         self.libraryResetService = libraryResetService
         self.dashboardMetricsProvider = dashboardMetricsProvider ?? DashboardMetricsProvider()
+        self.calendarEventCleaner = calendarEventCleaner
         self.csvImporter = csvImporter
         self.xlsxImporter = xlsxImporter
         self.xlsImporter = xlsImporter
@@ -319,6 +324,15 @@ final class AppModel {
         )
         gemmaModelStatus = providerState.gemmaModelStatus
         intelligenceProviderStatus = providerState.providerStatus
+    }
+
+    func clearSyncedCalendarEventsIfNeeded(
+        for subscriptions: [Subscription],
+        in context: ModelContext
+    ) throws {
+        let syncedSubscriptions = subscriptions.filter { $0.calendarEventIdentifier != nil }
+        guard syncedSubscriptions.isEmpty == false else { return }
+        try calendarEventCleaner(syncedSubscriptions, context)
     }
 
     func dashboardMetricsSnapshot(
