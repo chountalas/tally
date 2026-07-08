@@ -218,7 +218,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(activeSubscription.status, .former)
         XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
         XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
-        XCTAssertEqual(recordedPendingCalendarEventIDs, ["old-event-to-clear"])
+        XCTAssertEqual(recordedPendingCalendarEventIDs, ["event-to-clear", "old-event-to-clear"])
     }
 
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
