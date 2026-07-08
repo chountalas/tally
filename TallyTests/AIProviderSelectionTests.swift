@@ -23,6 +23,13 @@ struct AIProviderSelectionTests {
         #expect(reloaded.selectedKind == .appleIntelligence)
     }
 
+    @Test func gemmaDownloadURLIsPinnedToExpectedChecksumRevision() {
+        let url = GemmaModelManager.downloadURL.absoluteString
+
+        #expect(url.contains("/resolve/\(GemmaModelManager.expectedDownloadedModelRevision)/"))
+        #expect(url.contains("/resolve/main/") == false)
+    }
+
     @Test func importClassificationUsesSelectedProviderWhenGemmaIsSelected() {
         let defaults = UserDefaults(suiteName: "AIProviderSelectionTests.importGemma")!
         defaults.removePersistentDomain(forName: "AIProviderSelectionTests.importGemma")

@@ -128,8 +128,9 @@ private enum GemmaModelValidationCache {
 struct GemmaModelManager: @unchecked Sendable {
     static let managedModelFileName = "gemma-4-E4B-it-Q4_K_M.gguf"
     static let defaultMinimumValidModelSizeBytes: Int64 = 256 * 1024 * 1024
+    static let expectedDownloadedModelRevision = "2714b5519c6c3516b1000e7c5e1eba998dfe1fe8"
     static let downloadURL = URL(
-        string: "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf?download=true"
+        string: "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/\(expectedDownloadedModelRevision)/gemma-4-E4B-it-Q4_K_M.gguf?download=true"
     )!
     static let expectedDownloadedModelSHA256 = "90ce98129eb3e8cc57e62433d500c97c624b1e3af1fcc85dd3b55ad7e0313e9f"
     private static let ggufHeader = "GGUF"
