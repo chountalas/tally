@@ -169,6 +169,51 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
     }
 
+    func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        var cleanupAttempts = 0
+        let appModel = AppModel.testing(calendarEventCleaner: { _, _ in
+            cleanupAttempts += 1
+            throw RenewalCalendarError.accessDenied
+        })
+
+        let activeSubscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Blocked Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .active,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        activeSubscription.calendarEventIdentifier = "event-to-clear"
+
+        let formerSubscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Blocked Old Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .former,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        formerSubscription.calendarEventIdentifier = "old-event-to-clear"
+        try context.save()
+
+        try appModel.cancelSubscription(id: activeSubscription.id, in: context)
+        try appModel.removeSubscription(id: formerSubscription.id, in: context)
+
+        XCTAssertEqual(cleanupAttempts, 2)
+        XCTAssertEqual(activeSubscription.status, .former)
+        XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
+        XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
+    }
+
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

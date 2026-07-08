@@ -573,7 +573,7 @@ extension AppModel {
         try? RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
 
-        try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
+        try? clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
 
         subscription.status = .former
         subscription.isUserConfirmed = true
@@ -612,7 +612,7 @@ extension AppModel {
         try? RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
 
-        try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
+        try? clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
 
         if !isManualRecord {
             let rule = try fetchOrCreateReviewRule(

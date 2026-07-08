@@ -125,7 +125,7 @@ private enum GemmaModelValidationCache {
     }
 }
 
-struct GemmaModelManager {
+struct GemmaModelManager: @unchecked Sendable {
     static let managedModelFileName = "gemma-4-E4B-it-Q4_K_M.gguf"
     static let defaultMinimumValidModelSizeBytes: Int64 = 256 * 1024 * 1024
     static let downloadURL = URL(
