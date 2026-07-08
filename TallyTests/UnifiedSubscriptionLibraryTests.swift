@@ -169,14 +169,20 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
     }
 
-    func testCalendarCleanupFailureDoesNotBlockLocalCancellationButBlocksRemoval() throws {
+    func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
         var cleanupAttempts = 0
-        let appModel = AppModel.testing(calendarEventCleaner: { _, _ in
-            cleanupAttempts += 1
-            throw RenewalCalendarError.accessDenied
-        })
+        var recordedPendingCalendarEventIDs: [String] = []
+        let appModel = AppModel.testing(
+            calendarEventCleaner: { _, _ in
+                cleanupAttempts += 1
+                throw RenewalCalendarError.accessDenied
+            },
+            calendarEventCleanupFailureRecorder: { identifiers in
+                recordedPendingCalendarEventIDs.append(contentsOf: identifiers)
+            }
+        )
 
         let activeSubscription = try appModel.createManualSubscription(
             .init(
@@ -206,17 +212,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         try context.save()
 
         try appModel.cancelSubscription(id: activeSubscription.id, in: context)
-        XCTAssertThrowsError(try appModel.removeSubscription(id: formerSubscription.id, in: context)) { error in
-            XCTAssertTrue(error is RenewalCalendarError)
-        }
+        try appModel.removeSubscription(id: formerSubscription.id, in: context)
 
         XCTAssertEqual(cleanupAttempts, 2)
         XCTAssertEqual(activeSubscription.status, .former)
         XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
-        XCTAssertEqual(
-            appModel.subscription(withID: formerSubscription.id, in: context)?.calendarEventIdentifier,
-            "old-event-to-clear"
-        )
+        XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
+        XCTAssertEqual(recordedPendingCalendarEventIDs, ["old-event-to-clear"])
     }
 
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {

@@ -102,6 +102,49 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testAppModelImportsWindows1252OFXBeforeUTF16Fallbacks() async throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("ofx")
+        let text = """
+        <OFX>
+        <CURDEF>USD
+        <BANKACCTFROM>
+        <ACCTID>checking-1
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+        <STMTTRN>
+        <TRNTYPE>DEBIT
+        <DTPOSTED>20260314000000
+        <TRNAMT>-12.34
+        <FITID>legacy-ofx-1
+        <NAME>CAFÉ SERVICE
+        <MEMO>Plan “Plus”
+        </STMTTRN>
+        </BANKTRANLIST>
+        </OFX>
+        """
+        let data = try XCTUnwrap(text.data(using: .windowsCP1252))
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        appModel.prepareImport(from: url, into: context)
+        try await waitForImportPreparation(toFinish: appModel)
+
+        let imports = try context.fetch(FetchDescriptor<ImportRecord>())
+        let transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
+
+        XCTAssertNil(appModel.importErrorMessage)
+        XCTAssertEqual(imports.first?.status, .analyzed)
+        XCTAssertEqual(transactions.count, 1)
+        XCTAssertEqual(transactions.first?.merchantRaw, "CAFÉ SERVICE")
+        XCTAssertEqual(transactions.first?.memo, "Plan “Plus”")
+    }
+
+    @MainActor
     private func waitForImportPreparation(toFinish appModel: AppModel) async throws {
         for _ in 0..<100 where appModel.isPreparingImport {
             try await Task.sleep(nanoseconds: 50_000_000)

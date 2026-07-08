@@ -16,6 +16,7 @@ final class RenewalCalendarService {
         context: ModelContext
     ) async throws -> RenewalCalendarSyncSummary {
         try await ensureFullCalendarAccess()
+        removePendingSyncedEvents()
 
         let tallyCalendar = try tallyCalendar()
         let syncedAt = Date()
@@ -68,6 +69,8 @@ final class RenewalCalendarService {
         guard hasFullCalendarAccess else {
             throw RenewalCalendarError.accessDenied
         }
+
+        removePendingSyncedEvents()
 
         for subscription in subscriptions {
             _ = try removeSyncedEvent(for: subscription)
@@ -127,6 +130,26 @@ final class RenewalCalendarService {
         return calendar
     }
 
+    private func removePendingSyncedEvents() {
+        let identifiers = PendingCalendarEventCleanupStore.identifiers()
+        guard identifiers.isEmpty == false else { return }
+
+        var remaining: [String] = []
+        for identifier in identifiers {
+            guard let event = eventStore.event(withIdentifier: identifier) else {
+                continue
+            }
+
+            do {
+                try eventStore.remove(event, span: .thisEvent)
+            } catch {
+                remaining.append(identifier)
+            }
+        }
+
+        PendingCalendarEventCleanupStore.replace(with: remaining)
+    }
+
     private func removeSyncedEvent(for subscription: Subscription) throws -> Bool {
         guard
             let identifier = subscription.calendarEventIdentifier,
@@ -137,6 +160,34 @@ final class RenewalCalendarService {
 
         try eventStore.remove(event, span: .thisEvent)
         return true
+    }
+}
+
+enum PendingCalendarEventCleanupStore {
+    private static let key = "PendingCalendarEventCleanupIdentifiers"
+
+    static func record(_ identifiers: [String], userDefaults: UserDefaults = .standard) {
+        let validIdentifiers = identifiers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        guard validIdentifiers.isEmpty == false else { return }
+
+        let merged = Set(self.identifiers(userDefaults: userDefaults))
+            .union(validIdentifiers)
+        replace(with: Array(merged), userDefaults: userDefaults)
+    }
+
+    static func identifiers(userDefaults: UserDefaults = .standard) -> [String] {
+        userDefaults.stringArray(forKey: key) ?? []
+    }
+
+    static func replace(with identifiers: [String], userDefaults: UserDefaults = .standard) {
+        let uniqueIdentifiers = Array(Set(identifiers)).sorted()
+        if uniqueIdentifiers.isEmpty {
+            userDefaults.removeObject(forKey: key)
+        } else {
+            userDefaults.set(uniqueIdentifiers, forKey: key)
+        }
     }
 }
 

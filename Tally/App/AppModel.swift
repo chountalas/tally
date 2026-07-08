@@ -263,6 +263,7 @@ final class AppModel {
     @ObservationIgnored let aiProviderStateResolver: AIProviderStateResolver
     @ObservationIgnored let dashboardMetricsProvider: DashboardMetricsProvider
     @ObservationIgnored let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
+    @ObservationIgnored let calendarEventCleanupFailureRecorder: ([String]) -> Void
 
     @ObservationIgnored
     private var backgroundAutomationIntelligence: SubscriptionIntelligenceService {
@@ -298,6 +299,9 @@ final class AppModel {
         calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { subscriptions, context in
             try RenewalCalendarService().clearSyncedEvents(for: subscriptions, context: context)
         },
+        calendarEventCleanupFailureRecorder: @escaping ([String]) -> Void = { identifiers in
+            PendingCalendarEventCleanupStore.record(identifiers)
+        },
         csvImporter: CSVTransactionImporter = CSVTransactionImporter(),
         xlsxImporter: XLSXTransactionImporter = XLSXTransactionImporter(),
         xlsImporter: XLSBinaryTransactionImporter = XLSBinaryTransactionImporter()
@@ -308,6 +312,7 @@ final class AppModel {
         self.libraryResetService = libraryResetService
         self.dashboardMetricsProvider = dashboardMetricsProvider ?? DashboardMetricsProvider()
         self.calendarEventCleaner = calendarEventCleaner
+        self.calendarEventCleanupFailureRecorder = calendarEventCleanupFailureRecorder
         self.csvImporter = csvImporter
         self.xlsxImporter = xlsxImporter
         self.xlsImporter = xlsImporter
@@ -537,21 +542,30 @@ private enum BankFeedImportPreparationService {
     private static func decodeImportText(from data: Data) -> String? {
         let encodings: [String.Encoding] = [
             .utf8,
-            .unicode,
-            .utf16LittleEndian,
-            .utf16BigEndian,
             .windowsCP1252,
             .macOSRoman,
-            .isoLatin1
+            .isoLatin1,
+            .unicode,
+            .utf16LittleEndian,
+            .utf16BigEndian
         ]
 
         for encoding in encodings {
-            if let text = String(data: data, encoding: encoding) {
+            if let text = String(data: data, encoding: encoding),
+               containsBankFeedTags(text) {
                 return text
             }
         }
 
         return nil
+    }
+
+    private static func containsBankFeedTags(_ text: String) -> Bool {
+        let uppercaseText = text.uppercased()
+        return uppercaseText.contains("<OFX")
+            || uppercaseText.contains("<STMTTRN")
+            || uppercaseText.contains("<BANKMSGSRSV")
+            || uppercaseText.contains("<CREDITCARDMSGSRSV")
     }
 }
 

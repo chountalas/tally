@@ -10,6 +10,7 @@ extension AppModel {
         libraryResetService: LibraryResetService = LibraryResetService(),
         dashboardMetricsProvider: DashboardMetricsProvider? = nil,
         calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { _, _ in },
+        calendarEventCleanupFailureRecorder: @escaping ([String]) -> Void = { _ in },
         csvImporter: CSVTransactionImporter = CSVTransactionImporter(),
         xlsxImporter: XLSXTransactionImporter = XLSXTransactionImporter(),
         xlsImporter: XLSBinaryTransactionImporter = XLSBinaryTransactionImporter()
@@ -28,6 +29,7 @@ extension AppModel {
             libraryResetService: libraryResetService,
             dashboardMetricsProvider: dashboardMetricsProvider,
             calendarEventCleaner: calendarEventCleaner,
+            calendarEventCleanupFailureRecorder: calendarEventCleanupFailureRecorder,
             csvImporter: csvImporter,
             xlsxImporter: xlsxImporter,
             xlsImporter: xlsImporter

@@ -608,11 +608,17 @@ extension AppModel {
         let isManualRecord = subscription.creationPath == .manual
             || subscription.libraryState == .manual
         let canonicalName = subscription.canonicalName
+        let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
+            .compactMap { $0?.nilIfBlank }
 
         try? RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
 
-        try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
+        do {
+            try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
+        } catch {
+            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
+        }
 
         if !isManualRecord {
             let rule = try fetchOrCreateReviewRule(
