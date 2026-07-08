@@ -258,8 +258,11 @@ enum TabularHeaderDetector {
             )
         )
         let amountParser = TransactionFieldParser()
-        let labels = row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let columns = row.enumerated().compactMap { index, value -> HeaderCandidateColumn? in
+            let label = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return label.isEmpty ? nil : HeaderCandidateColumn(index: index, label: label)
+        }
+        let labels = columns.map(\.label)
         guard labels.count >= 2 else {
             return 0
         }
@@ -278,18 +281,13 @@ enum TabularHeaderDetector {
             return 0
         }
 
-        let hasTransactionData = followingRows.contains { row in
-            let values = row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            guard values.count >= 2 else {
-                return false
-            }
-
-            let hasDate = values.contains { dateParser.tryParseDate($0) != nil }
-            let hasAmount = values.contains { amountParser.tryParseAmount($0) != nil }
-            return hasDate && hasAmount
-        }
-        guard hasTransactionData else {
+        let evidence = alignedTransactionEvidence(
+            for: columns,
+            followingRows: followingRows,
+            dateParser: dateParser,
+            amountParser: amountParser
+        )
+        guard evidence.hasAlignedTransactionData else {
             return 0
         }
 
@@ -298,24 +296,159 @@ enum TabularHeaderDetector {
             score + headerKeywordScore(for: label)
         }
 
-        return Double(labels.count) + keywordScore
+        return Double(labels.count) + keywordScore - metadataMismatchPenalty(
+            for: columns,
+            evidence: evidence
+        )
     }
 
     private static func headerKeywordScore(for normalizedLabel: String) -> Double {
-        let keywordGroups: [[String]] = [
-            ["date", "posted date", "transaction date", "post date", "effective date", "booking date"],
-            ["amount", "transaction amount", "net amount", "debit", "credit", "charge", "payment", "withdrawal", "deposit", "total", "value"],
-            ["merchant", "vendor", "payee", "counterparty", "seller", "name"],
-            ["description", "memo", "details", "statement", "note"],
-            ["account", "card", "wallet", "source", "payment method"]
-        ]
-
-        return keywordGroups.reduce(0.0) { score, keywords in
-            score + (keywords.contains { keyword in
+        headerKeywordGroups.reduce(0.0) { score, group in
+            score + (group.keywords.contains { keyword in
                 let normalizedKeyword = keyword.normalizedColumnName
                 return normalizedLabel == normalizedKeyword || normalizedLabel.contains(normalizedKeyword)
             } ? 2.0 : 0.0)
         }
+    }
+
+    private static func alignedTransactionEvidence(
+        for columns: [HeaderCandidateColumn],
+        followingRows: [[String]],
+        dateParser: TransactionFieldParser,
+        amountParser: TransactionFieldParser
+    ) -> HeaderTransactionEvidence {
+        let columnEvidence = Dictionary(uniqueKeysWithValues: columns.map { column in
+            let samples = followingRows.compactMap { row in
+                nonEmptyValue(in: row, at: column.index)
+            }
+            let sampleCount = max(samples.count, 1)
+            let dateFraction = Double(samples.filter { dateParser.tryParseDate($0) != nil }.count)
+                / Double(sampleCount)
+            let amountFraction = Double(samples.filter { amountParser.tryParseAmount($0) != nil }.count)
+                / Double(sampleCount)
+            return (
+                column.index,
+                HeaderColumnEvidence(
+                    dateFraction: dateFraction,
+                    amountFraction: amountFraction
+                )
+            )
+        })
+        let dateColumnIndices = columnEvidence
+            .filter { $0.value.hasDateEvidence }
+            .map(\.key)
+        let amountColumnIndices = columnEvidence
+            .filter { $0.value.hasAmountEvidence }
+            .map(\.key)
+        let hasAlignedTransactionData = dateColumnIndices.contains { dateIndex in
+            amountColumnIndices.contains { amountIndex in
+                dateIndex != amountIndex && followingRows.contains { row in
+                    guard let dateValue = nonEmptyValue(in: row, at: dateIndex),
+                          let amountValue = nonEmptyValue(in: row, at: amountIndex)
+                    else {
+                        return false
+                    }
+                    return dateParser.tryParseDate(dateValue) != nil &&
+                        amountParser.tryParseAmount(amountValue) != nil
+                }
+            }
+        }
+
+        return HeaderTransactionEvidence(
+            hasAlignedTransactionData: hasAlignedTransactionData,
+            columns: columnEvidence
+        )
+    }
+
+    private static func metadataMismatchPenalty(
+        for columns: [HeaderCandidateColumn],
+        evidence: HeaderTransactionEvidence
+    ) -> Double {
+        columns.reduce(0.0) { penalty, column in
+            guard let semantic = headerColumnSemantic(for: column.normalizedLabel),
+                  let columnEvidence = evidence.columns[column.index]
+            else {
+                return penalty
+            }
+
+            switch semantic {
+            case .date:
+                return columnEvidence.hasDateEvidence ? penalty : penalty + 3.0
+            case .amount:
+                return columnEvidence.hasAmountEvidence ? penalty : penalty + 3.0
+            case .text, .account:
+                return columnEvidence.hasDateEvidence || columnEvidence.hasAmountEvidence
+                    ? penalty + 3.0
+                    : penalty
+            }
+        }
+    }
+
+    private static func headerColumnSemantic(for normalizedLabel: String) -> HeaderColumnSemantic? {
+        for group in headerKeywordGroups {
+            if group.keywords.contains(where: { normalizedLabel == $0.normalizedColumnName }) {
+                return group.semantic
+            }
+        }
+
+        for group in headerKeywordGroups {
+            if group.keywords.contains(where: { normalizedLabel.contains($0.normalizedColumnName) }) {
+                return group.semantic
+            }
+        }
+
+        return nil
+    }
+
+    private static func nonEmptyValue(in row: [String], at index: Int) -> String? {
+        guard row.indices.contains(index) else {
+            return nil
+        }
+
+        let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private static let headerKeywordGroups: [(semantic: HeaderColumnSemantic, keywords: [String])] = [
+        (.date, ["date", "posted date", "transaction date", "post date", "effective date", "booking date", "when", "booked"]),
+        (.amount, ["amount", "transaction amount", "net amount", "debit", "credit", "charge", "payment", "withdrawal", "deposit", "total", "value", "spent", "cost"]),
+        (.text, ["merchant", "vendor", "payee", "counterparty", "seller", "name", "who", "store"]),
+        (.text, ["description", "memo", "details", "statement", "note"]),
+        (.account, ["account", "card", "wallet", "source", "payment method"])
+    ]
+
+    private struct HeaderCandidateColumn {
+        let index: Int
+        let label: String
+
+        var normalizedLabel: String {
+            label.normalizedColumnName
+        }
+    }
+
+    private struct HeaderTransactionEvidence {
+        let hasAlignedTransactionData: Bool
+        let columns: [Int: HeaderColumnEvidence]
+    }
+
+    private struct HeaderColumnEvidence {
+        let dateFraction: Double
+        let amountFraction: Double
+
+        var hasDateEvidence: Bool {
+            dateFraction >= 0.5
+        }
+
+        var hasAmountEvidence: Bool {
+            amountFraction >= 0.5
+        }
+    }
+
+    private enum HeaderColumnSemantic {
+        case date
+        case amount
+        case text
+        case account
     }
 }
 
