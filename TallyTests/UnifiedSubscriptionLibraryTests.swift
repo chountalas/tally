@@ -98,6 +98,129 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(legacy.replacementSubscriptionID, replacement.id)
     }
 
+    func testCancelSubscriptionClearsSyncedCalendarEventBeforeMarkingFormer() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        var cleanedIDs: [UUID] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
+            cleanedIDs = subscriptions.map(\.id)
+            XCTAssertEqual(subscriptions.first?.status, .active)
+            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
+            subscriptions.forEach {
+                $0.calendarEventIdentifier = nil
+                $0.lastCalendarSyncAt = nil
+            }
+        })
+
+        let subscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .active,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        subscription.calendarEventIdentifier = "event-to-clear"
+        subscription.lastCalendarSyncAt = .now
+        try context.save()
+
+        try appModel.cancelSubscription(id: subscription.id, in: context)
+
+        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertNil(subscription.calendarEventIdentifier)
+        XCTAssertNil(subscription.lastCalendarSyncAt)
+        XCTAssertEqual(subscription.status, .former)
+    }
+
+    func testRemoveSubscriptionClearsSyncedCalendarEventBeforeDeleting() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        var cleanedIDs: [UUID] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
+            cleanedIDs = subscriptions.map(\.id)
+            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
+            subscriptions.forEach {
+                $0.calendarEventIdentifier = nil
+                $0.lastCalendarSyncAt = nil
+            }
+        })
+
+        let subscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Old Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .former,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        subscription.calendarEventIdentifier = "event-to-clear"
+        subscription.lastCalendarSyncAt = .now
+        try context.save()
+
+        try appModel.removeSubscription(id: subscription.id, in: context)
+
+        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
+    }
+
+    func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        var cleanupAttempts = 0
+        var recordedPendingCalendarEventIDs: [String] = []
+        let appModel = AppModel.testing(
+            calendarEventCleaner: { _, _ in
+                cleanupAttempts += 1
+                throw RenewalCalendarError.accessDenied
+            },
+            calendarEventCleanupFailureRecorder: { identifiers in
+                recordedPendingCalendarEventIDs.append(contentsOf: identifiers)
+            }
+        )
+
+        let activeSubscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Blocked Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .active,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        activeSubscription.calendarEventIdentifier = "event-to-clear"
+
+        let formerSubscription = try appModel.createManualSubscription(
+            .init(
+                displayName: "Blocked Old Calendar App",
+                priceAmount: Decimal(string: "9.99") ?? 9.99,
+                priceCurrency: "USD",
+                cadence: .monthly,
+                status: .former,
+                lastChargeDate: .now
+            ),
+            in: context
+        )
+        formerSubscription.calendarEventIdentifier = "old-event-to-clear"
+        try context.save()
+
+        try appModel.cancelSubscription(id: activeSubscription.id, in: context)
+        try appModel.removeSubscription(id: formerSubscription.id, in: context)
+
+        XCTAssertEqual(cleanupAttempts, 2)
+        XCTAssertEqual(activeSubscription.status, .former)
+        XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
+        XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
+        XCTAssertEqual(recordedPendingCalendarEventIDs, ["event-to-clear", "old-event-to-clear"])
+    }
+
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
@@ -666,6 +789,60 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(snapshot?.urgency, .overdue)
         XCTAssertEqual(snapshot?.compactProgressLabel, "Renewal window passed")
         XCTAssertEqual(snapshot?.detailLabel, "Expected renewal was 13 days ago.")
+    }
+
+    func testCalendarRenewalDateAdvancesOverdueActiveRenewals() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone.current
+
+        let subscription = Subscription(
+            canonicalName: "Figma",
+            displayName: "Figma",
+            status: .active,
+            libraryState: .confirmed,
+            cadence: .monthly,
+            priceAmount: 15,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: 15,
+            lastChargeDate: date(2026, 3, 15, calendar: calendar),
+            predictedNextChargeDate: date(2026, 4, 15, calendar: calendar),
+            confidenceScore: 0.91
+        )
+
+        let renewalDate = RenewalCalendarService.upcomingCalendarRenewalDate(
+            for: subscription,
+            referenceDate: date(2026, 4, 18, calendar: calendar),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(renewalDate, date(2026, 5, 15, calendar: calendar))
+    }
+
+    func testCalendarRenewalDateKeepsFutureRenewals() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone.current
+
+        let subscription = Subscription(
+            canonicalName: "Linear",
+            displayName: "Linear",
+            status: .active,
+            libraryState: .confirmed,
+            cadence: .monthly,
+            priceAmount: 10,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: 10,
+            lastChargeDate: date(2026, 4, 15, calendar: calendar),
+            predictedNextChargeDate: date(2026, 5, 15, calendar: calendar),
+            confidenceScore: 0.9
+        )
+
+        let renewalDate = RenewalCalendarService.upcomingCalendarRenewalDate(
+            for: subscription,
+            referenceDate: date(2026, 4, 18, calendar: calendar),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(renewalDate, date(2026, 5, 15, calendar: calendar))
     }
 
     func testRecurringSaaSClusterPromotesToConfirmedInsteadOfLingeringInReview() async throws {

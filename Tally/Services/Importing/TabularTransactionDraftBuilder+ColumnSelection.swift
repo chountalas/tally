@@ -49,13 +49,18 @@ extension TabularTransactionDraftBuilder {
         parser: TransactionFieldParser
     ) -> TabularMappingContext {
         let dateColumn = bestDateColumn(in: headers, rows: rows, parser: parser) ?? headers[0]
-        let amountColumn = bestAmountColumn(in: headers, rows: rows, parser: parser) ??
+        let detectedAmountColumn = bestAmountColumn(in: headers, rows: rows, parser: parser)
+        // When no column plausibly parses as an amount we still need a placeholder
+        // for the config, but we record that it was a guess so confidence stays low
+        // and the review sheet flags it rather than silently trusting a text column.
+        let amountColumn = detectedAmountColumn ??
             headers.dropFirst().first ??
             headers[0]
 
         return TabularMappingContext(
             dateColumn: dateColumn,
             amountColumn: amountColumn,
+            amountColumnDetected: detectedAmountColumn != nil,
             categoryColumn: bestKeywordColumn(
                 in: headers,
                 keywords: ["category", "service category", "type", "classification", "group"]
@@ -156,7 +161,8 @@ extension TabularTransactionDraftBuilder {
     ) -> Double {
         let requiredMatches = [
             parseableFraction(for: context.dateColumn, rows: rows, parser: parser.tryParseDate) > 0.5,
-            parseableFraction(for: context.amountColumn, rows: rows, parser: parser.tryParseAmount) > 0.5,
+            context.amountColumnDetected
+                && parseableFraction(for: context.amountColumn, rows: rows, parser: parser.tryParseAmount) > 0.5,
             merchantColumn != nil || descriptionColumn != nil
         ]
         return Double(requiredMatches.filter(\.self).count) / Double(requiredMatches.count)
@@ -274,6 +280,7 @@ extension TabularTransactionDraftBuilder {
 private struct TabularMappingContext {
     let dateColumn: String
     let amountColumn: String
+    let amountColumnDetected: Bool
     let categoryColumn: String?
     let accountColumn: String?
     let currencyColumn: String?

@@ -23,6 +23,13 @@ struct AIProviderSelectionTests {
         #expect(reloaded.selectedKind == .appleIntelligence)
     }
 
+    @Test func gemmaDownloadURLIsPinnedToExpectedChecksumRevision() {
+        let url = GemmaModelManager.downloadURL.absoluteString
+
+        #expect(url.contains("/resolve/\(GemmaModelManager.expectedDownloadedModelRevision)/"))
+        #expect(url.contains("/resolve/main/") == false)
+    }
+
     @Test func importClassificationUsesSelectedProviderWhenGemmaIsSelected() {
         let defaults = UserDefaults(suiteName: "AIProviderSelectionTests.importGemma")!
         defaults.removePersistentDomain(forName: "AIProviderSelectionTests.importGemma")
@@ -107,7 +114,10 @@ struct AIProviderSelectionTests {
             gemmaModelManager: manager
         )
 
-        #expect(intelligence.evidenceProviderKind == nil)
+        // Gemma must not be adopted in background automation. The generator may
+        // legitimately fall back to Apple Intelligence on OS 26+, so only assert
+        // that Gemma itself was not used.
+        #expect(intelligence.evidenceProviderKind != .gemmaLocal)
         #expect(fileManager.fileExists(atPath: manager.managedModelURL.path) == false)
         #expect(manager.statusSnapshot().health == .adoptable)
     }
@@ -197,7 +207,8 @@ struct AIProviderSelectionTests {
             fileManager: fileManager,
             appSupportDirectory: managedDirectory,
             adoptableSourceURLs: [],
-            minimumValidModelSizeBytes: 32
+            minimumValidModelSizeBytes: 32,
+            expectedDownloadedModelSHA256: Self.validGGUF64SHA256
         )
 
         try fileManager.createDirectory(at: manager.modelsDirectoryURL, withIntermediateDirectories: true)
@@ -228,7 +239,8 @@ struct AIProviderSelectionTests {
             fileManager: fileManager,
             appSupportDirectory: managedDirectory,
             adoptableSourceURLs: [],
-            minimumValidModelSizeBytes: 32
+            minimumValidModelSizeBytes: 32,
+            expectedDownloadedModelSHA256: nil
         )
 
         try fileManager.createDirectory(at: manager.modelsDirectoryURL, withIntermediateDirectories: true)
@@ -403,7 +415,8 @@ struct AIProviderSelectionTests {
             fileManager: fileManager,
             appSupportDirectory: managedDirectory,
             adoptableSourceURLs: [],
-            minimumValidModelSizeBytes: 32
+            minimumValidModelSizeBytes: 32,
+            expectedDownloadedModelSHA256: nil
         )
 
         try fileManager.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
@@ -417,6 +430,31 @@ struct AIProviderSelectionTests {
         #expect(installedURL == manager.managedModelURL)
         #expect(installedData == Self.makeValidGGUFModel(totalBytes: 64))
         #expect((try installedURL.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink == false)
+    }
+
+    @Test func downloadedModelChecksumMismatchIsRejectedBeforeInstall() throws {
+        let fileManager = FileManager.default
+        let rootDirectory = fileManager.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let manager = GemmaModelManager(
+            fileManager: fileManager,
+            appSupportDirectory: rootDirectory,
+            adoptableSourceURLs: [],
+            minimumValidModelSizeBytes: 32,
+            expectedDownloadedModelSHA256: String(repeating: "0", count: 64)
+        )
+        let downloadDirectory = rootDirectory.appending(path: "Download", directoryHint: .isDirectory)
+        let temporaryDownloadURL = downloadDirectory.appending(path: "CFNetworkDownload.tmp", directoryHint: .notDirectory)
+
+        try fileManager.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
+        try Self.makeValidGGUFModel(totalBytes: 64).write(to: temporaryDownloadURL)
+
+        do {
+            _ = try manager.installDownloadedModel(from: temporaryDownloadURL)
+            Issue.record("Expected checksum mismatch to be rejected")
+        } catch {
+            #expect(error.localizedDescription.localizedCaseInsensitiveContains("checksum"))
+            #expect(fileManager.fileExists(atPath: manager.managedModelURL.path) == false)
+        }
     }
 
     @Test func adoptableSourceReportsRichHealthState() throws {
@@ -747,6 +785,8 @@ struct AIProviderSelectionTests {
         }
         return data
     }
+
+    private static let validGGUF64SHA256 = "c7baeb02ae3dc6d5ab8bf8c155e2686808d4f6c08137cfcfb6f360fffe3493c0"
 
     private static func makeInvalidGGUFModel(totalBytes: Int) -> Data {
         var data = Data("NOTG".utf8)

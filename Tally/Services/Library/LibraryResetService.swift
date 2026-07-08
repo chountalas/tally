@@ -52,15 +52,23 @@ struct LibraryResetSummary {
 
 @MainActor
 final class LibraryResetService {
-    private let calendarService: RenewalCalendarService
     private let notificationService: RenewalNotificationService
+    private let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
+    private let pendingCalendarEventRecorder: ([String]) -> Void
 
     init(
         calendarService: RenewalCalendarService = RenewalCalendarService(),
-        notificationService: RenewalNotificationService = RenewalNotificationService()
+        notificationService: RenewalNotificationService = RenewalNotificationService(),
+        calendarEventCleaner: (([Subscription], ModelContext) throws -> Void)? = nil,
+        pendingCalendarEventRecorder: @escaping ([String]) -> Void = { identifiers in
+            PendingCalendarEventCleanupStore.record(identifiers)
+        }
     ) {
-        self.calendarService = calendarService
         self.notificationService = notificationService
+        self.calendarEventCleaner = calendarEventCleaner ?? { subscriptions, context in
+            try calendarService.clearSyncedEvents(for: subscriptions, context: context)
+        }
+        self.pendingCalendarEventRecorder = pendingCalendarEventRecorder
     }
 
     func clearLibrary(in context: ModelContext, includeTemplates: Bool = false) throws -> LibraryResetSummary {
@@ -73,9 +81,10 @@ final class LibraryResetService {
         let templates = includeTemplates ? try context.fetch(FetchDescriptor<ColumnMappingTemplate>()) : []
 
         do {
-            try calendarService.clearSyncedEvents(for: subscriptions, context: context)
+            try calendarEventCleaner(subscriptions, context)
         } catch RenewalCalendarError.accessDenied {
             // Local subscription state is about to be deleted, so cleanup failure should not block the reset.
+            pendingCalendarEventRecorder(subscriptions.compactMap(\.calendarEventIdentifier))
         }
 
         do {
@@ -84,12 +93,29 @@ final class LibraryResetService {
             // Local subscription state is about to be deleted, so cleanup failure should not block the reset.
         }
 
+        // Delete every library model so a reset is a true clean slate. Anything
+        // left behind (suppressions, dedup identities, detection evidence) would
+        // silently carry over — e.g. a merchant the user suppressed before the
+        // reset would stay suppressed. `ColumnMappingTemplate` is the one
+        // exception, gated by `includeTemplates`, so a plain "clear imported
+        // data" keeps the user's saved column mappings.
         try context.delete(model: Subscription.self)
         try context.delete(model: NormalizedTransaction.self)
         try context.delete(model: ImportRecord.self)
         try context.delete(model: MerchantClassification.self)
+        try context.delete(model: MerchantCorrection.self)
         try context.delete(model: MerchantAlias.self)
         try context.delete(model: SubscriptionReviewRule.self)
+        try context.delete(model: ManualSubscription.self)
+        try context.delete(model: SourceTransactionIdentity.self)
+        try context.delete(model: MerchantIdentity.self)
+        try context.delete(model: MerchantIdentityMember.self)
+        try context.delete(model: ServiceProfile.self)
+        try context.delete(model: SubscriptionScheduleExpectation.self)
+        try context.delete(model: SubscriptionMatchRule.self)
+        try context.delete(model: SubscriptionOccurrence.self)
+        try context.delete(model: SubscriptionDetectionEvidence.self)
+        try context.delete(model: DetectionRun.self)
 
         if includeTemplates {
             try context.delete(model: ColumnMappingTemplate.self)

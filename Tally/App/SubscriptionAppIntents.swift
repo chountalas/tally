@@ -284,22 +284,50 @@ private enum AppIntentURL {
     }
 }
 
-private enum AppIntentSubscriptionStore {
-    @MainActor
+@MainActor
+enum AppIntentSubscriptionStore {
+    private static var cachedContainer: ModelContainer?
+    private static var makeContainer: () throws -> ModelContainer = {
+        try ModelContainerFactory.makePersistentSharedContainer()
+    }
+
     static func subscriptions() throws -> [Subscription] {
-        let container = try ModelContainerFactory.makeSharedContainer()
+        let container = try container()
         return try container.mainContext.fetch(
             FetchDescriptor<Subscription>(sortBy: [SortDescriptor(\.displayName)])
         )
     }
 
-    @MainActor
     static func transactions() throws -> [NormalizedTransaction] {
-        let container = try ModelContainerFactory.makeSharedContainer()
+        let container = try container()
         return try container.mainContext.fetch(
             FetchDescriptor<NormalizedTransaction>(
                 sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
             )
         )
     }
+
+    private static func container() throws -> ModelContainer {
+        if let cachedContainer {
+            return cachedContainer
+        }
+
+        let container = try makeContainer()
+        cachedContainer = container
+        return container
+    }
+
+    #if DEBUG
+    static func configureForTesting(makeContainer: @escaping () throws -> ModelContainer) {
+        cachedContainer = nil
+        self.makeContainer = makeContainer
+    }
+
+    static func resetTestingConfiguration() {
+        cachedContainer = nil
+        makeContainer = {
+            try ModelContainerFactory.makePersistentSharedContainer()
+        }
+    }
+    #endif
 }

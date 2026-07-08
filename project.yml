@@ -81,6 +81,7 @@ targets:
           - "@executable_path/Frameworks"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
         INFOPLIST_KEY_NSCalendarsUsageDescription: Tally can create renewal reminders in your calendar.
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: Tally can create renewal reminders in your calendar.
         INFOPLIST_KEY_NSUserNotificationsUsageDescription: Tally can notify you before upcoming renewals.
         INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
         INFOPLIST_KEY_CFBundleURLTypes:

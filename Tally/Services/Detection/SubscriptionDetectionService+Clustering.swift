@@ -39,7 +39,7 @@ extension SubscriptionDetectionService {
             }
 
             let descriptor = descriptorKey == "__general__" ? nil : descriptorKey
-            let amountGroups = splitByAmountSimilarity(bucket, mode: mode)
+            let amountGroups = mergeSequentialPriceSteps(splitByAmountSimilarity(bucket, mode: mode))
                 .filter { $0.count >= mode.minimumClusterSize }
                 .sorted { lhs, rhs in
                     lhs.count == rhs.count
@@ -71,7 +71,7 @@ extension SubscriptionDetectionService {
         }
 
         if mode == .fallback, candidates.isEmpty {
-            let amountGroups = splitByAmountSimilarity(transactions, mode: mode)
+            let amountGroups = mergeSequentialPriceSteps(splitByAmountSimilarity(transactions, mode: mode))
                 .filter { $0.count >= mode.minimumClusterSize }
 
             for (index, group) in amountGroups.enumerated() {
@@ -196,6 +196,71 @@ extension SubscriptionDetectionService {
         }
 
         return groups.map(\.transactions)
+    }
+
+    /// A price change makes one subscription look like two amount clusters that
+    /// never overlap in time. Re-join sequential clusters whose combined charge
+    /// history still reads as one consistent cadence, so a $9.99 → $14.99 bump
+    /// stays a single subscription instead of fragmenting below the minimum
+    /// cluster size.
+    func mergeSequentialPriceSteps(
+        _ groups: [[NormalizedTransaction]]
+    ) -> [[NormalizedTransaction]] {
+        guard groups.count > 1 else {
+            return groups
+        }
+
+        let ordered = groups
+            .map { $0.sorted { $0.transactionDate < $1.transactionDate } }
+            .sorted { ($0.first?.transactionDate ?? .distantPast) < ($1.first?.transactionDate ?? .distantPast) }
+
+        var merged: [[NormalizedTransaction]] = []
+        var current = ordered[0]
+
+        for next in ordered.dropFirst() {
+            if looksLikePriceStepContinuation(from: current, to: next) {
+                current = (current + next).sorted { $0.transactionDate < $1.transactionDate }
+            } else {
+                merged.append(current)
+                current = next
+            }
+        }
+
+        merged.append(current)
+        return merged
+    }
+
+    func looksLikePriceStepContinuation(
+        from earlier: [NormalizedTransaction],
+        to later: [NormalizedTransaction]
+    ) -> Bool {
+        guard let earlierLast = earlier.last?.transactionDate,
+              let laterFirst = later.first?.transactionDate,
+              laterFirst > earlierLast else {
+            return false
+        }
+
+        let earlierAverage = averageAbsoluteAmount(for: earlier)
+        let laterAverage = averageAbsoluteAmount(for: later)
+        guard earlierAverage > 0, laterAverage > 0 else {
+            return false
+        }
+
+        let step = abs(laterAverage - earlierAverage) / max(earlierAverage, laterAverage)
+        guard step <= 0.6 else {
+            return false
+        }
+
+        let combined = (earlier + later).sorted { $0.transactionDate < $1.transactionDate }
+        let intervals = zip(combined, combined.dropFirst()).map { lhs, rhs in
+            Calendar.current.dateComponents([.day], from: lhs.transactionDate, to: rhs.transactionDate).day ?? 0
+        }
+        let cadence = inferCadence(from: intervals, occurrenceCount: combined.count)
+        guard cadence != .unknown else {
+            return false
+        }
+
+        return recurrenceConsistency(for: intervals, cadence: cadence) >= 0.55
     }
 
     func amountToleranceProfile(

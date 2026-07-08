@@ -99,8 +99,12 @@ struct DashboardMetrics {
         )
         overlapGroups = Self.overlapGroups(from: activeSubscriptions)
         priceChangedSubscriptions = activeSubscriptions
-            .filter { ($0.priceChangePercent ?? 0) > 0.05 }
-            .sorted { ($0.priceChangePercent ?? 0) > ($1.priceChangePercent ?? 0) }
+            .filter { subscription in
+                (subscription.priceChangePercent ?? 0) >= Self.priceIncreaseThreshold
+            }
+            .sorted {
+                ($0.priceChangePercent ?? 0) > ($1.priceChangePercent ?? 0)
+            }
     }
 }
 

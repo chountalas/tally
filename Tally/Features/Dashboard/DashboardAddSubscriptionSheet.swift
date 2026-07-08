@@ -446,7 +446,9 @@ struct ManualSubscriptionDraftSuggestion: Sendable {
 @MainActor
 struct ManualSubscriptionDraftAdvisor: Sendable {
     private let engine = MerchantClassificationEngine()
-    private let intelligence = SubscriptionIntelligenceService()
+    private let intelligenceTask = Task.detached(priority: .userInitiated) {
+        SubscriptionIntelligenceService()
+    }
 
     func suggest(
         for input: ManualSubscriptionDraftInput,
@@ -459,6 +461,7 @@ struct ManualSubscriptionDraftAdvisor: Sendable {
 
         let aiClassification: MerchantClassificationResult?
         do {
+            let intelligence = await intelligenceTask.value
             aiClassification = try await intelligence.classifyMerchant(
                 rawMerchant: trimmedDisplayName,
                 memo: input.notes?.nilIfBlank,

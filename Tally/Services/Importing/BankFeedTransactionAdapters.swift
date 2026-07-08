@@ -10,52 +10,69 @@ struct OFXTransactionSourceAdapter: TransactionSourceAdapter {
     }
 
     func prepareTransactions() async throws -> [SourceTransactionDraft] {
-        let accountID = OFXTagParser.firstTag("ACCTID", in: text)
-        let currency = OFXTagParser.firstTag("CURDEF", in: text)
-        let blocks = OFXTagParser.blocks(named: "STMTTRN", in: text)
+        let documentCurrency = OFXTagParser.firstTag("CURDEF", in: text)
+        let sections = OFXTagParser.statementSections(in: text)
 
-        return blocks.compactMap { block in
-            guard
-                let date = OFXDateParser.date(from: OFXTagParser.firstTag("DTPOSTED", in: block)),
-                let amountValue = OFXTagParser.firstTag("TRNAMT", in: block),
-                let amount = Decimal(string: amountValue.trimmingCharacters(in: .whitespacesAndNewlines))
-            else {
-                return nil
+        return sections.flatMap { section in
+            let accountID = OFXTagParser.firstTag("ACCTID", in: section)
+            let currency = OFXTagParser.firstTag("CURDEF", in: section) ?? documentCurrency
+            let blocks = OFXTagParser.blocks(named: "STMTTRN", in: section)
+
+            return blocks.compactMap { block in
+                makeDraft(
+                    from: block,
+                    accountID: accountID,
+                    currency: currency
+                )
             }
-
-            let merchant = [
-                OFXTagParser.firstTag("NAME", in: block),
-                OFXTagParser.firstTag("PAYEE", in: block),
-                OFXTagParser.firstTag("MEMO", in: block)
-            ]
-                .compactMap { $0?.nilIfBlank }
-                .first ?? "Unknown merchant"
-            let fitID = OFXTagParser.firstTag("FITID", in: block)?.nilIfBlank
-            let memo = OFXTagParser.firstTag("MEMO", in: block)?.nilIfBlank
-            let transactionType = OFXTagParser.firstTag("TRNTYPE", in: block)?.nilIfBlank
-            let seed = NormalizedTransactionSeed(
-                transactionDate: date,
-                transactionAmount: amount,
-                merchantRaw: merchant,
-                category: transactionType,
-                accountName: accountID?.nilIfBlank,
-                memo: memo,
-                currency: currency?.nilIfBlank
-            )
-
-            return SourceTransactionDraft(
-                seed: seed,
-                source: source,
-                externalTransactionID: fitID,
-                externalAccountID: accountID,
-                sourceReferenceID: fitID,
-                sourceFingerprint: SourceTransactionDraft.fingerprint(for: seed),
-                sourceMetadata: [
-                    "format": source.rawValue,
-                    "transactionType": transactionType ?? ""
-                ].filter { $0.value.isEmpty == false }
-            )
         }
+    }
+
+    private func makeDraft(
+        from block: String,
+        accountID: String?,
+        currency: String?
+    ) -> SourceTransactionDraft? {
+        guard
+            let date = OFXDateParser.date(from: OFXTagParser.firstTag("DTPOSTED", in: block)),
+            let amountValue = OFXTagParser.firstTag("TRNAMT", in: block),
+            let amount = Decimal(string: amountValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        else {
+            return nil
+        }
+
+        let merchant = [
+            OFXTagParser.firstTag("NAME", in: block),
+            OFXTagParser.firstTag("PAYEE", in: block),
+            OFXTagParser.firstTag("MEMO", in: block)
+        ]
+            .compactMap { $0?.nilIfBlank }
+            .first ?? "Unknown merchant"
+        let fitID = OFXTagParser.firstTag("FITID", in: block)?.nilIfBlank
+        let memo = OFXTagParser.firstTag("MEMO", in: block)?.nilIfBlank
+        let transactionType = OFXTagParser.firstTag("TRNTYPE", in: block)?.nilIfBlank
+        let seed = NormalizedTransactionSeed(
+            transactionDate: date,
+            transactionAmount: amount,
+            merchantRaw: merchant,
+            category: transactionType,
+            accountName: accountID?.nilIfBlank,
+            memo: memo,
+            currency: currency?.nilIfBlank
+        )
+
+        return SourceTransactionDraft(
+            seed: seed,
+            source: source,
+            externalTransactionID: fitID,
+            externalAccountID: accountID,
+            sourceReferenceID: fitID,
+            sourceFingerprint: SourceTransactionDraft.fingerprint(for: seed),
+            sourceMetadata: [
+                "format": source.rawValue,
+                "transactionType": transactionType ?? ""
+            ].filter { $0.value.isEmpty == false }
+        )
     }
 }
 
@@ -111,6 +128,12 @@ struct SimpleFINTransactionSourceAdapter: TransactionSourceAdapter {
 }
 
 private enum OFXTagParser {
+    static func statementSections(in text: String) -> [String] {
+        let sections = ["STMTRS", "CCSTMTRS", "INVSTMTRS"]
+            .flatMap { blocks(named: $0, in: text) }
+        return sections.isEmpty ? [text] : sections
+    }
+
     static func firstTag(_ name: String, in text: String) -> String? {
         let escapedName = NSRegularExpression.escapedPattern(for: name)
         let pattern = "<\(escapedName)>\\s*([^<\\r\\n]+)"

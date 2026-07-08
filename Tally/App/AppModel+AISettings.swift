@@ -110,7 +110,11 @@ extension AppModel {
                 for: gemmaModelManager.downloadRequest(),
                 delegate: progressDelegate
             )
-            _ = try gemmaModelManager.installDownloadedModel(from: temporaryURL)
+            gemmaDownloadStatusMessage = "Verifying Gemma model…"
+            let gemmaModelManager = gemmaModelManager
+            _ = try await Task.detached(priority: .utility) {
+                try gemmaModelManager.installDownloadedModel(from: temporaryURL)
+            }.value
             gemmaSetupErrorMessage = nil
             gemmaDownloadProgress = 1
             gemmaDownloadStatusMessage = "Gemma model download complete."

@@ -569,9 +569,17 @@ extension AppModel {
 
         let isManualRecord = subscription.creationPath == .manual
             || subscription.libraryState == .manual
+        let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
+            .compactMap { $0?.nilIfBlank }
 
         try? RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
+
+        do {
+            try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
+        } catch {
+            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
+        }
 
         subscription.status = .former
         subscription.isUserConfirmed = true
@@ -606,9 +614,17 @@ extension AppModel {
         let isManualRecord = subscription.creationPath == .manual
             || subscription.libraryState == .manual
         let canonicalName = subscription.canonicalName
+        let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
+            .compactMap { $0?.nilIfBlank }
 
         try? RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
+
+        do {
+            try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
+        } catch {
+            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
+        }
 
         if !isManualRecord {
             let rule = try fetchOrCreateReviewRule(
@@ -873,7 +889,7 @@ extension AppModel {
         transactions: [NormalizedTransaction]
     ) -> ReviewAutomationPlan {
         let reviewSubscriptions = subscriptions
-            .filter { $0.status == .needsReview }
+            .filter { $0.libraryState == .suggested && $0.status == .needsReview }
             .sorted {
                 if $0.confidenceScore == $1.confidenceScore {
                     return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
@@ -936,6 +952,30 @@ extension AppModel {
             confirmCandidates: confirmCandidates,
             suppressCandidates: suppressCandidates,
             manualCandidates: manualCandidates
+        )
+    }
+
+    func reviewAutomationPlan(
+        subscriptions: [Subscription],
+        transactions: [NormalizedTransaction],
+        scopedImportRecordID: UUID?
+    ) -> ReviewAutomationPlan {
+        guard let scopedImportRecordID else {
+            return reviewAutomationPlan(subscriptions: subscriptions, transactions: transactions)
+        }
+
+        let scopedSubscriptionIDs = Set(transactions.compactMap { transaction in
+            transaction.importRecordID == scopedImportRecordID ? transaction.subscriptionID : nil
+        })
+        guard scopedSubscriptionIDs.isEmpty == false else {
+            return .empty
+        }
+
+        return reviewAutomationPlan(
+            subscriptions: subscriptions.filter { scopedSubscriptionIDs.contains($0.id) },
+            transactions: transactions.filter { transaction in
+                transaction.subscriptionID.map { scopedSubscriptionIDs.contains($0) } ?? false
+            }
         )
     }
 

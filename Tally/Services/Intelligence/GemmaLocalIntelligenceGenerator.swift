@@ -323,12 +323,20 @@ struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
     }
 
     private func shouldSplitBatch(after error: Error) -> Bool {
-        if let runtimeError = error as? GemmaRuntimeError,
-           case .promptExceedsContextWindow = runtimeError {
-            return true
+        if let runtimeError = error as? GemmaRuntimeError {
+            switch runtimeError {
+            case .promptExceedsContextWindow, .tokenizationFailed, .decodeFailed:
+                return true
+            case .frameworkUnavailable, .modelLoadFailed, .contextCreationFailed,
+                 .samplerCreationFailed, .promptFormattingFailed:
+                // Environment failures won't be fixed by a smaller batch.
+                return false
+            }
         }
 
-        return true
+        // Malformed JSON on a multi-request prompt usually means the model
+        // conflated entries; smaller batches recover those.
+        return error is DecodingError
     }
 
     func evaluateRecurringCluster(

@@ -5,6 +5,7 @@ import SwiftUI
 /// refresh. Each choice routes to the corresponding real flow.
 struct AddUpdateSheet: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -51,7 +52,7 @@ struct AddUpdateSheet: View {
 
     private func select(_ choice: SheetChoice) {
         switch choice.kind {
-        case .statement, .refresh:
+        case .statement, .newerStatement:
             // macOS can show the backing transactions screen for context; iOS
             // keeps that route out of the Tally tab bar, so the root view owns
             // the pending file picker request directly.
@@ -64,11 +65,16 @@ struct AddUpdateSheet: View {
         case .manual:
             // Swap the chooser for the real add-by-hand form (same sheet host).
             appModel.addOrEditSheet = .create
+        case .rescan:
+            appModel.addOrEditSheet = nil
+            Task {
+                await appModel.refreshSubscriptionAnalysis(in: modelContext)
+            }
         }
     }
 }
 
-private enum SheetChoiceKind { case statement, manual, refresh }
+private enum SheetChoiceKind { case statement, manual, newerStatement, rescan }
 
 private struct SheetChoice: Identifiable {
     let kind: SheetChoiceKind
@@ -80,11 +86,13 @@ private struct SheetChoice: Identifiable {
 
     static let all: [SheetChoice] = [
         SheetChoice(kind: .statement, icon: "doc.text", title: "Drop in a statement",
-                    subtitle: "Drag a bank or card export (.csv or Excel) — we'll find the subscriptions for you.", isPrimary: true),
+                    subtitle: "Drag a bank or card export and we'll find the subscriptions for you.", isPrimary: true),
         SheetChoice(kind: .manual, icon: "pencil", title: "Add one by hand",
                     subtitle: "Type in a subscription yourself — name, price, and how often it bills.", isPrimary: false),
-        SheetChoice(kind: .refresh, icon: "arrow.clockwise", title: "Refresh my data",
-                    subtitle: "Check your latest statement for new charges and price changes.", isPrimary: false)
+        SheetChoice(kind: .newerStatement, icon: "tray.and.arrow.down", title: "Import a newer statement",
+                    subtitle: "Pick a fresh export when your bank or card file has new charges.", isPrimary: false),
+        SheetChoice(kind: .rescan, icon: "arrow.clockwise", title: "Re-scan my transactions",
+                    subtitle: "Run detection again using the transactions already saved on this Mac.", isPrimary: false)
     ]
 }
 

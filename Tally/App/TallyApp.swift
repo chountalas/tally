@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftData
 import SwiftUI
 
@@ -29,6 +30,20 @@ struct TallyApp: App {
         #endif
     }
 
+    /// Route a tapped Spotlight result back into the app. Both indexed item
+    /// kinds ("subscription.<uuid>" and "renewal.<uuid>", per
+    /// `SubscriptionSpotlightIndexer`) open the matching subscription, reusing
+    /// the same `tally://subscription/<uuid>` path as deep-link handling.
+    private func handleSpotlightActivity(_ activity: NSUserActivity) {
+        guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+              let rawID = identifier.split(separator: ".").last,
+              let subscriptionID = UUID(uuidString: String(rawID)),
+              let url = URL(string: "tally://subscription/\(subscriptionID.uuidString)") else {
+            return
+        }
+        appModel.handleIncomingURL(url)
+    }
+
     private var resolvedColorScheme: ColorScheme? {
         #if DEBUG
         if let forced = TallyPreview.forcedColorScheme { return forced }
@@ -50,6 +65,9 @@ struct TallyApp: App {
                     .preferredColorScheme(resolvedColorScheme)
                     .onOpenURL { url in
                         appModel.handleIncomingURL(url)
+                    }
+                    .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                        handleSpotlightActivity(activity)
                     }
             } else {
                 StartupFailureView(message: bootstrap.startupMessage ?? "Tally could not start.")

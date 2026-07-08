@@ -164,4 +164,151 @@ final class CadenceDetectionTests: XCTestCase {
 
         XCTAssertEqual(status, .former)
     }
+
+    // MARK: - Sparse two-charge evidence
+
+    func testTwoMatchingChargesFromUnknownMerchantSurfaceForReview() async {
+        let transactions = [
+            makeUnknownMerchantTransaction(dateString: "2026-04-03T00:00:00Z", amount: "-12.50"),
+            makeUnknownMerchantTransaction(dateString: "2026-05-03T00:00:00Z", amount: "-12.50")
+        ]
+
+        let disposition = await service.evaluate(
+            cluster: SubscriptionCandidateCluster(
+                canonicalName: "Acme Notes",
+                displayName: "Acme Notes",
+                transactions: transactions
+            )
+        )
+
+        guard case let .needsReview(summary) = disposition else {
+            XCTFail("Expected needsReview, got \(disposition)")
+            return
+        }
+        XCTAssertEqual(summary.cadence, .monthly)
+    }
+
+    func testTwoMismatchedChargesFromUnknownMerchantStayDropped() async {
+        let transactions = [
+            makeUnknownMerchantTransaction(dateString: "2026-04-03T00:00:00Z", amount: "-12.50"),
+            makeUnknownMerchantTransaction(dateString: "2026-05-03T00:00:00Z", amount: "-48.75")
+        ]
+
+        let disposition = await service.evaluate(
+            cluster: SubscriptionCandidateCluster(
+                canonicalName: "Acme Notes",
+                displayName: "Acme Notes",
+                transactions: transactions
+            )
+        )
+
+        guard case .suppressed = disposition else {
+            XCTFail("Expected suppression for mismatched sparse amounts, got \(disposition)")
+            return
+        }
+    }
+
+    func testTwoMatchingGroceryChargesStayDropped() async {
+        let transactions = [
+            makeUnknownMerchantTransaction(
+                dateString: "2026-04-03T00:00:00Z",
+                amount: "-64.20",
+                category: "Groceries"
+            ),
+            makeUnknownMerchantTransaction(
+                dateString: "2026-05-03T00:00:00Z",
+                amount: "-64.20",
+                category: "Groceries"
+            )
+        ]
+
+        let disposition = await service.evaluate(
+            cluster: SubscriptionCandidateCluster(
+                canonicalName: "Corner Market",
+                displayName: "Corner Market",
+                transactions: transactions
+            )
+        )
+
+        guard case .suppressed = disposition else {
+            XCTFail("Expected suppression for excluded-category charges, got \(disposition)")
+            return
+        }
+    }
+
+    // MARK: - Price-step cluster merging
+
+    func testPriceIncreaseKeepsOneCluster() {
+        let charges: [(String, String)] = [
+            ("2026-01-05T00:00:00Z", "-9.99"),
+            ("2026-02-05T00:00:00Z", "-9.99"),
+            ("2026-03-05T00:00:00Z", "-9.99"),
+            ("2026-04-05T00:00:00Z", "-14.99"),
+            ("2026-05-05T00:00:00Z", "-14.99")
+        ]
+        let transactions = charges.map {
+            makeUnknownMerchantTransaction(dateString: $0.0, amount: $0.1)
+        }
+
+        let clusters = service.candidateClusters(for: "Streamly", transactions: transactions)
+
+        XCTAssertEqual(clusters.count, 1)
+        XCTAssertEqual(clusters.first?.transactions.count, 5)
+        XCTAssertEqual(clusters.first?.canonicalName, "Streamly")
+    }
+
+    func testConcurrentPlansStaySplit() {
+        let charges: [(String, String)] = [
+            ("2026-01-05T00:00:00Z", "-9.99"),
+            ("2026-01-20T00:00:00Z", "-19.99"),
+            ("2026-02-05T00:00:00Z", "-9.99"),
+            ("2026-02-20T00:00:00Z", "-19.99"),
+            ("2026-03-05T00:00:00Z", "-9.99"),
+            ("2026-03-20T00:00:00Z", "-19.99")
+        ]
+        let transactions = charges.map {
+            makeUnknownMerchantTransaction(dateString: $0.0, amount: $0.1)
+        }
+
+        let clusters = service.candidateClusters(for: "Streamly", transactions: transactions)
+
+        XCTAssertEqual(clusters.count, 2)
+    }
+
+    func testUnrelatedAmountJumpStaysSplit() {
+        let charges: [(String, String)] = [
+            ("2026-01-05T00:00:00Z", "-9.99"),
+            ("2026-02-05T00:00:00Z", "-9.99"),
+            ("2026-04-17T00:00:00Z", "-89.00"),
+            ("2026-06-02T00:00:00Z", "-89.00")
+        ]
+        let transactions = charges.map {
+            makeUnknownMerchantTransaction(dateString: $0.0, amount: $0.1)
+        }
+
+        let clusters = service.candidateClusters(for: "Streamly", transactions: transactions)
+
+        XCTAssertEqual(clusters.count, 2)
+    }
+
+    private func makeUnknownMerchantTransaction(
+        dateString: String,
+        amount: String,
+        category: String? = nil
+    ) -> NormalizedTransaction {
+        let formatter = ISO8601DateFormatter()
+        let transaction = NormalizedTransaction(
+            transactionDate: formatter.date(from: dateString)!,
+            transactionAmount: Decimal(string: amount)!,
+            merchantRaw: "ACME 8842",
+            merchantNormalized: "Acme",
+            currency: "USD",
+            category: category,
+            memo: nil,
+            merchantKind: .unknown,
+            merchantSubscriptionAffinity: 0.4
+        )
+        transaction.classificationConfidence = 0.4
+        return transaction
+    }
 }

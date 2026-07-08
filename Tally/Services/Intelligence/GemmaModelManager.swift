@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Darwin
 import OSLog
@@ -39,6 +40,8 @@ enum GemmaModelValidationError: LocalizedError, Equatable, Sendable {
     case fileTooSmall(actualBytes: Int64, minimumBytes: Int64)
     case unreadableHeader
     case invalidGGUFHeader(found: String)
+    case unreadableChecksum
+    case checksumMismatch(expected: String, actual: String)
 
     var errorDescription: String? {
         switch self {
@@ -57,6 +60,10 @@ enum GemmaModelValidationError: LocalizedError, Equatable, Sendable {
             return "Tally could not read the Gemma model header."
         case let .invalidGGUFHeader(found):
             return "The Gemma model header is invalid. Expected GGUF but found \(found)."
+        case .unreadableChecksum:
+            return "Tally could not compute the Gemma model checksum."
+        case let .checksumMismatch(expected, actual):
+            return "The Gemma model checksum did not match the expected download. Expected \(expected), found \(actual)."
         }
     }
 
@@ -118,29 +125,34 @@ private enum GemmaModelValidationCache {
     }
 }
 
-struct GemmaModelManager {
+struct GemmaModelManager: @unchecked Sendable {
     static let managedModelFileName = "gemma-4-E4B-it-Q4_K_M.gguf"
     static let defaultMinimumValidModelSizeBytes: Int64 = 256 * 1024 * 1024
+    static let expectedDownloadedModelRevision = "2714b5519c6c3516b1000e7c5e1eba998dfe1fe8"
     static let downloadURL = URL(
-        string: "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf?download=true"
+        string: "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/\(expectedDownloadedModelRevision)/gemma-4-E4B-it-Q4_K_M.gguf?download=true"
     )!
+    static let expectedDownloadedModelSHA256 = "90ce98129eb3e8cc57e62433d500c97c624b1e3af1fcc85dd3b55ad7e0313e9f"
     private static let ggufHeader = "GGUF"
 
     private let fileManager: FileManager
     private let appSupportDirectory: URL
     private let adoptableSourceURLs: [URL]
     private let minimumValidModelSizeBytes: Int64
+    private let expectedDownloadedModelSHA256: String?
 
     init(
         fileManager: FileManager = .default,
         appSupportDirectory: URL = GemmaModelManager.defaultAppSupportDirectory(),
         adoptableSourceURLs: [URL] = GemmaModelManager.defaultAdoptableSourceURLs(),
-        minimumValidModelSizeBytes: Int64 = GemmaModelManager.defaultMinimumValidModelSizeBytes
+        minimumValidModelSizeBytes: Int64 = GemmaModelManager.defaultMinimumValidModelSizeBytes,
+        expectedDownloadedModelSHA256: String? = GemmaModelManager.expectedDownloadedModelSHA256
     ) {
         self.fileManager = fileManager
         self.appSupportDirectory = appSupportDirectory
         self.adoptableSourceURLs = adoptableSourceURLs
         self.minimumValidModelSizeBytes = minimumValidModelSizeBytes
+        self.expectedDownloadedModelSHA256 = expectedDownloadedModelSHA256
     }
 
     var modelsDirectoryURL: URL {
@@ -189,7 +201,7 @@ struct GemmaModelManager {
     }
 
     func installDownloadedModel(from temporaryURL: URL) throws -> URL {
-        try validateModel(at: temporaryURL)
+        try validateDownloadedModel(at: temporaryURL)
         try ensureModelsDirectoryExists()
         try removeManagedModelEntryIfPresent()
 
@@ -392,6 +404,50 @@ struct GemmaModelManager {
             )
             throw error
         }
+    }
+
+    private func validateDownloadedModel(at url: URL) throws {
+        try validateModel(at: url)
+        guard let expectedDownloadedModelSHA256 else {
+            return
+        }
+
+        let actualSHA256 = try sha256HexDigest(for: url)
+        guard actualSHA256.localizedCaseInsensitiveCompare(expectedDownloadedModelSHA256) == .orderedSame else {
+            throw GemmaModelValidationError.checksumMismatch(
+                expected: expectedDownloadedModelSHA256,
+                actual: actualSHA256
+            )
+        }
+    }
+
+    private func sha256HexDigest(for url: URL) throws -> String {
+        let resolvedURL = url.resolvingSymlinksInPath()
+        let fileHandle: FileHandle
+        do {
+            fileHandle = try FileHandle(forReadingFrom: resolvedURL)
+        } catch {
+            throw GemmaModelValidationError.unreadableChecksum
+        }
+
+        var hasher = SHA256()
+        do {
+            while true {
+                let data = try fileHandle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+                guard data.isEmpty == false else {
+                    break
+                }
+                hasher.update(data: data)
+            }
+            try fileHandle.close()
+        } catch {
+            try? fileHandle.close()
+            throw GemmaModelValidationError.unreadableChecksum
+        }
+
+        return hasher.finalize()
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     private func validateModelBody(at url: URL, validatedFileSize: inout Int64) throws {

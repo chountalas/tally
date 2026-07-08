@@ -20,6 +20,10 @@ enum ModelContainerFactory {
         }
     }
 
+    static func makePersistentSharedContainer() throws -> ModelContainer {
+        try makeContainer(configuration: cloudKitConfiguration)
+    }
+
     static func makeBootstrapResult() -> BootstrapResult {
         do {
             return BootstrapResult(

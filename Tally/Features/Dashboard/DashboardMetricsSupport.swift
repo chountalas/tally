@@ -1,6 +1,8 @@
 import Foundation
 
 extension DashboardMetrics {
+    static let priceIncreaseThreshold = 0.05
+
     static func currentActiveSubscriptions(
         from subscriptions: [Subscription],
         referenceDate: Date = .now
@@ -63,6 +65,48 @@ extension DashboardMetrics {
                 (currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
                     (currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
+    }
+
+    static func projectedRenewalDates(
+        for subscription: Subscription,
+        inVisibleMonth viewMonth: Date,
+        calendar: Calendar = .current,
+        referenceDate: Date = .now
+    ) -> [Date] {
+        guard let currentRenewalDate = currentRenewalDate(
+            for: subscription,
+            referenceDate: referenceDate
+        ) else {
+            return []
+        }
+
+        let displayStart = calendar.startOfDay(for: currentRenewalDate)
+        let visibleStart = calendar.startOfDay(for: viewMonth)
+        let visibleEnd = calendar.startOfDay(
+            for: calendar.date(byAdding: .month, value: 1, to: visibleStart) ?? visibleStart
+        )
+
+        var dates: [Date] = []
+        var current = displayStart
+        var iterations = 0
+        while iterations < 800 {
+            if current >= visibleEnd {
+                break
+            }
+            if current >= visibleStart, current >= displayStart {
+                dates.append(current)
+            }
+
+            guard let next = subscription.cadence.tallyAdvanced(current, by: 1, using: calendar)
+                .map(calendar.startOfDay(for:)),
+                  next > current else {
+                break
+            }
+            current = next
+            iterations += 1
+        }
+
+        return dates
     }
 
     static func probableRenewals(
@@ -173,27 +217,11 @@ extension DashboardMetrics {
 
         for subscription in subscriptions {
             guard let linkedTransactions = transactionsBySubscription[subscription.id],
-                  linkedTransactions.count >= 2,
-                  let latest = linkedTransactions.max(by: { $0.transactionDate < $1.transactionDate }) else {
+                  linkedTransactions.count >= 2 else {
                 continue
             }
 
-            let earlierAmounts = linkedTransactions
-                .filter { $0.id != latest.id }
-                .map { abs(($0.transactionAmount as NSDecimalNumber).doubleValue) }
-
-            guard !earlierAmounts.isEmpty else {
-                continue
-            }
-
-            let baseline = earlierAmounts.reduce(0, +) / Double(earlierAmounts.count)
-            let latestAmount = abs((latest.transactionAmount as NSDecimalNumber).doubleValue)
-            guard baseline > 0 else {
-                continue
-            }
-
-            let percentChange = (latestAmount - baseline) / baseline
-            guard percentChange >= 0.08 else {
+            guard let percentChange = priceIncreasePercent(in: linkedTransactions) else {
                 continue
             }
 
@@ -271,9 +299,13 @@ extension DashboardMetrics {
     }
 
     static func hasPriceIncrease(in transactions: [NormalizedTransaction]) -> Bool {
+        priceIncreasePercent(in: transactions) != nil
+    }
+
+    static func priceIncreasePercent(in transactions: [NormalizedTransaction]) -> Double? {
         guard transactions.count >= 2,
               let latest = transactions.max(by: { $0.transactionDate < $1.transactionDate }) else {
-            return false
+            return nil
         }
 
         let earlier = transactions
@@ -281,16 +313,17 @@ extension DashboardMetrics {
             .map { abs(($0.transactionAmount as NSDecimalNumber).doubleValue) }
 
         guard !earlier.isEmpty else {
-            return false
+            return nil
         }
 
         let average = earlier.reduce(0, +) / Double(earlier.count)
         let latestAmount = abs((latest.transactionAmount as NSDecimalNumber).doubleValue)
         guard average > 0 else {
-            return false
+            return nil
         }
 
-        return ((latestAmount - average) / average) >= 0.08
+        let percentChange = (latestAmount - average) / average
+        return percentChange >= priceIncreaseThreshold ? percentChange : nil
     }
 
     private static func renewalDecisionDetail(

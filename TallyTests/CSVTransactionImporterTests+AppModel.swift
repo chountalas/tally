@@ -93,6 +93,286 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testStoredTemplateIsReappliedWhenHeadersMatch() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Txn Date",
+            descriptionColumn: "Details",
+            amountColumn: "Value",
+            merchantColumn: "Details",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let draft = TransactionImportDraft(
+            fileName: "reuse.csv",
+            headers: ["Txn Date", "Details", "Value"],
+            previewRows: [],
+            rawRows: [["Txn Date": "2025-01-01", "Details": "Netflix", "Value": "15.49"]],
+            suggestedMapping: ColumnMappingConfig(
+                dateColumn: "Txn Date",
+                descriptionColumn: nil,
+                amountColumn: "Value",
+                merchantColumn: nil,
+                categoryColumn: nil,
+                accountColumn: nil,
+                currencyColumn: nil,
+                debitSignConvention: .positive
+            ),
+            confidence: 0.33
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, storedMapping)
+        XCTAssertEqual(resolved.confidence, 1.0)
+    }
+
+    @MainActor
+    func testStoredTemplateKeepsInferredDebitSignWhenHeaderOnlyMatchDisagrees() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Description",
+            amountColumn: "Amount",
+            merchantColumn: "Description",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: nil,
+            amountColumn: "Amount",
+            merchantColumn: "Description",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let draft = TransactionImportDraft(
+            fileName: "other-bank.csv",
+            headers: ["Date", "Description", "Amount"],
+            previewRows: [],
+            rawRows: [["Date": "2025-01-01", "Description": "Netflix", "Amount": "-15.49"]],
+            suggestedMapping: guessedMapping,
+            confidence: 0.68
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping.dateColumn, storedMapping.dateColumn)
+        XCTAssertEqual(resolved.suggestedMapping.amountColumn, storedMapping.amountColumn)
+        XCTAssertEqual(resolved.suggestedMapping.merchantColumn, storedMapping.merchantColumn)
+        XCTAssertEqual(resolved.suggestedMapping.debitSignConvention, .negative)
+        XCTAssertEqual(resolved.confidence, 0.68)
+    }
+
+    @MainActor
+    func testStoredTemplateIsIgnoredWhenIncomingHeadersAreMoreSpecific() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Description",
+            amountColumn: "Amount",
+            merchantColumn: "Description",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Description",
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let draft = TransactionImportDraft(
+            fileName: "more-specific.csv",
+            headers: ["Date", "Merchant", "Description", "Amount"],
+            previewRows: [],
+            rawRows: [
+                [
+                    "Date": "2025-01-01",
+                    "Merchant": "Netflix",
+                    "Description": "NETFLIX.COM",
+                    "Amount": "-15.49"
+                ]
+            ],
+            suggestedMapping: guessedMapping,
+            confidence: 0.72
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
+        XCTAssertEqual(resolved.confidence, 0.72)
+    }
+
+    @MainActor
+    func testStoredTemplateIsIgnoredWhenOnlyNormalizedHeadersMatch() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Txn Date",
+            descriptionColumn: "Details",
+            amountColumn: "Value",
+            merchantColumn: "Details",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "txn-date",
+            descriptionColumn: "details",
+            amountColumn: "value",
+            merchantColumn: "details",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .positive
+        )
+        let draft = TransactionImportDraft(
+            fileName: "normalized-only.csv",
+            headers: ["txn-date", "details", "value"],
+            previewRows: [],
+            rawRows: [["txn-date": "2025-01-01", "details": "Netflix", "value": "15.49"]],
+            suggestedMapping: guessedMapping,
+            confidence: 0.61
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
+        XCTAssertEqual(resolved.confidence, 0.61)
+    }
+
+    @MainActor
+    func testStoredTemplatePreservesDraftWarnings() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: nil,
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let draft = TransactionImportDraft(
+            fileName: "reuse.csv",
+            headers: ["Date", "Merchant", "Amount"],
+            previewRows: [],
+            rawRows: [["Date": "2025-01-01", "Merchant": "Netflix", "Amount": "-15.49"]],
+            suggestedMapping: storedMapping,
+            confidence: 0.9,
+            warnings: ["Skipped 2 leading preamble rows before the detected header row."]
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, storedMapping)
+        XCTAssertEqual(resolved.warnings, draft.warnings)
+    }
+
+    @MainActor
+    func testStoredTemplateIsIgnoredWhenColumnsMissing() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let storedMapping = ColumnMappingConfig(
+            dateColumn: "Legacy Date",
+            descriptionColumn: nil,
+            amountColumn: "Legacy Amount",
+            merchantColumn: "Legacy Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        context.insert(ColumnMappingTemplate(config: storedMapping))
+        try context.save()
+
+        let guessedMapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: nil,
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let draft = TransactionImportDraft(
+            fileName: "fresh.csv",
+            headers: ["Date", "Merchant", "Amount"],
+            previewRows: [],
+            rawRows: [["Date": "2025-01-01", "Merchant": "Netflix", "Amount": "-15.49"]],
+            suggestedMapping: guessedMapping,
+            confidence: 0.66
+        )
+
+        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+
+        XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
+        XCTAssertEqual(resolved.confidence, 0.66)
+    }
+
+    @MainActor
+    func testImportResultMessageReportsInsertedUpdatedUnchanged() {
+        let appModel = AppModel.testing()
+        var summary = SourceTransactionUpsertSummary()
+        summary.insertedCount = 3
+        summary.updatedCount = 2
+        summary.unchangedCount = 5
+
+        let message = appModel.importResultMessage(importFileName: "bank.csv", upsertSummary: summary)
+
+        XCTAssertTrue(message.contains("3 new"))
+        XCTAssertTrue(message.contains("2 updated"))
+        XCTAssertTrue(message.contains("5 unchanged"))
+        XCTAssertTrue(message.contains("10 transactions"))
+    }
+
+    @MainActor
     func testNavigationExposesTransactionsTabAndRoutesToIt() {
         let appModel = AppModel.testing()
 
@@ -287,6 +567,151 @@ extension CSVTransactionImporterTests {
         XCTAssertEqual(plan.suppressCandidates.map(\.displayName), ["Corner Market"])
         XCTAssertEqual(plan.manualCandidates.map(\.displayName), ["Mystery Cloud"])
         XCTAssertEqual(plan.manualCountAfterAutomation, 1)
+    }
+
+    @MainActor
+    func testReviewAutomationPlanScopesToImportReviewItems() throws {
+        let appModel = AppModel.testing()
+        let firstImport = ImportRecord(
+            fileName: "first.csv",
+            sourceType: "csv",
+            status: .analyzed,
+            mappingSignature: "first"
+        )
+        let secondImport = ImportRecord(
+            fileName: "second.csv",
+            sourceType: "csv",
+            status: .analyzed,
+            mappingSignature: "second"
+        )
+        let firstCandidate = makeAutomationSubscription(
+            name: "GitHub",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.91,
+            category: "Software"
+        )
+        let secondCandidate = makeAutomationSubscription(
+            name: "Dropbox",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.92,
+            category: "Software"
+        )
+        let transactions = [
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -2,
+                subscriptionID: firstCandidate.id,
+                importRecordID: firstImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -1,
+                subscriptionID: firstCandidate.id,
+                importRecordID: firstImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -2,
+                subscriptionID: secondCandidate.id,
+                importRecordID: secondImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -1,
+                subscriptionID: secondCandidate.id,
+                importRecordID: secondImport.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            )
+        ]
+
+        let plan = appModel.reviewAutomationPlan(
+            subscriptions: [firstCandidate, secondCandidate],
+            transactions: transactions,
+            scopedImportRecordID: firstImport.id
+        )
+
+        XCTAssertEqual(plan.confirmCandidates.map(\.displayName), ["GitHub"])
+        XCTAssertTrue(plan.suppressCandidates.isEmpty)
+        XCTAssertTrue(plan.manualCandidates.isEmpty)
+        XCTAssertEqual(plan.totalReviewCount, 1)
+    }
+
+    @MainActor
+    func testReviewAutomationPlanIgnoresHiddenIgnoredReviewItems() throws {
+        let appModel = AppModel.testing()
+        let visibleCandidate = makeAutomationSubscription(
+            name: "GitHub",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.91,
+            category: "Software"
+        )
+        let ignoredCandidate = makeAutomationSubscription(
+            name: "Dropbox",
+            status: .needsReview,
+            cadence: .monthly,
+            confidence: 0.92,
+            category: "Software"
+        )
+        ignoredCandidate.libraryState = .ignored
+
+        let transactions = [
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -2,
+                subscriptionID: visibleCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "GITHUB",
+                amount: -12,
+                monthOffset: -1,
+                subscriptionID: visibleCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -2,
+                subscriptionID: ignoredCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            ),
+            makeAutomationTransaction(
+                merchant: "DROPBOX",
+                amount: -19.99,
+                monthOffset: -1,
+                subscriptionID: ignoredCandidate.id,
+                merchantKind: .softwareOrSaaS,
+                affinity: 0.96
+            )
+        ]
+
+        let plan = appModel.reviewAutomationPlan(
+            subscriptions: [visibleCandidate, ignoredCandidate],
+            transactions: transactions
+        )
+
+        XCTAssertEqual(plan.confirmCandidates.map(\.displayName), ["GitHub"])
+        XCTAssertTrue(plan.suppressCandidates.isEmpty)
+        XCTAssertTrue(plan.manualCandidates.isEmpty)
+        XCTAssertEqual(plan.totalReviewCount, 1)
     }
 
     @MainActor

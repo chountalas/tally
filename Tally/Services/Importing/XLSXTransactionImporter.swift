@@ -24,15 +24,18 @@ struct XLSXTransactionImporter {
         let worksheet = try file.parseWorksheet(at: firstWorksheetPath)
         let rows = worksheet.data?.rows ?? []
 
-        guard let headerRow = rows.first else {
+        let rowValues = rows.map { orderedCellValues(from: $0.cells, sharedStrings: sharedStrings) }
+        let headerIndex = TabularHeaderDetector.headerIndex(in: rowValues)
+        guard rows.indices.contains(headerIndex) else {
             throw XLSXImportError.noRows
         }
 
+        let headerRow = rows[headerIndex]
         let headerValues = orderedCellValues(from: headerRow.cells, sharedStrings: sharedStrings)
         let headers = headerValues.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let headerReferences = headerRow.cells.map(\.reference.column)
 
-        let dictionaries: [[String: String]] = rows.dropFirst().map { row in
+        let dictionaries: [[String: String]] = rows.dropFirst(headerIndex + 1).map { row in
             let values = alignedCellValues(
                 from: row.cells,
                 alignedTo: headerReferences,
@@ -48,7 +51,8 @@ struct XLSXTransactionImporter {
         return try draftBuilder.makeDraft(
             fileName: fileName,
             headers: headers,
-            rows: dictionaries
+            rows: dictionaries,
+            warnings: [TabularHeaderDetector.warning(skippedRowCount: headerIndex)].compactMap { $0 }
         )
     }
 

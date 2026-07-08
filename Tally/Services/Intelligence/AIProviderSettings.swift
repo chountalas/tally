@@ -36,6 +36,7 @@ enum AIProviderKind: String, CaseIterable, Codable, Identifiable, Sendable {
 
 struct AIProviderPreferences {
     static let selectedProviderDefaultsKey = "intelligence_provider_kind"
+    static let aiGenerationDisabledDefaultsKey = "intelligence_generation_disabled"
 
     private let userDefaults: UserDefaults
 
@@ -56,6 +57,15 @@ struct AIProviderPreferences {
         }
         nonmutating set {
             userDefaults.set(newValue.rawValue, forKey: Self.selectedProviderDefaultsKey)
+        }
+    }
+
+    var isAIGenerationDisabled: Bool {
+        get {
+            userDefaults.bool(forKey: Self.aiGenerationDisabledDefaultsKey)
+        }
+        nonmutating set {
+            userDefaults.set(newValue, forKey: Self.aiGenerationDisabledDefaultsKey)
         }
     }
 
@@ -116,7 +126,37 @@ enum AIProviderRegistry {
         gemmaModelManager: GemmaModelManager = GemmaModelManager(),
         allowsModelAdoption: Bool = true
     ) -> (any SubscriptionIntelligenceGenerating)? {
-        switch preferences.selectedKind {
+        guard preferences.isAIGenerationDisabled == false else {
+            return nil
+        }
+
+        let selectedKind = preferences.selectedKind
+        if let generator = makeGenerator(
+            for: selectedKind,
+            gemmaModelManager: gemmaModelManager,
+            allowsModelAdoption: allowsModelAdoption
+        ) {
+            return generator
+        }
+
+        // The selected provider can't run right now (model not downloaded,
+        // OS too old, runtime missing). Detection quality degrades sharply
+        // without a model, so fall back to the other provider when it is
+        // ready — without adoption side effects the user didn't opt into.
+        let fallbackKind: AIProviderKind = selectedKind == .gemmaLocal ? .appleIntelligence : .gemmaLocal
+        return makeGenerator(
+            for: fallbackKind,
+            gemmaModelManager: gemmaModelManager,
+            allowsModelAdoption: false
+        )
+    }
+
+    private static func makeGenerator(
+        for kind: AIProviderKind,
+        gemmaModelManager: GemmaModelManager,
+        allowsModelAdoption: Bool
+    ) -> (any SubscriptionIntelligenceGenerating)? {
+        switch kind {
         case .gemmaLocal:
             #if os(macOS)
             guard GemmaRuntime.isAvailable else {

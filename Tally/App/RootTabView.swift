@@ -68,6 +68,12 @@ struct RootTabView: View {
                     }
                 )
             ) {
+                if subscriptions.contains(where: { $0.libraryState == .suggested }) {
+                    Button("Review now") {
+                        appModel.clearMessage()
+                        appModel.openSubscriptionLibrary(state: .suggested)
+                    }
+                }
                 Button("OK", role: .cancel) { appModel.clearMessage() }
             } message: {
                 Text(
@@ -94,6 +100,8 @@ struct RootTabView: View {
         var types: [UTType] = [.commaSeparatedText, .text]
         if let xls = UTType(filenameExtension: "xls") { types.append(xls) }
         if let xlsx = UTType(filenameExtension: "xlsx") { types.append(xlsx) }
+        if let ofx = UTType(filenameExtension: "ofx") { types.append(ofx) }
+        if let qfx = UTType(filenameExtension: "qfx") { types.append(qfx) }
         return types
     }
 
