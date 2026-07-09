@@ -26,6 +26,7 @@ enum SubscriptionMatchRuleSource: String, Codable, CaseIterable, Identifiable {
     case userCorrection
     case confirmedSubscription
     case detectedCandidate
+    case hiddenSuggestion
     case serviceProfile
 
     var id: String { rawValue }

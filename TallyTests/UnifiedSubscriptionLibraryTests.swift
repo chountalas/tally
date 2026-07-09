@@ -201,6 +201,8 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
             transactionAmount: Decimal(string: "-14.99") ?? -14.99,
             merchantRaw: "WRONG CARD STREAMING",
             merchantNormalized: subscription.canonicalName,
+            currency: "USD",
+            accountName: "Wrong Card",
             importRecordID: importRecord.id,
             subscriptionID: subscription.id
         )
@@ -215,6 +217,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertNil(transaction.subscriptionID)
         XCTAssertEqual(importRecord.needsReviewSubscriptionCount, 0)
         XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
+
+        let matchRules = try context.fetch(FetchDescriptor<SubscriptionMatchRule>())
+        XCTAssertEqual(matchRules.count, 1)
+        XCTAssertEqual(matchRules.first?.createdFrom, .hiddenSuggestion)
+        XCTAssertEqual(matchRules.first?.isNegativeRule, true)
+        XCTAssertEqual(matchRules.first?.accountHint, "Wrong Card")
+        XCTAssertEqual(matchRules.first?.currencyCode, "USD")
     }
 
     func testIgnoredSubscriptionsDoNotRelinkDuringDetectionRebuild() throws {
@@ -252,6 +261,47 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         SubscriptionDetectionService().linkTransactions([transaction], to: subscription)
 
         XCTAssertNil(transaction.subscriptionID)
+    }
+
+    func testIgnoredDetectedSubscriptionCanReenterReviewWhenDetectedAgain() {
+        let existing = Subscription(
+            canonicalName: "Returning Streaming",
+            displayName: "Returning Streaming",
+            status: .needsReview,
+            libraryState: .ignored,
+            creationPath: .imported,
+            cadence: .monthly,
+            priceAmount: Decimal(string: "12.99") ?? 12.99,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "12.99") ?? 12.99,
+            lastChargeDate: .now,
+            predictedNextChargeDate: nil,
+            confidenceScore: 0.9
+        )
+        let summary = SubscriptionSummary(
+            canonicalName: existing.canonicalName,
+            displayName: existing.displayName,
+            cadence: .monthly,
+            status: .needsReview,
+            priceAmount: Decimal(string: "12.99") ?? 12.99,
+            currency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "12.99") ?? 12.99,
+            lastChargeDate: .now,
+            predictedNextChargeDate: nil,
+            confidence: 0.9,
+            category: "Streaming",
+            reason: "New non-suppressed recurring charges were detected.",
+            detectionSource: .primary
+        )
+
+        let resolvedState = SubscriptionDetectionService().resolvedLibraryState(
+            summary: summary,
+            rule: nil,
+            correction: nil,
+            existing: existing
+        )
+
+        XCTAssertEqual(resolvedState, .suggested)
     }
 
     func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
@@ -656,7 +706,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(rebuilt.notes, "Review later")
     }
 
-    func testHidingDetectedSuggestionSurvivesRebuildWithoutFalsePositiveRule() async throws {
+    func testHidingDetectedSuggestionSuppressesCurrentImportWithoutFalsePositiveRule() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
         let appModel = AppModel.testing()
@@ -700,11 +750,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<MerchantCorrection>()).isEmpty)
 
-        _ = try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
+        let report = try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
         try context.save()
 
-        let rebuilt = try XCTUnwrap(appModel.subscription(withID: detected.id, in: context))
-        XCTAssertEqual(rebuilt.libraryState, .ignored)
+        XCTAssertNil(appModel.subscription(withID: detected.id, in: context))
+        XCTAssertNil(transaction.subscriptionID)
+        XCTAssertEqual(report.summary(for: importRecord.id).needsReviewCount, 0)
+        XCTAssertEqual(report.summary(for: importRecord.id).suppressedCount, 1)
         XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<MerchantCorrection>()).isEmpty)
     }

@@ -757,7 +757,13 @@ extension AppModel {
                     transaction.subscriptionID == id
                 }
             )
-            for transaction in try context.fetch(linkedDescriptor) {
+            let linkedTransactions = try context.fetch(linkedDescriptor)
+            try persistHiddenSuggestionSuppression(
+                for: subscription,
+                transactions: linkedTransactions,
+                in: context
+            )
+            for transaction in linkedTransactions {
                 if let importRecordID = transaction.importRecordID {
                     affectedImportRecordIDs.insert(importRecordID)
                 }
@@ -806,6 +812,76 @@ extension AppModel {
             importRecord.suppressedRecurringCandidateCount = summary.suppressedCount
             importRecord.recoveredRecurringCandidateCount = summary.recoveredCount
         }
+    }
+
+    func persistHiddenSuggestionSuppression(
+        for subscription: Subscription,
+        transactions: [NormalizedTransaction],
+        in context: ModelContext
+    ) throws {
+        guard transactions.isEmpty == false else {
+            return
+        }
+
+        let canonicalName = subscription.canonicalName
+        let sourceRawValue = SubscriptionMatchRuleSource.hiddenSuggestion.rawValue
+        let descriptor = FetchDescriptor<SubscriptionMatchRule>(
+            predicate: #Predicate { rule in
+                rule.canonicalName == canonicalName &&
+                    rule.isNegativeRule == true &&
+                    rule.createdFromRawValue == sourceRawValue
+            }
+        )
+        let existingRule = try context.fetch(descriptor).first
+        let rule = existingRule ?? SubscriptionMatchRule(
+            canonicalName: canonicalName,
+            isNegativeRule: true,
+            createdFrom: .hiddenSuggestion
+        )
+        if existingRule == nil {
+            context.insert(rule)
+        }
+
+        let rawMerchants = Set(transactions.map(\.merchantRaw).filter { $0.isEmpty == false })
+        let accounts = Set(transactions.compactMap { $0.accountName?.nilIfBlank })
+        let currencies = Set(transactions.compactMap { $0.currency?.nilIfBlank?.uppercased() })
+        let sources = Set(transactions.map(\.source))
+        let amounts = transactions.map {
+            abs(($0.transactionAmount as NSDecimalNumber).doubleValue)
+        }
+        let sortedAmounts = amounts.sorted()
+
+        rule.subscriptionID = nil
+        rule.allowedRawMerchantsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(rawMerchants).sorted())
+        rule.requiredTokensJSON = SubscriptionEvidenceJSON.encodeStrings(
+            subscription.canonicalName
+                .lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 3 }
+                .prefix(3)
+                .map { $0 }
+        )
+        rule.excludedTokensJSON = "[]"
+        if let minAmount = sortedAmounts.first, let maxAmount = sortedAmounts.last {
+            let tolerance = max(0.05, maxAmount * 0.02)
+            rule.amountMinimum = Decimal(max(0, minAmount - tolerance))
+            rule.amountMaximum = Decimal(maxAmount + tolerance)
+            rule.amountMedian = Decimal(sortedAmounts[sortedAmounts.count / 2])
+            rule.amountTolerancePercent = 0.02
+        } else {
+            rule.amountMinimum = nil
+            rule.amountMaximum = nil
+            rule.amountMedian = nil
+        }
+        rule.currencyCode = currencies.count == 1 ? currencies.first : nil
+        rule.accountHint = accounts.count == 1 ? accounts.first : nil
+        rule.sourceHint = sources.count == 1 ? sources.first : nil
+        rule.scheduleExpectationID = nil
+        rule.priority = 1_050
+        rule.confidence = 0.96
+        rule.isNegativeRule = true
+        rule.createdFrom = .hiddenSuggestion
+        rule.updatedAt = .now
     }
 
     func refreshNeedsReviewImportCounts(
