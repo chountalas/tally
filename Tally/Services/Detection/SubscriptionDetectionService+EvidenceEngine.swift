@@ -537,6 +537,16 @@ extension SubscriptionDetectionService {
     }
 
     func ruleMatches(_ rule: SubscriptionMatchRule, transaction: NormalizedTransaction) -> Bool {
+        if rule.createdFrom == .hiddenSuggestion {
+            let importRecordIDs = Set(SubscriptionEvidenceJSON.decodeStrings(rule.hiddenImportRecordIDsJSON))
+            if importRecordIDs.isEmpty == false {
+                guard let importRecordID = transaction.importRecordID?.uuidString,
+                      importRecordIDs.contains(importRecordID) else {
+                    return false
+                }
+            }
+        }
+
         if let sourceHint = rule.sourceHint, transaction.source != sourceHint {
             return false
         }

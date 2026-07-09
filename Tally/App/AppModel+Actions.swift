@@ -758,11 +758,13 @@ extension AppModel {
                 }
             )
             let linkedTransactions = try context.fetch(linkedDescriptor)
-            try persistHiddenSuggestionSuppression(
-                for: subscription,
-                transactions: linkedTransactions,
-                in: context
-            )
+            for transactions in hiddenSuggestionSuppressionGroups(from: linkedTransactions) {
+                try persistHiddenSuggestionSuppression(
+                    for: subscription,
+                    transactions: transactions,
+                    in: context
+                )
+            }
             for transaction in linkedTransactions {
                 if let importRecordID = transaction.importRecordID {
                     affectedImportRecordIDs.insert(importRecordID)
@@ -867,6 +869,7 @@ extension AppModel {
 
         rule.subscriptionID = nil
         rule.hiddenScopeKey = hiddenScopeKey
+        rule.hiddenImportRecordIDsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(importRecordIDs).sorted())
         rule.allowedRawMerchantsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(rawMerchants).sorted())
         rule.requiredTokensJSON = SubscriptionEvidenceJSON.encodeStrings(
             subscription.canonicalName
@@ -897,6 +900,20 @@ extension AppModel {
         rule.isNegativeRule = true
         rule.createdFrom = .hiddenSuggestion
         rule.updatedAt = .now
+    }
+
+    func hiddenSuggestionSuppressionGroups(
+        from transactions: [NormalizedTransaction]
+    ) -> [[NormalizedTransaction]] {
+        let grouped = Dictionary(grouping: transactions) { transaction in
+            [
+                transaction.accountName?.nilIfBlank ?? "missing-account",
+                transaction.currency?.nilIfBlank?.uppercased() ?? "missing-currency",
+                transaction.source.rawValue,
+                transaction.importRecordID?.uuidString ?? "missing-import"
+            ].joined(separator: "|")
+        }
+        return grouped.keys.sorted().compactMap { grouped[$0] }
     }
 
     func hiddenSuggestionScopeKey(
