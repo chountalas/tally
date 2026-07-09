@@ -1,6 +1,14 @@
 import SwiftData
 import SwiftUI
 
+private struct ChargeRowData: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let amount: Decimal
+    let currency: String?
+    let isOld: Bool
+}
+
 /// Subscription detail — opened from any list/card. Big price, next charge,
 /// how long you've had it, a price-increase callout, recent charges, and the
 /// friendly actions. Matches the Tally design.
@@ -11,6 +19,9 @@ struct SubscriptionDetailView: View {
     let subscription: Subscription
 
     @State private var isConfirmingRemoval = false
+    @State private var isConfirmingCancellation = false
+    @State private var displayedChargeRows: [ChargeRowData] = []
+    @State private var chargeRowsAreProjected = false
 
     init(subscription: Subscription) {
         self.subscription = subscription
@@ -51,7 +62,14 @@ struct SubscriptionDetailView: View {
                 headlineCard.padding(.bottom, 14)
                 if sub.tallyPriceWentUp { priceCallout.padding(.bottom, 14) }
                 factGrid.padding(.bottom, 22)
-                SectionHead("Recent charges").padding(.bottom, 14)
+                SectionHead(chargeRowsAreProjected ? "Projected charges" : "Recent charges")
+                    .padding(.bottom, chargeRowsAreProjected ? 6 : 14)
+                if chargeRowsAreProjected {
+                    Text("No imported charges are linked yet, so this is a cadence-based estimate.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                        .padding(.bottom, 14)
+                }
                 chargeList
                 actions.padding(.top, 22)
             }
@@ -60,6 +78,23 @@ struct SubscriptionDetailView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .scrollIndicators(.hidden)
+        .task(id: chargeRefreshID) {
+            let loadedCharges = loadDisplayedCharges()
+            displayedChargeRows = loadedCharges.rows
+            chargeRowsAreProjected = loadedCharges.isProjected
+        }
+        .confirmationDialog(
+            "Mark \(sub.tallyName) as cancelled?",
+            isPresented: $isConfirmingCancellation,
+            titleVisibility: .visible
+        ) {
+            Button("Mark as cancelled", role: .destructive) {
+                cancelSubscription()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This moves it to Ended, clears renewal reminders, and removes synced calendar events. Imported transactions stay in your history.")
+        }
         .confirmationDialog(
             "Remove \(sub.tallyName) from your list?",
             isPresented: $isConfirmingRemoval,
@@ -87,7 +122,7 @@ struct SubscriptionDetailView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.left").font(.system(size: 14, weight: .semibold))
-                Text("All subscriptions").font(.system(size: 14, weight: .semibold))
+                Text("Back").font(.system(size: 14, weight: .semibold))
             }
             .foregroundStyle(Theme.Colors.textSecondary)
         }
@@ -251,9 +286,9 @@ struct SubscriptionDetailView: View {
     // MARK: Recent charges
 
     private var chargeList: some View {
-        let charges = displayedCharges()
+        let charges = displayedChargeRows.isEmpty ? recentCharges() : displayedChargeRows
         return VStack(spacing: 0) {
-            ForEach(Array(charges.enumerated()), id: \.offset) { index, charge in
+            ForEach(Array(charges.enumerated()), id: \.element.id) { index, charge in
                 HStack {
                     Text(charge.label)
                         .font(.system(size: 14, weight: .medium))
@@ -274,22 +309,30 @@ struct SubscriptionDetailView: View {
         .cardShadow()
     }
 
-    private typealias Charge = (label: String, amount: Decimal, currency: String?, isOld: Bool)
+    private var chargeRefreshID: String {
+        "\(sub.id.uuidString)-\(appModel.libraryRevision.generation)"
+    }
 
     /// Prefer the subscription's actual imported charges; only synthesize a
     /// cadence-based history when there are no linked transactions at all.
-    private func displayedCharges() -> [Charge] {
-        let actual = actualCharges()
-        return actual.isEmpty ? recentCharges() : actual
+    private func loadDisplayedCharges() -> (rows: [ChargeRowData], isProjected: Bool) {
+        let actual = loadActualCharges()
+        return actual.isEmpty ? (recentCharges(), true) : (actual, false)
     }
 
     /// Real `NormalizedTransaction` rows for this subscription, most-recent first,
     /// shown with their own dates / amounts / currencies.
-    private func actualCharges(count: Int = 6) -> [Charge] {
+    private func loadActualCharges(count: Int = 6) -> [ChargeRowData] {
         linkedTransactions().prefix(count).map { transaction in
             let label = transaction.transactionDate.formatted(.dateTime.month(.abbreviated).day().year())
             let amount = abs(transaction.transactionAmount)
-            return Charge(label: label, amount: amount, currency: transaction.currency, isOld: false)
+            return ChargeRowData(
+                id: transaction.id.uuidString,
+                label: label,
+                amount: amount,
+                currency: transaction.currency,
+                isOld: false
+            )
         }
     }
 
@@ -313,7 +356,7 @@ struct SubscriptionDetailView: View {
         return (try? modelContext.fetch(canonicalDescriptor)) ?? []
     }
 
-    private func recentCharges(count: Int = 6) -> [Charge] {
+    private func recentCharges(count: Int = 6) -> [ChargeRowData] {
         let cal = Calendar.current
         let anchor: Date = isOngoing
             ? (sub.cadence.tallyAdvanced(currentRenewalDate ?? .now, by: -1, using: cal) ?? .now)
@@ -324,14 +367,34 @@ struct SubscriptionDetailView: View {
             let date = sub.cadence.tallyAdvanced(anchor, by: -i, using: cal) ?? anchor
             let isOld = pct > 0.05 && i >= 3
             let label = date.formatted(.dateTime.month(.abbreviated).day().year())
-            return Charge(label: label, amount: isOld ? oldAmount : sub.priceAmount, currency: nil, isOld: isOld)
+            return ChargeRowData(
+                id: "synthetic-\(i)-\(date.timeIntervalSinceReferenceDate)",
+                label: label,
+                amount: isOld ? oldAmount : sub.priceAmount,
+                currency: nil,
+                isOld: isOld
+            )
         }
     }
 
     // MARK: Actions
 
     private var actions: some View {
-        HStack(spacing: 10) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                actionButtons
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                actionButtons
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        Group {
             if isNeedsReview {
                 TallyActionButton(title: "Keep", systemImage: "checkmark", kind: .primary) {
                     appModel.confirmSuggestedSubscription(sub.id, in: modelContext)
@@ -340,8 +403,12 @@ struct SubscriptionDetailView: View {
                 TallyActionButton(title: "Edit details", systemImage: "pencil", kind: .normal) {
                     appModel.addOrEditSheet = .edit(sub.id)
                 }
-                TallyActionButton(title: "Skip", systemImage: "xmark", kind: .danger) {
+                TallyActionButton(title: "Not a subscription", systemImage: "xmark.circle", kind: .normal) {
                     appModel.ignoreSuggestedSubscription(sub.id, in: modelContext)
+                    appModel.tallySelectedSubscriptionID = nil
+                }
+                TallyActionButton(title: "Not mine", systemImage: "person.crop.circle.badge.xmark", kind: .danger) {
+                    appModel.hideSuggestedSubscription(sub.id, in: modelContext)
                     appModel.tallySelectedSubscriptionID = nil
                 }
             } else {
@@ -355,12 +422,7 @@ struct SubscriptionDetailView: View {
                 }
                 if isActive {
                     TallyActionButton(title: "Mark as cancelled", systemImage: "trash", kind: .danger) {
-                        do {
-                            try appModel.cancelSubscription(id: sub.id, in: modelContext)
-                            appModel.tallySelectedSubscriptionID = nil
-                        } catch {
-                            appModel.importErrorMessage = error.localizedDescription
-                        }
+                        isConfirmingCancellation = true
                     }
                 } else {
                     TallyActionButton(title: "Remove from list", systemImage: "trash", kind: .danger) {
@@ -368,7 +430,15 @@ struct SubscriptionDetailView: View {
                     }
                 }
             }
-            Spacer(minLength: 0)
+        }
+    }
+
+    private func cancelSubscription() {
+        do {
+            try appModel.cancelSubscription(id: sub.id, in: modelContext)
+            appModel.tallySelectedSubscriptionID = nil
+        } catch {
+            appModel.importErrorMessage = error.localizedDescription
         }
     }
 

@@ -8,7 +8,7 @@ import SwiftUI
 /// seeded or persisted. Completely inert in release builds and unless a
 /// `-PreviewScreen` argument is passed.
 ///
-/// - `-PreviewScreen <name>`          home | subscriptions | insights | calendar | settings | detail | addsheet
+/// - `-PreviewScreen <name>`          home | subscriptions | insights | calendar | transactions | imports | settings | detail | addsheet
 /// - `-PreviewAppearance dark|light`  force a color scheme (otherwise follows system)
 @MainActor
 enum TallyPreview {
@@ -30,6 +30,8 @@ enum TallyPreview {
         case "subscriptions": appModel.selectedTab = .subscriptions
         case "insights": appModel.selectedTab = .audit
         case "calendar": appModel.selectedTab = .calendar
+        case "transactions": appModel.selectedTab = .transactions
+        case "imports": appModel.selectedTab = .imports
         case "settings": appModel.selectedTab = .settings
         case "addsheet": appModel.addOrEditSheet = .chooser
         case "create": appModel.addOrEditSheet = .create

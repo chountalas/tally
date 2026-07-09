@@ -499,25 +499,13 @@ struct EditorialButtonFeedbackStyle: ButtonStyle {
 
 struct EditorialDivider: View {
     var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            line
-            Circle()
-                .fill(Theme.Colors.accent)
-                .frame(width: 4, height: 4)
-            line
-        }
+        line
         .padding(.vertical, Theme.Spacing.sm)
     }
 
     private var line: some View {
         Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [Theme.Colors.border.opacity(0), Theme.Colors.border, Theme.Colors.border.opacity(0)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .fill(Theme.Colors.border.opacity(0.8))
             .frame(height: 0.5)
     }
 }

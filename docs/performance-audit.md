@@ -1,168 +1,149 @@
 # Performance and responsiveness audit (Tally)
 
-**Scope:** Static codebase review only (two passes). **No code changes** in this document.
+Scope: source audit plus implementation pass. This document records the
+performance causes found in the current app, the fixes applied in this branch,
+and the remaining validation work that still needs Instruments or real ledger
+data.
 
-**Stack (from repo):** SwiftUI, SwiftData, on-device **Apple Foundation Models** (`FoundationModels` / `LanguageModelSession`) for classification, copilot copy, and detection “second pass” scoring.
+## Summary
 
----
+The slowness was not one isolated bug. The app had a few compounding patterns:
 
-## Executive summary
+1. SwiftUI views fetched or scanned broad transaction arrays during ordinary
+   view invalidations.
+2. Several views rebuilt expensive grouping/filtering state directly from
+   computed properties used by `body`.
+3. Subscription detail loaded charge history synchronously through body-driven
+   fetches.
+4. Background detection could still do evidence-only AI work during import or
+   refresh, even when deterministic scoring had enough data.
+5. The review queue forced a binary "keep vs dismiss" decision, which made users
+   choose the wrong persistence behavior for "mine, but not recurring" charges.
 
-Slowness and “clicks not landing” are **very unlikely** to be a single bug. The app combines:
+This pass focuses on immediate responsiveness and workflow correctness without
+changing Tally's local-first architecture.
 
-1. **Heavy, sequential on-device LLM work** during import, “refresh analysis,” and subscription detection when Apple Intelligence is available.
-2. **MainActor-centered orchestration** (`AppModel`, `SubscriptionDetectionService`, copilot `respond`) so UI and long async work can **compete for the same actor** and leave the main runloop busy.
-3. **Repeated O(N) work over the full transaction/subscription set** inside SwiftUI view bodies (notably the dashboard) and in copilot **cache key** computation.
+The follow-up UX audit also added a DEBUG-only in-memory launch path
+(`TALLY_IN_MEMORY_STORE=1`) and preview routes for utility screens, so windowed
+QA can be run without touching the user's persistent finance library.
 
-**Verdict:** **Yes — Apple Intelligence reliance can explain freezes**, especially during/after import and “Refresh analysis,” not because the framework is “bad,” but because the app **awaits many model calls** in hot paths and gates wide score bands into those calls. **Yes — there are also “sloppy for scale” patterns** (full fetches, repeated scans, work in `body`) that will amplify jank as the library grows.
+## Fixes applied
 
----
+### Smaller SwiftData query surfaces
 
-## Methodology (check once, check again)
+- Dashboard, Insights, and Subscriptions now query only transactions already
+  linked to subscriptions instead of pulling every normalized transaction into
+  those views.
+- Merchant drilldowns in Transactions now use a predicate-backed query per
+  merchant instead of filtering a preloaded all-transaction array.
 
-**Pass 1 — Trace AI and async entry points:** Located `LanguageModelSession` usage, classification batching, copilot flow, and detection scoring hooks.
+Primary files:
 
-**Pass 2 — Confirm actors and UI coupling:** Re-checked `@MainActor` on [`Tally/Services/Detection/SubscriptionDetectionService.swift`](../Tally/Services/Detection/SubscriptionDetectionService.swift), [`Tally/Services/Intelligence/SubscriptionIntelligenceService.swift`](../Tally/Services/Intelligence/SubscriptionIntelligenceService.swift), [`Tally/App/AppModel.swift`](../Tally/App/AppModel.swift), and verified gating conditions for second-pass AI in [`Tally/Services/Detection/SubscriptionDetectionService+Signals.swift`](../Tally/Services/Detection/SubscriptionDetectionService+Signals.swift).
+- `Tally/Features/Dashboard/DashboardView.swift`
+- `Tally/Features/Insights/InsightsView.swift`
+- `Tally/Features/Subscriptions/SubscriptionsView.swift`
+- `Tally/Features/Transactions/TransactionsView.swift`
 
----
+### Fewer repeated body computations
 
-## Finding 1 — Apple Intelligence: many sequential awaits on hot paths (high impact)
+- Dashboard binds one `DashboardContentSnapshot` per render pass, and that
+  snapshot now carries the review queue count used by the sidebar/tab badges.
+- Subscriptions builds one `SubscriptionListSnapshot` containing active/former
+  lists, review rows, counts, visible filters, groups, and monthly total.
+- Calendar builds one `CalendarMonthSnapshot` per visible month and uses stable
+  agenda row IDs.
+- Subscription detail moves displayed charge-row loading into a task keyed by
+  the subscription and library revision instead of fetching from `body`.
 
-**Merchant classification (import / refresh):**
+Primary files:
 
-- [`MerchantClassificationEngine`](../Tally/Services/Classification/MerchantClassificationEngine.swift) switches to **per-merchant** `classify` when unique merchants ≤ 25 (`foundationBatchThreshold`), which runs a loop calling `intelligence.classifyMerchant` **sequentially** (`individualBatchResult`).
-- Above that threshold it uses batch Foundation Models calls (`foundationBatchResult`) but still **loops batches of 20** with `await` each time.
+- `Tally/App/AppModel.swift`
+- `Tally/Features/Calendar/CalendarView.swift`
+- `Tally/Features/Subscriptions/SubscriptionDetailView.swift`
+- `Tally/Features/Subscriptions/SubscriptionsView.swift`
 
-**Copilot:**
+### Less background AI pressure
 
-- [`SubscriptionCopilotSheetSupport.run`](../Tally/Features/Intelligence/SubscriptionCopilotSheetSupport.swift) sets loading state then `await intelligence.respond(...)`.
-- [`SubscriptionIntelligenceService.respond` / `computeResponse`](../Tally/Services/Intelligence/SubscriptionIntelligenceService.swift) are **`@MainActor`** and, when a generator exists, **`await generator.generateCopy`** after building a draft — i.e. **LLM work is structured around main-actor-isolated orchestration**.
+- `SubscriptionIntelligenceService` now retains its usage mode.
+- Background subscription detection skips evidence-only LLM contribution calls.
+  Deterministic detection and the existing ambiguous-scoring gates remain in
+  place, but import/refresh work no longer spends extra model calls just to add
+  evidence prose.
 
-**Detection “second pass” (major insight):**
+Primary files:
 
-- [`SubscriptionDetectionService`](../Tally/Services/Detection/SubscriptionDetectionService.swift) is **`@MainActor`**.
-- When `intelligence.generator != nil`, [`automaticRecurringClusterEvaluationEnabled`](../Tally/Services/Detection/SubscriptionDetectionService+Signals.swift) is **true**.
-- [`shouldRunSecondPassAI`](../Tally/Services/Detection/SubscriptionDetectionService+Signals.swift) returns **true for `baseScore` in 0.25…0.92** — a wide band — so **many clusters** can each trigger `await intelligence.evaluateRecurringCluster` ([`SubscriptionDetectionService+Scoring.swift`](../Tally/Services/Detection/SubscriptionDetectionService+Scoring.swift)).
-- Single-charge path similarly gates `await intelligence.evaluateSingleCharge` for **`baseScore` in 0.3…0.92** ([`shouldRunSingleChargeAI`](../Tally/Services/Detection/SubscriptionDetectionService+Signals.swift)).
+- `Tally/Services/Intelligence/SubscriptionIntelligenceService.swift`
+- `Tally/Services/Detection/SubscriptionDetectionService+EvidenceEngine.swift`
 
-**Why this matches your symptoms:** Import commit and “Refresh analysis” both call into classification + `saveChangesAndRefreshSubscriptions` → full detection rebuild ([`AppModel.commitImport`](../Tally/App/AppModel.swift), [`refreshSubscriptionAnalysis`](../Tally/App/AppModel+DataMaintenance.swift)). During that window, **dozens/hundreds of sequential model inferences** are plausible, which feels like **app-wide unresponsiveness** and **delayed tap handling**.
+### Review-flow correction
 
----
+- Suggested subscriptions now expose separate actions: keep, edit, mine but not
+  a subscription, and not mine / wrong account.
+- "Mine, not a subscription" teaches the detector a false-positive rule.
+- "Not mine / wrong account" hides the suggestion without teaching Tally that
+  the merchant is never a subscription.
+- Hidden suggestions now survive future detection rebuilds.
 
-## Finding 2 — MainActor concentration vs. long-running work (high impact)
+### UX correctness hardening
 
-Structures/methods that anchor work on the main actor:
+- The transaction ledger pages beyond the initial 100 rows instead of hiding the
+  rest behind static text.
+- Import review disables impossible mappings before classification work starts.
+- Manual creation avoids detector-only review states and guards duplicate saves.
+- Subscription detail separates projected charge estimates from real imported
+  charges and confirms cancellation before mutating reminders/calendar events.
+- Settings dividers render as real hairlines rather than isolated center dots.
 
-| Area | File | Risk |
-|------|------|------|
-| App shell | [`AppModel`](../Tally/App/AppModel.swift) `@MainActor @Observable` | Import commit, refresh, learning — coordinates heavy work |
-| Detection | [`SubscriptionDetectionService`](../Tally/Services/Detection/SubscriptionDetectionService.swift) `@MainActor` | Full pipeline + awaits AI scoring |
-| Copilot | [`SubscriptionIntelligenceService.respond`](../Tally/Services/Intelligence/SubscriptionIntelligenceService.swift) `@MainActor` | Draft + optional LLM |
-| Spotlight | [`SubscriptionSpotlightIndexer`](../Tally/Services/Intelligence/SubscriptionSpotlightIndexer.swift) `@MainActor` | Index rebuild after saves |
+Primary files:
 
-Even when `await` **suspends**, **scheduling and UI updates** remain sensitive to how much work batches before the next yield. Detection runs long **async** functions **without** the same `Task.yield` cadence as import classification (which yields every 8 merchants / 100 seeds / 250 transactions in places).
+- `Tally/App/AppModel+Actions.swift`
+- `Tally/Services/Detection/SubscriptionDetectionPersistence.swift`
+- `Tally/Features/Subscriptions/SubscriptionsView.swift`
+- `Tally/Features/Subscriptions/SubscriptionDetailView.swift`
+- `TallyTests/UnifiedSubscriptionLibraryTests.swift`
 
----
+## Remaining performance risks
 
-## Finding 3 — SwiftUI: repeated full-library work in view bodies (high impact on scroll/taps)
+### Full detection rebuilds still scale linearly
 
-**Dashboard** ([`DashboardView.swift`](../Tally/Features/Dashboard/DashboardView.swift)):
+`SubscriptionDetectionService.rebuildSubscriptions` still fetches the full
+transaction set and runs the pipeline on the main actor. This pass reduced view
+jank and avoidable AI work, but large-ledger refresh/import performance still
+needs a larger architecture pass: incremental detection inputs, off-main
+orchestration, and tighter save boundaries.
 
-- Builds `DashboardMetrics(subscriptions:transactions:)` **inside `body`**. [`DashboardMetrics.init`](../Tally/Features/Dashboard/DashboardMetrics.swift) filters **all** transactions, builds grouping dictionaries, spend series, overlaps, etc. — **O(N)** on **every** invalidation.
-- Builds `reviewPreviews` with `merchantLearningPreview` for up to four subscriptions; that helper filters the **full** `transactions` array per subscription ([`AppModel+Actions.swift`](../Tally/App/AppModel+Actions.swift) via `linkedTransactions` / filters).
+### Copilot still has broad data surfaces
 
-**Copilot sheet** ([`SubscriptionCopilotSheet.swift`](../Tally/Features/Intelligence/SubscriptionCopilotSheet.swift)):
+The copilot sheet and response cache can still inspect broad subscription and
+transaction data. That is acceptable for small libraries, but it remains a
+likely hotspot for large histories and should be profiled separately.
 
-- Four `@Query` properties load **all** subscriptions, **all** transactions (sorted), aliases, classifications into memory for the sheet.
+### Import classification can still make many model calls
 
-**Effect:** As data grows, **ordinary state changes** (animations, `Observable` updates, SwiftData change notifications) can trigger expensive body recomputation → **frame drops** and **input lag** that feels like “broken clicks.”
+Merchant classification still performs sequential model-backed work when AI is
+available. This was not widened in this pass, but it remains a candidate for
+call caps, batching policy changes, and progress-yield instrumentation.
 
----
+### Runtime profiling is still required
 
-## Finding 4 — Copilot cache key is accidentally expensive (medium–high)
+This source-level pass does not replace:
 
-[`responseCacheKey`](../Tally/Services/Intelligence/SubscriptionIntelligenceService.swift) (also `@MainActor`) calls:
-
-- `tooling.allSubscriptions()`, `allTransactions()`, `libraryOverview()`, etc., then scans for **min/max transaction dates** and stringifies library-wide stats — **on every cache lookup path**.
-
-So copilot interactions can add **extra full-library scans** beyond what the draft response already does.
-
----
-
-## Finding 5 — SwiftData “fetch everything” patterns (medium)
-
-Examples:
-
-- `fetchTransactions` / [`SubscriptionDetectionPipeline`](../Tally/Services/Detection/SubscriptionDetectionPipeline.swift): full transaction fetch for detection.
-- [`applyMerchantLearning`](../Tally/App/AppModel+Actions.swift): `FetchDescriptor<NormalizedTransaction>()` with **no predicate** — loads **all** rows to compute previews and relink merchants.
-- [`replayMerchantResolution`](../Tally/App/AppModel+Actions.swift): again fetches all transactions then filters.
-
-These are **correct** for small libraries but **scale linearly** and amplify Main-thread/SwiftUI pressure when combined with Finding 3.
-
----
-
-## Finding 6 — Asset catalog size (low confidence for runtime freezes)
-
-The workspace contains a **very large** [`BrandLogos.xcassets`](../Tally/Resources/BrandLogos.xcassets) tree (thousands of JSON entries in glob results). That can hurt **build times and binary size**; **runtime** impact depends on whether the app enumerates or eagerly loads assets (not verified here). Mentioned as **secondary suspicion** only.
-
----
-
-## Finding 7 — Unused / redundant AI API (informational)
-
-[`AuditIntelligenceService.generateOneLiner`](../Tally/Services/Intelligence/AuditIntelligenceService.swift) appears **unused** in the feature code (audit UI uses `fallbackOneLiner` only in [`AuditView+Content.startAudit`](../Tally/Features/Audit/AuditView+Content.swift)). Not a performance bug today, but shows **surface area** for accidental future misuse.
-
----
-
-## What this is *not* (without Instruments)
-
-This audit **does not** replace **Time Profiler**, **Swift Concurrency**, or **Signpost** traces. Unknowns:
-
-- Exact SwiftData fetch costs on device.
-- Whether `LanguageModelSession.respond` always yields promptly off the runloop.
-- Real concurrency logs (priority inversion, actor contention).
-
----
-
-## Recommended next steps (implementation / product)
-
-1. **Profile on device:** See [Instrumentation checklist](#instrumentation-checklist) below.
-2. **Measure model call counts:** Log each `evaluateRecurringCluster` / `evaluateSingleCharge` / batch classify during one detection run — expect large numbers when AI is enabled.
-3. **Architecture direction:** Move detection + classification orchestration off `@MainActor` where possible; keep only UI mutations on MainActor; batch/throttle AI; narrow `shouldRunSecondPassAI` bands or cap calls per run; cache `DashboardMetrics`; avoid full scans in `body`.
-
----
-
-## File reference index (primary)
-
-- [`Tally/Services/Detection/SubscriptionDetectionService.swift`](../Tally/Services/Detection/SubscriptionDetectionService.swift)
-- [`Tally/Services/Detection/SubscriptionDetectionService+Scoring.swift`](../Tally/Services/Detection/SubscriptionDetectionService+Scoring.swift)
-- [`Tally/Services/Detection/SubscriptionDetectionService+Signals.swift`](../Tally/Services/Detection/SubscriptionDetectionService+Signals.swift)
-- [`Tally/Services/Classification/MerchantClassificationEngine.swift`](../Tally/Services/Classification/MerchantClassificationEngine.swift)
-- [`Tally/Services/Intelligence/SubscriptionIntelligenceService.swift`](../Tally/Services/Intelligence/SubscriptionIntelligenceService.swift)
-- [`Tally/Services/Intelligence/FoundationModelsIntelligenceGenerator.swift`](../Tally/Services/Intelligence/FoundationModelsIntelligenceGenerator.swift)
-- [`Tally/Features/Dashboard/DashboardView.swift`](../Tally/Features/Dashboard/DashboardView.swift) + [`DashboardMetrics.swift`](../Tally/Features/Dashboard/DashboardMetrics.swift)
-- [`Tally/Features/Intelligence/SubscriptionCopilotSheet.swift`](../Tally/Features/Intelligence/SubscriptionCopilotSheet.swift)
-- [`Tally/App/AppModel.swift`](../Tally/App/AppModel.swift) + [`AppModel+DataMaintenance.swift`](../Tally/App/AppModel+DataMaintenance.swift) + [`AppModel+Actions.swift`](../Tally/App/AppModel+Actions.swift)
-
----
+- Time Profiler on a real large ledger.
+- Swift Concurrency instrument for main-actor wait time.
+- Hangs / responsiveness instrument while importing, refreshing analysis,
+  scrolling lists, opening detail, and asking copilot questions.
 
 ## Instrumentation checklist
 
-Use Xcode **Instruments** on a **Debug or Release** build on real hardware (Foundation Models behavior is device-dependent).
+Use a Debug or Release build on real hardware with representative transaction
+data.
 
-1. **Time Profiler**
-   - Attach to the running app.
-   - Record while: cold launch → open Dashboard → scroll → tap “Refresh analysis” (or complete an import) → open Copilot → ask one question.
-   - Sort by **Self** time and **call tree**; look for `DashboardMetrics.init`, SwiftData `fetch`, `LanguageModelSession`, and main-thread-heavy SwiftUI layout.
-
-2. **Swift Concurrency instrument** (when available for your Xcode version)
-   - Watch for **main actor wait** duration and long tasks that keep the main actor busy.
-   - Correlate with periods of UI unresponsiveness.
-
-3. **Hangs / responsiveness** (if available)
-   - Captures main-thread stalls; good for “clicks don’t register” reports.
-
-4. **Optional: os_signpost** (future code change)
-   - Wrapping `rebuildSubscriptions`, `loadClassifications`, and each AI evaluation would give definitive counts and timings; not present in the codebase today.
-
-5. **Hypothesis to validate**
-   - During one “Refresh analysis,” expect **many** detection second-pass AI calls when Apple Intelligence is on (see Finding 1). Counting those in logs is the fastest way to confirm the hypothesis before larger refactors.
+1. Record cold launch, Dashboard, Subscriptions, Calendar, and Transactions
+   scroll/tap flows in Time Profiler.
+2. Run import and "Refresh analysis" with Swift Concurrency enabled; inspect
+   main actor wait time and long tasks.
+3. Count subscription detection AI calls per rebuild.
+4. Profile Copilot open, cache-key lookup, and one custom question.
+5. Re-run after unplugging or unlocking passcode-protected attached devices;
+   Xcode repeatedly probes attached iOS devices during macOS test/build runs and
+   those warnings can dominate command time.

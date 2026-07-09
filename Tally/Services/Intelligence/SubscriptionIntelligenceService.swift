@@ -211,6 +211,7 @@ struct SubscriptionIntelligenceService: Sendable {
     private static let responseStore = SubscriptionIntelligenceResponseStore()
     private static let responseCacheTTL: TimeInterval = 120
 
+    let usage: SubscriptionIntelligenceUsage
     let generator: (any SubscriptionIntelligenceGenerating)?
     let heuristicClassifier = LocalMerchantSuggestionHeuristic()
 
@@ -225,6 +226,7 @@ struct SubscriptionIntelligenceService: Sendable {
         generator: (any SubscriptionIntelligenceGenerating)? =
             nil
     ) {
+        self.usage = usage
         self.generator = generator ?? SubscriptionIntelligenceService.makeDefaultGenerator(
             usage: usage,
             preferences: preferences,

@@ -26,6 +26,7 @@ enum SubscriptionMatchRuleSource: String, Codable, CaseIterable, Identifiable {
     case userCorrection
     case confirmedSubscription
     case detectedCandidate
+    case hiddenSuggestion
     case serviceProfile
 
     var id: String { rawValue }
@@ -346,6 +347,8 @@ final class SubscriptionMatchRule {
     var confidence: Double = 0
     var isNegativeRule: Bool = false
     var createdFromRawValue: String = SubscriptionMatchRuleSource.detectedCandidate.rawValue
+    var hiddenScopeKey: String?
+    var hiddenImportRecordIDsJSON: String = "[]"
     var lastReplayAt: Date?
     var replayMatchCount: Int = 0
     var replayCollisionCount: Int = 0
@@ -372,6 +375,8 @@ final class SubscriptionMatchRule {
         confidence: Double = 0,
         isNegativeRule: Bool = false,
         createdFrom: SubscriptionMatchRuleSource = .detectedCandidate,
+        hiddenScopeKey: String? = nil,
+        hiddenImportRecordIDsJSON: String = "[]",
         lastReplayAt: Date? = nil,
         replayMatchCount: Int = 0,
         replayCollisionCount: Int = 0,
@@ -397,6 +402,8 @@ final class SubscriptionMatchRule {
         self.confidence = confidence
         self.isNegativeRule = isNegativeRule
         createdFromRawValue = createdFrom.rawValue
+        self.hiddenScopeKey = hiddenScopeKey
+        self.hiddenImportRecordIDsJSON = hiddenImportRecordIDsJSON
         self.lastReplayAt = lastReplayAt
         self.replayMatchCount = replayMatchCount
         self.replayCollisionCount = replayCollisionCount

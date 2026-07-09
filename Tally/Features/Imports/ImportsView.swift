@@ -12,7 +12,7 @@ struct ImportsView: View {
                     EditorialPageHeader(
                         eyebrow: "\(imports.count) statement runs",
                         title: "Imports",
-                        subtitle: "A provenance trail for every CSV or Excel file that shaped the subscription library."
+                        subtitle: "A provenance trail for every statement file that shaped the subscription library."
                     )
                         .padding(.bottom, Theme.Spacing.xxl)
 
@@ -24,7 +24,7 @@ struct ImportsView: View {
                             Text("No imports yet")
                                 .font(Theme.Typography.callout)
                                 .foregroundStyle(Theme.Colors.textSecondary)
-                            Text("Imported CSV and Excel files will appear here.")
+                            Text("Imported CSV, Excel, OFX, and QFX files will appear here.")
                                 .font(Theme.Typography.footnote)
                                 .foregroundStyle(Theme.Colors.textTertiary)
                         }

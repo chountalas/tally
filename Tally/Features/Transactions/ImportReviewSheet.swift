@@ -19,6 +19,19 @@ struct ImportReviewSheet: View {
         TabularTransactionDraftBuilder().previewValidation(for: draft, mapping: mapping)
     }
 
+    private var importBlockReason: String? {
+        if validation.sampleRowCount == 0 {
+            return "This file does not contain any rows to import."
+        }
+        if validation.parseableRowCount == 0 {
+            return "Choose date and amount columns that produce parseable rows."
+        }
+        if validation.usableMerchantRowCount == 0 {
+            return "Choose a merchant or description column so imported rows can be named."
+        }
+        return nil
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -59,6 +72,16 @@ struct ImportReviewSheet: View {
                     LabeledContent("Debit Rows", value: "\(validation.debitRowCount)")
                     if validation.missingMerchantRowCount > 0 {
                         LabeledContent("Missing Merchant Rows", value: "\(validation.missingMerchantRowCount)")
+                    }
+
+                    if let importBlockReason {
+                        Label {
+                            Text(importBlockReason)
+                                .foregroundStyle(.secondary)
+                        } icon: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                        }
                     }
 
                     if validation.warnings.isEmpty == false {
@@ -115,7 +138,7 @@ struct ImportReviewSheet: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isImporting)
+                    .disabled(isImporting || importBlockReason != nil)
                 }
             }
         }

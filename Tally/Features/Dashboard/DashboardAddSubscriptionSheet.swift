@@ -27,6 +27,7 @@ struct AddSubscriptionSheet: View {
     @State private var errorMessage: String?
     @State private var suggestionSummary: String?
     @State private var isSuggestingDetails = false
+    @State private var isSaving = false
 
     private let draftAdvisor = ManualSubscriptionDraftAdvisor()
 
@@ -67,7 +68,7 @@ struct AddSubscriptionSheet: View {
                         .buttonStyle(.plain)
                         .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.accent)
-                        .disabled(isSuggestingDetails)
+                        .disabled(isSuggestingDetails || isSaving)
                     }
 
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
@@ -100,22 +101,24 @@ struct AddSubscriptionSheet: View {
                             }
 
                             labeledField("Cadence") {
-                                Picker("Cadence", selection: $selectedCadence) {
+                                Picker("", selection: $selectedCadence) {
                                     ForEach(SubscriptionCadence.allCases) { cadence in
                                         Text(cadence.rawValue.capitalized).tag(cadence)
                                     }
                                 }
+                                .labelsHidden()
                                 .pickerStyle(.menu)
                             }
                         }
 
                         HStack(alignment: .top, spacing: Theme.Spacing.md) {
                             labeledField("Status") {
-                                Picker("Status", selection: $selectedStatus) {
-                                    ForEach(SubscriptionStatus.allCases) { status in
+                                Picker("", selection: $selectedStatus) {
+                                    ForEach(availableStatuses) { status in
                                         Text(status.title).tag(status)
                                     }
                                 }
+                                .labelsHidden()
                                 .pickerStyle(.segmented)
                             }
 
@@ -148,7 +151,7 @@ struct AddSubscriptionSheet: View {
                                 displayedComponents: .date
                             )
                             .labelsHidden()
-                                .datePickerStyle(.compact)
+                            .datePickerStyle(.compact)
                         }
 
                         HStack(alignment: .top, spacing: Theme.Spacing.md) {
@@ -158,7 +161,7 @@ struct AddSubscriptionSheet: View {
                             }
 
                             labeledField("Renewal alert") {
-                                Picker("Renewal alert", selection: $selectedReminderLeadDays) {
+                                Picker("", selection: $selectedReminderLeadDays) {
                                     Text("Default (7 days)").tag(Optional<Int>.none)
                                     Text("Same day").tag(Optional(0))
                                     Text("1 day before").tag(Optional(1))
@@ -167,6 +170,7 @@ struct AddSubscriptionSheet: View {
                                     Text("14 days before").tag(Optional(14))
                                     Text("30 days before").tag(Optional(30))
                                 }
+                                .labelsHidden()
                                 .pickerStyle(.menu)
                             }
                         }
@@ -212,17 +216,20 @@ struct AddSubscriptionSheet: View {
                     .foregroundStyle(Theme.Colors.textTertiary)
                 }
                 .padding(Theme.Spacing.xxl)
+                .padding(.bottom, 72)
             }
             .frame(minWidth: 520, minHeight: 420)
             .background(Theme.Colors.bg)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saveSubscription() }
+                    Button(isSaving ? "Saving..." : "Save") { saveSubscription() }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.Colors.accent)
+                        .disabled(isSaving)
                 }
             }
             .alert(
@@ -239,6 +246,11 @@ struct AddSubscriptionSheet: View {
             .onChange(of: selectedStatus) { _, newStatus in
                 if newStatus != .former {
                     replacementSubscriptionID = nil
+                }
+            }
+            .onAppear {
+                if availableStatuses.contains(selectedStatus) == false {
+                    selectedStatus = .active
                 }
             }
         }
@@ -258,6 +270,8 @@ struct AddSubscriptionSheet: View {
     }
 
     private func saveSubscription() {
+        guard !isSaving else { return }
+
         let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedCurrency = priceCurrency.trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
@@ -282,7 +296,7 @@ struct AddSubscriptionSheet: View {
         }
 
         if trimmedWebsiteURL.isEmpty == false,
-           URL(string: trimmedWebsiteURL)?.scheme?.nilIfBlank == nil {
+           isValidWebsiteURL(trimmedWebsiteURL) == false {
             errorMessage = "Enter a full website URL including https://."
             return
         }
@@ -314,7 +328,9 @@ struct AddSubscriptionSheet: View {
             notes: trimmedNotes.nilIfBlank
         )
 
-        Task {
+        isSaving = true
+        Task { @MainActor in
+            defer { isSaving = false }
             do {
                 if let editingID {
                     _ = try appModel.updateManualSubscription(id: editingID, input, in: modelContext)
@@ -326,6 +342,18 @@ struct AddSubscriptionSheet: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func isValidWebsiteURL(_ rawValue: String) -> Bool {
+        guard let url = URL(string: rawValue),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              url.host?.nilIfBlank != nil
+        else {
+            return false
+        }
+
+        return true
     }
 
     private func suggestDetails() {
@@ -408,6 +436,11 @@ struct AddSubscriptionSheet: View {
 
     private var predictedNextChargeDate: Date? {
         selectedCadence.advance(lastChargeDate)
+    }
+
+    private var availableStatuses: [SubscriptionStatus] {
+        let isEditingReviewItem = editing?.status == .needsReview || editing?.libraryState == .suggested
+        return isEditingReviewItem ? SubscriptionStatus.allCases : [.active, .former]
     }
 
     private var replacementOptions: [Subscription] {

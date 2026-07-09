@@ -216,6 +216,13 @@ extension SubscriptionDetectionService {
         _ transactions: [NormalizedTransaction],
         to subscription: Subscription
     ) {
+        if subscription.libraryState == .ignored {
+            for transaction in transactions where transaction.subscriptionID == subscription.id {
+                transaction.subscriptionID = nil
+            }
+            return
+        }
+
         for transaction in transactions {
             transaction.subscriptionID = subscription.id
         }
@@ -264,6 +271,10 @@ extension SubscriptionDetectionService {
         to subscription: Subscription,
         rule: SubscriptionReviewRule
     ) {
+        guard subscription.libraryState != .ignored else {
+            return
+        }
+
         for transaction in debitTransactions where transaction.subscriptionID == nil {
             guard transaction.merchantNormalized == canonicalName else {
                 continue

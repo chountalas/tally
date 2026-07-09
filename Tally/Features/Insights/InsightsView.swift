@@ -6,10 +6,20 @@ import SwiftUI
 struct InsightsView: View {
     @Environment(AppModel.self) private var appModel
     @Query(sort: \Subscription.displayName) private var subscriptions: [Subscription]
-    @Query(sort: \NormalizedTransaction.transactionDate, order: .forward) private var transactions: [NormalizedTransaction]
+    @Query(
+        filter: #Predicate<NormalizedTransaction> { transaction in
+            transaction.subscriptionID != nil
+        },
+        sort: \NormalizedTransaction.transactionDate,
+        order: .forward
+    )
+    private var subscriptionTransactions: [NormalizedTransaction]
 
     private var metrics: DashboardMetrics {
-        appModel.dashboardMetricsSnapshot(subscriptions: subscriptions, transactions: transactions).metrics
+        appModel.dashboardMetricsSnapshot(
+            subscriptions: subscriptions,
+            transactions: subscriptionTransactions
+        ).metrics
     }
     private var active: [Subscription] {
         DashboardMetrics.currentActiveSubscriptions(from: subscriptions)

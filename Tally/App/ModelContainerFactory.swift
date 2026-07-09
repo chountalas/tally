@@ -25,6 +25,12 @@ enum ModelContainerFactory {
     }
 
     static func makeBootstrapResult() -> BootstrapResult {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["TALLY_IN_MEMORY_STORE"] == "1" {
+            return debugInMemoryBootstrapResult()
+        }
+        #endif
+
         do {
             return BootstrapResult(
                 container: try makeContainer(configuration: cloudKitConfiguration),
@@ -152,4 +158,23 @@ enum ModelContainerFactory {
     private static func schemaMismatchResult() -> BootstrapResult {
         BootstrapResult(container: nil, startupMessage: schemaMismatchMessage)
     }
+
+    #if DEBUG
+    private static func debugInMemoryBootstrapResult() -> BootstrapResult {
+        do {
+            return BootstrapResult(
+                container: try makeContainer(configuration: inMemoryConfiguration),
+                startupMessage: nil
+            )
+        } catch {
+            return BootstrapResult(
+                container: nil,
+                startupMessage: """
+                Tally could not open the debug in-memory data store.
+                \(error.localizedDescription)
+                """
+            )
+        }
+    }
+    #endif
 }

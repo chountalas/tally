@@ -745,6 +745,41 @@ extension AppModel {
         }
     }
 
+    /// Review action: hide a suggestion that does not belong in this library
+    /// without teaching Tally that the merchant is never a subscription.
+    func hideSuggestedSubscription(_ id: UUID, in context: ModelContext) {
+        do {
+            guard let subscription = subscription(withID: id, in: context) else { return }
+            subscription.libraryState = .ignored
+            var affectedImportRecordIDs = Set<UUID>()
+            let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
+                predicate: #Predicate { transaction in
+                    transaction.subscriptionID == id
+                }
+            )
+            let linkedTransactions = try context.fetch(linkedDescriptor)
+            for transactions in hiddenSuggestionSuppressionGroups(from: linkedTransactions) {
+                try persistHiddenSuggestionSuppression(
+                    for: subscription,
+                    transactions: transactions,
+                    in: context
+                )
+            }
+            for transaction in linkedTransactions {
+                if let importRecordID = transaction.importRecordID {
+                    affectedImportRecordIDs.insert(importRecordID)
+                }
+                transaction.subscriptionID = nil
+            }
+            try refreshNeedsReviewImportCounts(for: affectedImportRecordIDs, in: context)
+            try context.save()
+            advanceLibraryRevision()
+            scheduleSpotlightReindex(in: context)
+        } catch {
+            importErrorMessage = error.localizedDescription
+        }
+    }
+
     @discardableResult
     func saveChangesAndRefreshSubscriptions(
         in context: ModelContext
@@ -778,6 +813,182 @@ extension AppModel {
             importRecord.needsReviewSubscriptionCount = summary.needsReviewCount
             importRecord.suppressedRecurringCandidateCount = summary.suppressedCount
             importRecord.recoveredRecurringCandidateCount = summary.recoveredCount
+        }
+    }
+
+    func persistHiddenSuggestionSuppression(
+        for subscription: Subscription,
+        transactions: [NormalizedTransaction],
+        in context: ModelContext
+    ) throws {
+        guard transactions.isEmpty == false else {
+            return
+        }
+
+        let canonicalName = subscription.canonicalName
+        let rawMerchants = Set(transactions.map(\.merchantRaw).filter { $0.isEmpty == false })
+        let accounts = Set(transactions.compactMap { $0.accountName?.nilIfBlank })
+        let currencies = Set(transactions.compactMap { $0.currency?.nilIfBlank?.uppercased() })
+        let sourceRawValues = Set(transactions.map(\.source.rawValue))
+        let importRecordIDs = Set(transactions.compactMap { $0.importRecordID?.uuidString })
+        let amounts = transactions.map {
+            abs(($0.transactionAmount as NSDecimalNumber).doubleValue)
+        }
+        let sortedAmounts = amounts.sorted()
+        let hiddenScopeKey = hiddenSuggestionScopeKey(
+            canonicalName: canonicalName,
+            rawMerchants: rawMerchants,
+            accounts: accounts,
+            currencies: currencies,
+            sourceRawValues: sourceRawValues,
+            importRecordIDs: importRecordIDs,
+            amounts: sortedAmounts
+        )
+        let sourceRawValue = SubscriptionMatchRuleSource.hiddenSuggestion.rawValue
+        let descriptor = FetchDescriptor<SubscriptionMatchRule>(
+            predicate: #Predicate { rule in
+                rule.canonicalName == canonicalName &&
+                    rule.isNegativeRule == true &&
+                    rule.createdFromRawValue == sourceRawValue
+            }
+        )
+        let existingRule = try context.fetch(descriptor).first {
+            $0.hiddenScopeKey == hiddenScopeKey
+        }
+        let rule = existingRule ?? SubscriptionMatchRule(
+            canonicalName: canonicalName,
+            isNegativeRule: true,
+            createdFrom: .hiddenSuggestion,
+            hiddenScopeKey: hiddenScopeKey
+        )
+        if existingRule == nil {
+            context.insert(rule)
+        }
+
+        let sources = Set(transactions.map(\.source))
+
+        rule.subscriptionID = nil
+        rule.hiddenScopeKey = hiddenScopeKey
+        rule.hiddenImportRecordIDsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(importRecordIDs).sorted())
+        rule.allowedRawMerchantsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(rawMerchants).sorted())
+        rule.requiredTokensJSON = SubscriptionEvidenceJSON.encodeStrings(
+            subscription.canonicalName
+                .lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 3 }
+                .prefix(3)
+                .map { $0 }
+        )
+        rule.excludedTokensJSON = "[]"
+        if let minAmount = sortedAmounts.first, let maxAmount = sortedAmounts.last {
+            let tolerance = max(0.05, maxAmount * 0.02)
+            rule.amountMinimum = Decimal(max(0, minAmount - tolerance))
+            rule.amountMaximum = Decimal(maxAmount + tolerance)
+            rule.amountMedian = Decimal(sortedAmounts[sortedAmounts.count / 2])
+            rule.amountTolerancePercent = 0.02
+        } else {
+            rule.amountMinimum = nil
+            rule.amountMaximum = nil
+            rule.amountMedian = nil
+        }
+        rule.currencyCode = currencies.count == 1 ? currencies.first : nil
+        rule.accountHint = accounts.count == 1 ? accounts.first : nil
+        rule.sourceHint = sources.count == 1 ? sources.first : nil
+        rule.scheduleExpectationID = nil
+        rule.priority = 1_050
+        rule.confidence = 0.96
+        rule.isNegativeRule = true
+        rule.createdFrom = .hiddenSuggestion
+        rule.updatedAt = .now
+    }
+
+    func hiddenSuggestionSuppressionGroups(
+        from transactions: [NormalizedTransaction]
+    ) -> [[NormalizedTransaction]] {
+        let grouped = Dictionary(grouping: transactions) { transaction in
+            [
+                transaction.accountName?.nilIfBlank ?? "missing-account",
+                transaction.currency?.nilIfBlank?.uppercased() ?? "missing-currency",
+                transaction.source.rawValue,
+                transaction.importRecordID?.uuidString ?? "missing-import"
+            ].joined(separator: "|")
+        }
+        return grouped.keys.sorted().compactMap { grouped[$0] }
+    }
+
+    func hiddenSuggestionScopeKey(
+        canonicalName: String,
+        rawMerchants: Set<String>,
+        accounts: Set<String>,
+        currencies: Set<String>,
+        sourceRawValues: Set<String>,
+        importRecordIDs: Set<String>,
+        amounts: [Double]
+    ) -> String {
+        func component(_ label: String, _ values: Set<String>) -> String {
+            let normalizedValues = values
+                .map {
+                    $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .lowercased()
+                        .replacingOccurrences(of: "|", with: "/")
+                        .replacingOccurrences(of: ",", with: "/")
+                }
+                .filter { $0.isEmpty == false }
+                .sorted()
+            return "\(label)=\(normalizedValues.joined(separator: ","))"
+        }
+
+        let roundedAmounts = Set(amounts.map { String(format: "%.2f", $0) })
+        return [
+            component("canonical", [canonicalName]),
+            component("raw", rawMerchants),
+            component("account", accounts),
+            component("currency", currencies),
+            component("source", sourceRawValues),
+            component("import", importRecordIDs),
+            component("amount", roundedAmounts)
+        ].joined(separator: "|")
+    }
+
+    func refreshNeedsReviewImportCounts(
+        for importRecordIDs: Set<UUID>,
+        in context: ModelContext
+    ) throws {
+        guard importRecordIDs.isEmpty == false else {
+            return
+        }
+
+        let suggestedSubscriptionIDs = Set(
+            try context.fetch(FetchDescriptor<Subscription>())
+                .filter { $0.libraryState == .suggested }
+                .map(\.id)
+        )
+
+        for importRecordID in importRecordIDs {
+            let importDescriptor = FetchDescriptor<ImportRecord>(
+                predicate: #Predicate { importRecord in
+                    importRecord.id == importRecordID
+                }
+            )
+            guard let importRecord = try context.fetch(importDescriptor).first else {
+                continue
+            }
+
+            let transactionDescriptor = FetchDescriptor<NormalizedTransaction>(
+                predicate: #Predicate { transaction in
+                    transaction.importRecordID == importRecordID
+                }
+            )
+            let reviewSubscriptionIDs = Set(
+                try context.fetch(transactionDescriptor).compactMap { transaction -> UUID? in
+                    guard let subscriptionID = transaction.subscriptionID,
+                          suggestedSubscriptionIDs.contains(subscriptionID) else {
+                        return nil
+                    }
+                    return subscriptionID
+                }
+            )
+            importRecord.needsReviewSubscriptionCount = reviewSubscriptionIDs.count
         }
     }
 

@@ -13,12 +13,16 @@ struct TransactionsView: View {
 
     @State private var isPresentingImporter = false
     @State private var searchText = ""
+    @State private var effectiveSearchText = ""
+    @State private var visibleLimit = 100
     @State private var isShowingCopilot = false
     @State private var isConfirmingDataClear = false
     @State private var dataOperationMessage: String?
 
+    private let pageSize = 100
+
     private var filteredTransactions: [NormalizedTransaction] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = effectiveSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return transactions }
 
         return transactions.filter { transaction in
@@ -31,7 +35,8 @@ struct TransactionsView: View {
 
     var body: some View {
         @Bindable var appModel = appModel
-        let visibleTransactions = Array(filteredTransactions.prefix(100))
+        let visibleTransactions = Array(filteredTransactions.prefix(visibleLimit))
+        let remainingTransactionCount = max(0, filteredTransactions.count - visibleTransactions.count)
 
         NavigationStack {
             ScrollView {
@@ -95,7 +100,7 @@ struct TransactionsView: View {
                             Text("No imported transactions")
                                 .font(Theme.Typography.callout)
                                 .foregroundStyle(Theme.Colors.textSecondary)
-                            Text("Import a CSV or Excel file, or load sample data.")
+                            Text("Import a CSV, Excel, OFX, or QFX file, or load sample data.")
                                 .font(Theme.Typography.footnote)
                                 .foregroundStyle(Theme.Colors.textTertiary)
                         }
@@ -106,8 +111,7 @@ struct TransactionsView: View {
                             ForEach(visibleTransactions) { transaction in
                                 NavigationLink {
                                     MerchantTransactionsView(
-                                        merchantName: transaction.merchantNormalized,
-                                        transactions: merchantTransactions(for: transaction.merchantNormalized)
+                                        merchantName: transaction.merchantNormalized
                                     )
                                 } label: {
                                     TransactionRow(transaction: transaction)
@@ -120,11 +124,22 @@ struct TransactionsView: View {
                                 }
                             }
 
-                            if filteredTransactions.count > 100 {
-                                Text("\(filteredTransactions.count - 100) more transactions...")
-                                    .font(Theme.Typography.footnote)
-                                    .foregroundStyle(Theme.Colors.textTertiary)
+                            if remainingTransactionCount > 0 {
+                                Button {
+                                    visibleLimit += pageSize
+                                } label: {
+                                    HStack {
+                                        Text("Show \(min(pageSize, remainingTransactionCount)) more")
+                                            .font(Theme.Typography.footnote)
+                                            .foregroundStyle(Theme.Colors.accent)
+                                        Spacer()
+                                        Text("\(remainingTransactionCount) remaining")
+                                            .font(Theme.Typography.footnote)
+                                            .foregroundStyle(Theme.Colors.textTertiary)
+                                    }
                                     .padding(Theme.Spacing.md)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .featureCard()
@@ -133,6 +148,13 @@ struct TransactionsView: View {
                 .editorialPage()
             }
             .background(Theme.Colors.bg)
+            .task(id: searchText) {
+                let nextSearchText = searchText
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                guard Task.isCancelled == false else { return }
+                effectiveSearchText = nextSearchText
+                visibleLimit = pageSize
+            }
             .overlay {
                 if appModel.isPreparingImport {
                     ProgressView("Preparing import...")
@@ -179,7 +201,7 @@ struct TransactionsView: View {
                     """
                     This removes the imported transactions, subscriptions,
                     aliases, and review rules for the current library so you
-                    can upload a fresh CSV.
+                    can import a fresh statement file.
                     """
                 )
             }
@@ -217,18 +239,23 @@ struct TransactionsView: View {
         }
     }
 
-    private func merchantTransactions(for merchantName: String) -> [NormalizedTransaction] {
-        transactions.filter { $0.merchantNormalized == merchantName }
-    }
 }
 
 private struct MerchantTransactionsView: View {
     let merchantName: String
-    let transactions: [NormalizedTransaction]
+    @Query private var transactions: [NormalizedTransaction]
     @State private var isShowingCopilot = false
 
-    private var sortedTransactions: [NormalizedTransaction] {
-        transactions.sorted { $0.transactionDate > $1.transactionDate }
+    init(merchantName: String) {
+        self.merchantName = merchantName
+        let targetMerchantName = merchantName
+        _transactions = Query(
+            filter: #Predicate<NormalizedTransaction> { transaction in
+                transaction.merchantNormalized == targetMerchantName
+            },
+            sort: \.transactionDate,
+            order: .reverse
+        )
     }
 
     var body: some View {
@@ -247,7 +274,7 @@ private struct MerchantTransactionsView: View {
                     .buttonStyle(.plain)
                 }
 
-                if sortedTransactions.isEmpty {
+                if transactions.isEmpty {
                     VStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "tray")
                             .font(.system(size: 28))
@@ -264,9 +291,9 @@ private struct MerchantTransactionsView: View {
                     .padding(.vertical, Theme.Spacing.section)
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(sortedTransactions) { transaction in
+                        ForEach(transactions) { transaction in
                             TransactionRow(transaction: transaction)
-                            if transaction.id != sortedTransactions.last?.id {
+                            if transaction.id != transactions.last?.id {
                                 HairlineDivider()
                             }
                         }
@@ -297,14 +324,17 @@ private struct TransactionRow: View {
     let transaction: NormalizedTransaction
 
     var body: some View {
-        HStack {
+        HStack(spacing: Theme.Spacing.sm) {
             Text(transaction.merchantNormalized)
                 .font(Theme.Typography.subheadline)
                 .foregroundStyle(Theme.Colors.textPrimary)
-            Spacer()
+                .lineLimit(1)
+            Spacer(minLength: Theme.Spacing.md)
             Text(transaction.transactionAmount, format: .currency(code: transaction.currency ?? "USD"))
                 .font(Theme.Typography.price)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Text(transaction.transactionDate.shortDateString)
                 .font(Theme.Typography.footnote)
                 .foregroundStyle(Theme.Colors.textTertiary)
