@@ -751,14 +751,19 @@ extension AppModel {
         do {
             guard let subscription = subscription(withID: id, in: context) else { return }
             subscription.libraryState = .ignored
+            var affectedImportRecordIDs = Set<UUID>()
             let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
                 predicate: #Predicate { transaction in
                     transaction.subscriptionID == id
                 }
             )
             for transaction in try context.fetch(linkedDescriptor) {
+                if let importRecordID = transaction.importRecordID {
+                    affectedImportRecordIDs.insert(importRecordID)
+                }
                 transaction.subscriptionID = nil
             }
+            try refreshNeedsReviewImportCounts(for: affectedImportRecordIDs, in: context)
             try context.save()
             advanceLibraryRevision()
             scheduleSpotlightReindex(in: context)
@@ -800,6 +805,48 @@ extension AppModel {
             importRecord.needsReviewSubscriptionCount = summary.needsReviewCount
             importRecord.suppressedRecurringCandidateCount = summary.suppressedCount
             importRecord.recoveredRecurringCandidateCount = summary.recoveredCount
+        }
+    }
+
+    func refreshNeedsReviewImportCounts(
+        for importRecordIDs: Set<UUID>,
+        in context: ModelContext
+    ) throws {
+        guard importRecordIDs.isEmpty == false else {
+            return
+        }
+
+        let suggestedSubscriptionIDs = Set(
+            try context.fetch(FetchDescriptor<Subscription>())
+                .filter { $0.libraryState == .suggested }
+                .map(\.id)
+        )
+
+        for importRecordID in importRecordIDs {
+            let importDescriptor = FetchDescriptor<ImportRecord>(
+                predicate: #Predicate { importRecord in
+                    importRecord.id == importRecordID
+                }
+            )
+            guard let importRecord = try context.fetch(importDescriptor).first else {
+                continue
+            }
+
+            let transactionDescriptor = FetchDescriptor<NormalizedTransaction>(
+                predicate: #Predicate { transaction in
+                    transaction.importRecordID == importRecordID
+                }
+            )
+            let reviewSubscriptionIDs = Set(
+                try context.fetch(transactionDescriptor).compactMap { transaction -> UUID? in
+                    guard let subscriptionID = transaction.subscriptionID,
+                          suggestedSubscriptionIDs.contains(subscriptionID) else {
+                        return nil
+                    }
+                    return subscriptionID
+                }
+            )
+            importRecord.needsReviewSubscriptionCount = reviewSubscriptionIDs.count
         }
     }
 

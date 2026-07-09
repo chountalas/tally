@@ -173,6 +173,15 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext
         let appModel = AppModel.testing()
+        let importRecord = ImportRecord(
+            fileName: "wrong-card.csv",
+            sourceType: "csv",
+            status: .analyzed,
+            mappingSignature: "test",
+            importedTransactionCount: 1,
+            detectedSubscriptionCount: 1,
+            needsReviewSubscriptionCount: 1
+        )
         let subscription = Subscription(
             canonicalName: "Wrong Card Streaming",
             displayName: "Wrong Card Streaming",
@@ -192,8 +201,10 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
             transactionAmount: Decimal(string: "-14.99") ?? -14.99,
             merchantRaw: "WRONG CARD STREAMING",
             merchantNormalized: subscription.canonicalName,
+            importRecordID: importRecord.id,
             subscriptionID: subscription.id
         )
+        context.insert(importRecord)
         context.insert(subscription)
         context.insert(transaction)
         try context.save()
@@ -202,6 +213,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         XCTAssertEqual(subscription.libraryState, .ignored)
         XCTAssertNil(transaction.subscriptionID)
+        XCTAssertEqual(importRecord.needsReviewSubscriptionCount, 0)
         XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
     }
 
