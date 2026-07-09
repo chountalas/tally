@@ -29,9 +29,6 @@ struct ImportReviewSheet: View {
         if validation.usableMerchantRowCount == 0 {
             return "Choose a merchant or description column so imported rows can be named."
         }
-        if validation.debitRowCount == 0 {
-            return "Adjust the debit sign setting so subscription charges are treated as debits."
-        }
         return nil
     }
 

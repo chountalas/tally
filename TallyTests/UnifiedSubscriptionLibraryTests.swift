@@ -169,6 +169,79 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
     }
 
+    func testHideSuggestedSubscriptionUnlinksWrongAccountCharges() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+        let subscription = Subscription(
+            canonicalName: "Wrong Card Streaming",
+            displayName: "Wrong Card Streaming",
+            status: .needsReview,
+            libraryState: .suggested,
+            creationPath: .imported,
+            cadence: .monthly,
+            priceAmount: Decimal(string: "14.99") ?? 14.99,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "14.99") ?? 14.99,
+            lastChargeDate: .now,
+            predictedNextChargeDate: nil,
+            confidenceScore: 0.91
+        )
+        let transaction = NormalizedTransaction(
+            transactionDate: .now,
+            transactionAmount: Decimal(string: "-14.99") ?? -14.99,
+            merchantRaw: "WRONG CARD STREAMING",
+            merchantNormalized: subscription.canonicalName,
+            subscriptionID: subscription.id
+        )
+        context.insert(subscription)
+        context.insert(transaction)
+        try context.save()
+
+        appModel.hideSuggestedSubscription(subscription.id, in: context)
+
+        XCTAssertEqual(subscription.libraryState, .ignored)
+        XCTAssertNil(transaction.subscriptionID)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
+    }
+
+    func testIgnoredSubscriptionsDoNotRelinkDuringDetectionRebuild() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let subscription = Subscription(
+            canonicalName: "Hidden Streaming",
+            displayName: "Hidden Streaming",
+            status: .needsReview,
+            libraryState: .ignored,
+            creationPath: .imported,
+            cadence: .monthly,
+            priceAmount: Decimal(string: "9.99") ?? 9.99,
+            priceCurrency: "USD",
+            normalizedMonthlyAmount: Decimal(string: "9.99") ?? 9.99,
+            lastChargeDate: .now,
+            predictedNextChargeDate: nil,
+            confidenceScore: 0.88
+        )
+        let transaction = NormalizedTransaction(
+            transactionDate: .now,
+            transactionAmount: Decimal(string: "-9.99") ?? -9.99,
+            merchantRaw: "HIDDEN STREAMING",
+            merchantNormalized: subscription.canonicalName
+        )
+        context.insert(subscription)
+        context.insert(transaction)
+        try context.save()
+
+        SubscriptionDetectionService().linkTransactions([transaction], to: subscription)
+
+        XCTAssertNil(transaction.subscriptionID)
+
+        transaction.subscriptionID = subscription.id
+        SubscriptionDetectionService().linkTransactions([transaction], to: subscription)
+
+        XCTAssertNil(transaction.subscriptionID)
+    }
+
     func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

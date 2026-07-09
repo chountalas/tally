@@ -751,6 +751,14 @@ extension AppModel {
         do {
             guard let subscription = subscription(withID: id, in: context) else { return }
             subscription.libraryState = .ignored
+            let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
+                predicate: #Predicate { transaction in
+                    transaction.subscriptionID == id
+                }
+            )
+            for transaction in try context.fetch(linkedDescriptor) {
+                transaction.subscriptionID = nil
+            }
             try context.save()
             advanceLibraryRevision()
             scheduleSpotlightReindex(in: context)
