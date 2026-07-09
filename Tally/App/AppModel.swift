@@ -70,6 +70,7 @@ struct DashboardContentSnapshot {
     let revision: LibraryRevision
     let referenceDay: Date
     let metrics: DashboardMetrics
+    let reviewQueueTotalCount: Int
     let reviewQueueSubscriptions: [Subscription]
     let upcomingRenewals: [Subscription]
     let probableRenewals: [Subscription]
@@ -185,10 +186,16 @@ final class DashboardMetricsProvider {
                 }
                 .prefix(5)
         )
+        let reviewQueueTotalCount = subscriptions.reduce(into: 0) { count, subscription in
+            if subscription.libraryState == .suggested {
+                count += 1
+            }
+        }
         let contentSnapshot = DashboardContentSnapshot(
             revision: revision,
             referenceDay: referenceDay,
             metrics: metrics,
+            reviewQueueTotalCount: reviewQueueTotalCount,
             reviewQueueSubscriptions: reviewQueueSubscriptions,
             upcomingRenewals: Array(metrics.upcomingRenewals.prefix(6)),
             probableRenewals: Array(metrics.probableRenewals.prefix(4)),

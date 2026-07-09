@@ -571,6 +571,59 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(rebuilt.notes, "Review later")
     }
 
+    func testHidingDetectedSuggestionSurvivesRebuildWithoutFalsePositiveRule() async throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        let importRecord = ImportRecord(
+            fileName: "chatgpt.csv",
+            sourceType: "csv",
+            status: .analyzed,
+            mappingSignature: "test"
+        )
+        context.insert(importRecord)
+
+        let transaction = NormalizedTransaction(
+            transactionDate: Date.now,
+            transactionAmount: Decimal(string: "-20.00") ?? -20,
+            merchantRaw: "OPENAI *CHATGPT",
+            merchantNormalized: "ChatGPT",
+            currency: "USD",
+            accountName: "Test Card A",
+            category: "AI Subscriptions/Charges",
+            memo: "ChatGPT Plus monthly subscription",
+            merchantKind: .softwareOrSaaS,
+            merchantSubscriptionAffinity: 0.98,
+            importRecordID: importRecord.id
+        )
+        transaction.classificationConfidence = 0.95
+        context.insert(transaction)
+
+        _ = try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
+        try context.save()
+
+        let detected = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<Subscription>())
+                .first { $0.canonicalName == "ChatGPT" }
+        )
+
+        appModel.hideSuggestedSubscription(detected.id, in: context)
+
+        let hidden = try XCTUnwrap(appModel.subscription(withID: detected.id, in: context))
+        XCTAssertEqual(hidden.libraryState, .ignored)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<MerchantCorrection>()).isEmpty)
+
+        _ = try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
+        try context.save()
+
+        let rebuilt = try XCTUnwrap(appModel.subscription(withID: detected.id, in: context))
+        XCTAssertEqual(rebuilt.libraryState, .ignored)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SubscriptionReviewRule>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<MerchantCorrection>()).isEmpty)
+    }
+
     func testCancellingDetectedSubscriptionSurvivesDetectionRebuild() async throws {
         let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
         let context = container.mainContext

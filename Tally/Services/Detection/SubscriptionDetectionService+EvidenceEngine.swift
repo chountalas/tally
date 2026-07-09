@@ -749,6 +749,9 @@ extension SubscriptionDetectionService {
         guard automaticRecurringClusterEvaluationEnabled else {
             return false
         }
+        guard intelligence.usage != .backgroundAutomation else {
+            return false
+        }
         return summary.status == .needsReview
     }
 

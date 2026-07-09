@@ -745,6 +745,20 @@ extension AppModel {
         }
     }
 
+    /// Review action: hide a suggestion that does not belong in this library
+    /// without teaching Tally that the merchant is never a subscription.
+    func hideSuggestedSubscription(_ id: UUID, in context: ModelContext) {
+        do {
+            guard let subscription = subscription(withID: id, in: context) else { return }
+            subscription.libraryState = .ignored
+            try context.save()
+            advanceLibraryRevision()
+            scheduleSpotlightReindex(in: context)
+        } catch {
+            importErrorMessage = error.localizedDescription
+        }
+    }
+
     @discardableResult
     func saveChangesAndRefreshSubscriptions(
         in context: ModelContext

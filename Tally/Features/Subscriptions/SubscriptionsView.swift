@@ -9,7 +9,14 @@ struct SubscriptionsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Subscription.displayName) private var subscriptions: [Subscription]
-    @Query(sort: \NormalizedTransaction.transactionDate, order: .forward) private var transactions: [NormalizedTransaction]
+    @Query(
+        filter: #Predicate<NormalizedTransaction> { transaction in
+            transaction.subscriptionID != nil
+        },
+        sort: \NormalizedTransaction.transactionDate,
+        order: .forward
+    )
+    private var subscriptionTransactions: [NormalizedTransaction]
 
     /// Set when the user drills into the review queue from a specific import
     /// (Imports → "Review items"); scopes the review list to that import.
@@ -18,9 +25,9 @@ struct SubscriptionsView: View {
     /// True while the bulk review clean-up is applying decisions.
     @State private var isAutomatingReview = false
 
-    private var active: [Subscription] {
+    private var listSnapshot: SubscriptionListSnapshot {
         let referenceDate = Date()
-        return DashboardMetrics.currentActiveSubscriptions(
+        let active = DashboardMetrics.currentActiveSubscriptions(
             from: subscriptions,
             referenceDate: referenceDate
         )
@@ -28,20 +35,50 @@ struct SubscriptionsView: View {
                 (DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
                     (DashboardMetrics.currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
-    }
-    private var former: [Subscription] {
         let activeIDs = Set(active.map(\.id))
-        return subscriptions.filter {
+        let former = subscriptions.filter {
             $0.status == .former || ($0.status == .active && activeIDs.contains($0.id) == false)
         }
-    }
-    /// AI-detected charges awaiting a keep/skip decision (the review queue),
-    /// scoped to a single import when the user drilled in from the Imports screen.
-    private var review: [Subscription] {
         let scopedIDs = importScopedSubscriptionIDs
-        return subscriptions
+        let review = subscriptions
             .filter { $0.libraryState == .suggested && (scopedIDs?.contains($0.id) ?? true) }
             .sorted { $0.confidenceScore > $1.confidenceScore }
+        let monthlyTotal = appModel.dashboardMetricsSnapshot(
+            subscriptions: subscriptions,
+            transactions: subscriptionTransactions
+        ).metrics.monthlyRunRate
+        let counts: [SubsFilter: Int] = [
+            .review: review.count,
+            .all: active.count + former.count,
+            .active: active.count,
+            .ended: former.count,
+            .yearly: active.filter(\.tallyIsYearly).count
+        ]
+        var visibleFilters: [SubsFilter] = []
+        if review.isEmpty == false { visibleFilters.append(.review) }
+        visibleFilters += [.all, .active, .ended, .yearly]
+
+        let groups: [(head: String?, items: [Subscription])] = switch filter {
+        case .all:
+            [("You're paying for these", active), ("No longer charging", former)]
+        case .active:
+            [(nil, active)]
+        case .ended:
+            [(nil, former)]
+        case .yearly:
+            [(nil, active.filter(\.tallyIsYearly))]
+        case .review:
+            [(nil, review)]
+        }
+
+        return SubscriptionListSnapshot(
+            activeCount: active.count,
+            review: review,
+            monthlyTotal: monthlyTotal,
+            counts: counts,
+            visibleFilters: visibleFilters,
+            groups: groups
+        )
     }
 
     /// Subscription IDs charged within the import the user drilled in from
@@ -49,65 +86,30 @@ struct SubscriptionsView: View {
     /// full review queue shows.
     private var importScopedSubscriptionIDs: Set<UUID>? {
         guard let scopedImportRecordID else { return nil }
-        return Set(transactions.compactMap { txn in
+        return Set(subscriptionTransactions.compactMap { txn in
             txn.importRecordID == scopedImportRecordID ? txn.subscriptionID : nil
         })
     }
 
-    private var monthlyTotal: Decimal {
-        appModel.dashboardMetricsSnapshot(subscriptions: subscriptions, transactions: transactions).metrics.monthlyRunRate
-    }
-
     private var filter: SubsFilter { appModel.selectedSubscriptionFilter }
-
-    private var counts: [SubsFilter: Int] {
-        [
-            .review: review.count,
-            .all: active.count + former.count,
-            .active: active.count,
-            .ended: former.count,
-            .yearly: active.filter(\.tallyIsYearly).count
-        ]
-    }
-
-    /// The review chip only appears when there's something to review, and leads.
-    private var visibleFilters: [SubsFilter] {
-        var result: [SubsFilter] = []
-        if !review.isEmpty { result.append(.review) }
-        result += [.all, .active, .ended, .yearly]
-        return result
-    }
-
-    private var groups: [(head: String?, items: [Subscription])] {
-        switch filter {
-        case .all:
-            return [("You're paying for these", active), ("No longer charging", former)]
-        case .active:
-            return [(nil, active)]
-        case .ended:
-            return [(nil, former)]
-        case .yearly:
-            return [(nil, active.filter(\.tallyIsYearly))]
-        case .review:
-            return [(nil, review)]
-        }
-    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                header
+                let snapshot = listSnapshot
+
+                header(snapshot: snapshot)
                     .padding(.bottom, 18)
 
-                filterRow
+                filterRow(snapshot: snapshot)
                     .padding(.bottom, 8)
 
                 if filter == .review {
-                    reviewSection
-                } else if groups.allSatisfy(\.items.isEmpty) {
+                    reviewSection(snapshot: snapshot)
+                } else if snapshot.groups.allSatisfy(\.items.isEmpty) {
                     emptyState
                 } else {
-                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                    ForEach(Array(snapshot.groups.enumerated()), id: \.offset) { _, group in
                         if !group.items.isEmpty {
                             if let head = group.head {
                                 Text(head.uppercased())
@@ -124,7 +126,7 @@ struct SubscriptionsView: View {
                         }
                     }
 
-                    totalCard
+                    totalCard(monthlyTotal: snapshot.monthlyTotal)
                         .padding(.top, 14)
                 }
             }
@@ -184,8 +186,8 @@ struct SubscriptionsView: View {
     // MARK: Review queue
 
     @ViewBuilder
-    private var reviewSection: some View {
-        if review.isEmpty {
+    private func reviewSection(snapshot: SubscriptionListSnapshot) -> some View {
+        if snapshot.review.isEmpty {
             VStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "checkmark.seal").font(.system(size: 30, weight: .light)).foregroundStyle(Theme.Colors.positive)
                 Text("All caught up").font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.Colors.textPrimary)
@@ -199,28 +201,28 @@ struct SubscriptionsView: View {
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center) {
-                    Text("Keep the ones you recognize. Skip anything that isn't really a subscription.")
+                    Text("Keep real subscriptions, edit fuzzy matches, or dismiss charges that are yours but not recurring.")
                         .font(.system(size: 13.5, weight: .medium))
                         .foregroundStyle(Theme.Colors.textSecondary)
                     Spacer(minLength: Theme.Spacing.md)
-                    tidyUpButton
+                    tidyUpButton(review: snapshot.review)
                 }
                 .padding(.horizontal, 4)
                 .padding(.top, 16)
                 .padding(.bottom, 10)
-                reviewCard(review)
+                reviewCard(snapshot.review)
             }
         }
     }
 
     /// One-tap clean-up of the review queue: high-confidence detections are
-    /// kept, obvious noise is skipped, and anything genuinely ambiguous stays
+    /// kept, obvious noise is dismissed, and anything genuinely ambiguous stays
     /// in the list for a manual decision.
     @ViewBuilder
-    private var tidyUpButton: some View {
+    private func tidyUpButton(review: [Subscription]) -> some View {
         let plan = appModel.reviewAutomationPlan(
             subscriptions: review,
-            transactions: transactions,
+            transactions: subscriptionTransactions,
             scopedImportRecordID: scopedImportRecordID
         )
         let decidableCount = plan.confirmCandidates.count + plan.suppressCandidates.count
@@ -258,8 +260,8 @@ struct SubscriptionsView: View {
                 )
                 var parts: [String] = []
                 if result.confirmedCount > 0 { parts.append("kept \(result.confirmedCount)") }
-                if result.suppressedCount > 0 { parts.append("skipped \(result.suppressedCount)") }
-                let remaining = review.count
+                if result.suppressedCount > 0 { parts.append("dismissed \(result.suppressedCount)") }
+                let remaining = max(0, plan.totalReviewCount - result.appliedCount)
                 let summary = parts.isEmpty
                     ? "Nothing could be decided automatically."
                     : "Tidied up the review list: \(parts.joined(separator: ", "))."
@@ -278,8 +280,14 @@ struct SubscriptionsView: View {
                 ReviewRow(
                     sub: sub,
                     onOpen: { appModel.tallySelectedSubscriptionID = sub.id },
+                    onEdit: { appModel.addOrEditSheet = .edit(sub.id) },
                     onKeep: { appModel.confirmSuggestedSubscription(sub.id, in: modelContext) },
-                    onSkip: { appModel.ignoreSuggestedSubscription(sub.id, in: modelContext) }
+                    onNotSubscription: {
+                        appModel.ignoreSuggestedSubscription(sub.id, in: modelContext)
+                    },
+                    onNotMine: {
+                        appModel.hideSuggestedSubscription(sub.id, in: modelContext)
+                    }
                 )
                 if index < items.count - 1 {
                     HairlineDivider()
@@ -292,22 +300,22 @@ struct SubscriptionsView: View {
         .cardShadow()
     }
 
-    private var header: some View {
+    private func header(snapshot: SubscriptionListSnapshot) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .bottom) {
-                headerCopy
+                headerCopy(snapshot: snapshot)
                 Spacer(minLength: Theme.Spacing.lg)
                 addOrUpdateButton
             }
 
             VStack(alignment: .leading, spacing: 14) {
-                headerCopy
+                headerCopy(snapshot: snapshot)
                 addOrUpdateButton
             }
         }
     }
 
-    private var headerCopy: some View {
+    private func headerCopy(snapshot: SubscriptionListSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Your subscriptions")
                 .font(.system(size: 34, weight: .heavy, design: .rounded))
@@ -315,8 +323,8 @@ struct SubscriptionsView: View {
                 .kerning(-0.7)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            (Text("\(active.count) active · ").foregroundStyle(Theme.Colors.textSecondary)
-             + Text(monthlyTotal.tallyMoney()).foregroundStyle(Theme.Colors.textPrimary).bold()
+            (Text("\(snapshot.activeCount) active · ").foregroundStyle(Theme.Colors.textSecondary)
+             + Text(snapshot.monthlyTotal.tallyMoney()).foregroundStyle(Theme.Colors.textPrimary).bold()
              + Text(" a month").foregroundStyle(Theme.Colors.textSecondary))
                 .font(.system(size: 14.5, weight: .medium))
         }
@@ -329,11 +337,11 @@ struct SubscriptionsView: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
-    private var filterRow: some View {
+    private func filterRow(snapshot: SubscriptionListSnapshot) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(visibleFilters) { f in
-                    TallyChip(label: f.label, count: counts[f], isSelected: filter == f) {
+                ForEach(snapshot.visibleFilters) { f in
+                    TallyChip(label: f.label, count: snapshot.counts[f], isSelected: filter == f) {
                         withAnimation(Theme.Animation.whenAllowed(Theme.Animation.quickSmooth, reduceMotion: reduceMotion)) {
                             appModel.selectedSubscriptionFilter = f
                             // Manually choosing a filter clears any import scope,
@@ -364,7 +372,7 @@ struct SubscriptionsView: View {
         .cardShadow()
     }
 
-    private var totalCard: some View {
+    private func totalCard(monthlyTotal: Decimal) -> some View {
         HStack {
             Text("Active subscriptions, every month")
                 .font(.system(size: 14, weight: .semibold))
@@ -380,6 +388,15 @@ struct SubscriptionsView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Colors.border, lineWidth: 0.5))
         .cardShadow()
     }
+}
+
+private struct SubscriptionListSnapshot {
+    let activeCount: Int
+    let review: [Subscription]
+    let monthlyTotal: Decimal
+    let counts: [SubsFilter: Int]
+    let visibleFilters: [SubsFilter]
+    let groups: [(head: String?, items: [Subscription])]
 }
 
 enum SubsFilter: String, CaseIterable, Identifiable {
@@ -500,60 +517,28 @@ private struct SubRow: View {
 
 // MARK: - Review row
 
-/// A row in the review queue: detected charge with explicit Keep / Skip actions.
+/// A row in the review queue with explicit confirm, edit, and dismissal choices.
 private struct ReviewRow: View {
     let sub: Subscription
     let onOpen: () -> Void
+    let onEdit: () -> Void
     let onKeep: () -> Void
-    let onSkip: () -> Void
+    let onNotSubscription: () -> Void
+    let onNotMine: () -> Void
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 14) {
-            Button(action: onOpen) {
-                HStack(spacing: 14) {
-                    MonogramTile(name: sub.tallyName, size: 42)
-                        .scaleEffect(hovering && !reduceMotion ? 1.05 : 1)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(sub.tallyName)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                        Text(metaLine)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .contentShape(Rectangle())
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                openButton
+                Spacer(minLength: Theme.Spacing.md)
+                actionControls
             }
-            .buttonStyle(.plain)
 
-            Spacer(minLength: Theme.Spacing.md)
-
-            HStack(spacing: 8) {
-                Button(action: onSkip) {
-                    Text("Not mine")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 7)
-                        .background(Capsule().fill(Theme.Colors.bgInset))
-                        .overlay(Capsule().strokeBorder(Theme.Colors.border, lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-
-                Button(action: onKeep) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold))
-                        Text("Keep").font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundStyle(Theme.Colors.onAccent)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 7)
-                    .background(Capsule().fill(Theme.Colors.accent))
-                }
-                .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                openButton
+                actionControls
             }
         }
         .padding(.vertical, Theme.Spacing.rowV)
@@ -564,11 +549,91 @@ private struct ReviewRow: View {
         .animation(Theme.Animation.whenAllowed(Theme.Animation.feedbackSmooth, reduceMotion: reduceMotion), value: hovering)
     }
 
+    private var openButton: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 14) {
+                MonogramTile(name: sub.tallyName, size: 42)
+                    .scaleEffect(hovering && !reduceMotion ? 1.05 : 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sub.tallyName)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text(metaLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var actionControls: some View {
+        HStack(spacing: 8) {
+            Button(action: onEdit) {
+                ReviewActionPill(title: "Edit", systemImage: "pencil")
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                Button {
+                    onNotSubscription()
+                } label: {
+                    Label("Mine, not a subscription", systemImage: "xmark.circle")
+                }
+
+                Button {
+                    onNotMine()
+                } label: {
+                    Label("Not mine / wrong account", systemImage: "person.crop.circle.badge.xmark")
+                }
+            } label: {
+                ReviewActionPill(title: "Dismiss", systemImage: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+
+            Button(action: onKeep) {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold))
+                    Text("Keep").font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(Theme.Colors.onAccent)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(Theme.Colors.accent))
+            }
+            .buttonStyle(.plain)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     private var metaLine: String {
         var line = "\(sub.priceAmount.tallyMoney(code: sub.priceCurrency)) \(sub.cadence.tallyBillingPhrase)"
         if let category = sub.serviceCategory?.nilIfBlank {
             line += " · \(category)"
         }
         return line
+    }
+}
+
+private struct ReviewActionPill: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .bold))
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(Theme.Colors.textSecondary)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(Theme.Colors.bgInset))
+        .overlay(Capsule().strokeBorder(Theme.Colors.border, lineWidth: 0.5))
     }
 }

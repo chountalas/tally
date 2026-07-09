@@ -127,13 +127,15 @@ extension SubscriptionDetectionService {
         _ subscription: Subscription,
         context: DetectedSubscriptionUpdateContext
     ) {
+        let previousLibraryState = subscription.libraryState
         subscription.displayName = context.resolution.displayName
         subscription.status = context.resolution.status
         subscription.libraryState = resolvedLibraryState(
             summary: context.summary,
             rule: context.rule,
             correction: context.correction,
-            existing: subscription
+            existing: subscription,
+            previousLibraryState: previousLibraryState
         )
         if subscription.creationPath != .manual {
             subscription.creationPath = context.summary.detectionSource == .recentPurchase ? .refreshed : .imported
@@ -165,10 +167,14 @@ extension SubscriptionDetectionService {
         summary: SubscriptionSummary,
         rule: SubscriptionReviewRule?,
         correction: MerchantCorrection?,
-        existing: Subscription?
+        existing: Subscription?,
+        previousLibraryState: SubscriptionLibraryState? = nil
     ) -> SubscriptionLibraryState {
         if existing?.creationPath == .manual {
             return existing?.status == .former ? .inactive : .manual
+        }
+        if previousLibraryState == .ignored || existing?.libraryState == .ignored {
+            return .ignored
         }
         // A user's review-rule status override is authoritative over the detector's
         // freshly-inferred summary status. Without this, an edited detected

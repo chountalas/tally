@@ -9,28 +9,37 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Subscription.displayName) private var subscriptions: [Subscription]
-    @Query(sort: \NormalizedTransaction.transactionDate, order: .forward) private var transactions: [NormalizedTransaction]
+    @Query(
+        filter: #Predicate<NormalizedTransaction> { transaction in
+            transaction.subscriptionID != nil
+        },
+        sort: \NormalizedTransaction.transactionDate,
+        order: .forward
+    )
+    private var subscriptionTransactions: [NormalizedTransaction]
 
     private var snapshot: DashboardContentSnapshot {
-        appModel.dashboardContentSnapshot(subscriptions: subscriptions, transactions: transactions)
+        appModel.dashboardContentSnapshot(
+            subscriptions: subscriptions,
+            transactions: subscriptionTransactions
+        )
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.gap) {
-                let metrics = snapshot.metrics
-                let upcoming = Array(snapshot.upcomingRenewals.prefix(5))
+                let content = snapshot
+                let metrics = content.metrics
+                let upcoming = Array(content.upcomingRenewals.prefix(5))
                 let overlap = metrics.overlapGroups.first
                 let history = Array(metrics.monthlySpend.sorted { $0.month < $1.month }.suffix(6))
-                // True queue size — snapshot.reviewQueueSubscriptions is capped at 5,
-                // so count the suggested library directly to match the Subscriptions chip.
-                let reviewCount = subscriptions.filter { $0.libraryState == .suggested }.count
+                let reviewCount = content.reviewQueueTotalCount
 
                 heroSection(
                     metrics: metrics,
                     upcoming: upcoming,
                     overlap: overlap,
-                    referenceDate: snapshot.referenceDay
+                    referenceDate: content.referenceDay
                 )
 
                 if reviewCount > 0 {
@@ -40,7 +49,7 @@ struct DashboardView: View {
                 }
 
                 if !upcoming.isEmpty {
-                    comingUpSection(upcoming, referenceDate: snapshot.referenceDay)
+                    comingUpSection(upcoming, referenceDate: content.referenceDay)
                 }
                 if !history.isEmpty {
                     SpendChart(history: history)
@@ -424,7 +433,7 @@ private struct SpendChart: View {
 
 // MARK: - Review nudge
 
-/// Post-import call to action: the app detected charges that need a quick yes/no.
+/// Post-import call to action: the app detected charges that need a quick decision.
 /// Tapping opens the Subscriptions screen filtered to the review queue.
 private struct ReviewNudge: View {
     let count: Int
@@ -438,7 +447,7 @@ private struct ReviewNudge: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(count) \(count == 1 ? "charge" : "charges") to review")
                     .font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.Colors.textPrimary)
-                Text("We spotted \(count == 1 ? "a possible subscription" : "possible subscriptions") in your statements. Keep the real ones, skip the rest.")
+                Text("We spotted \(count == 1 ? "a possible subscription" : "possible subscriptions") in your statements. Keep real subscriptions, dismiss yours-but-not-recurring charges, or mark wrong-account charges as not mine.")
                     .font(.system(size: 13.5, weight: .medium))
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

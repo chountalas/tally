@@ -5,8 +5,8 @@ extension SubscriptionIntelligenceService {
         IntelligenceResponse(
             headline: "Your library needs transaction data first",
             summary: """
-            Import a CSV or Excel file to detect subscriptions before the copilot can
-            recommend savings.
+            Import a CSV, Excel, OFX, or QFX file to detect subscriptions before
+            the copilot can recommend savings.
             """,
             evidence: [],
             actions: [

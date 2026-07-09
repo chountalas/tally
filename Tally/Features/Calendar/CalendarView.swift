@@ -1,6 +1,21 @@
 import SwiftData
 import SwiftUI
 
+private struct CalendarMonthSnapshot {
+    let byDay: [Int: [Subscription]]
+    let days: [Int]
+    let rows: [CalendarAgendaEntry]
+}
+
+private struct CalendarAgendaEntry: Identifiable {
+    let day: Int
+    let subscription: Subscription
+
+    var id: String {
+        "\(day)-\(subscription.id.uuidString)"
+    }
+}
+
 /// Calendar — a real month grid showing when each subscription bills next,
 /// with month navigation and an agenda list below. Matches the Tally design.
 struct CalendarView: View {
@@ -41,7 +56,7 @@ struct CalendarView: View {
 
     /// Renewals falling on each day of the visible month, expanded by each
     /// subscription's actual cadence.
-    private var byDay: [Int: [Subscription]] {
+    private var monthSnapshot: CalendarMonthSnapshot {
         var result: [Int: [Subscription]] = [:]
         for sub in activeSubs {
             for date in renewalDates(inVisibleMonthFor: sub) {
@@ -49,7 +64,11 @@ struct CalendarView: View {
                 result[day, default: []].append(sub)
             }
         }
-        return result
+        let days = result.keys.sorted()
+        let rows = days.flatMap { day in
+            (result[day] ?? []).map { CalendarAgendaEntry(day: day, subscription: $0) }
+        }
+        return CalendarMonthSnapshot(byDay: result, days: days, rows: rows)
     }
 
     private func renewalDates(inVisibleMonthFor sub: Subscription) -> [Date] {
@@ -63,6 +82,8 @@ struct CalendarView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.gap) {
+                let snapshot = monthSnapshot
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Calendar")
                         .font(.system(size: 32, weight: .heavy, design: .rounded))
@@ -72,8 +93,8 @@ struct CalendarView: View {
                 }
 
                 toolbar
-                monthGrid
-                agenda
+                monthGrid(snapshot: snapshot)
+                agenda(snapshot: snapshot)
             }
             .padding(Theme.Spacing.page)
             .frame(maxWidth: Theme.Layout.contentMaxWidth, alignment: .leading)
@@ -111,7 +132,7 @@ struct CalendarView: View {
 
     // MARK: Grid
 
-    private var monthGrid: some View {
+    private func monthGrid(snapshot: CalendarMonthSnapshot) -> some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
         return VStack(spacing: 6) {
             LazyVGrid(columns: columns, spacing: 6) {
@@ -126,7 +147,7 @@ struct CalendarView: View {
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(0..<leadingBlanks, id: \.self) { _ in Color.clear.frame(height: 86) }
                 ForEach(1...daysInMonth, id: \.self) { day in
-                    CalCell(day: day, isToday: isToday(day), events: byDay[day] ?? []) { sub in
+                    CalCell(day: day, isToday: isToday(day), events: snapshot.byDay[day] ?? []) { sub in
                         appModel.tallySelectedSubscriptionID = sub.id
                     }
                 }
@@ -145,10 +166,9 @@ struct CalendarView: View {
 
     // MARK: Agenda
 
-    private var agenda: some View {
-        let days = byDay.keys.sorted()
+    private func agenda(snapshot: CalendarMonthSnapshot) -> some View {
         return Group {
-            if days.isEmpty {
+            if snapshot.days.isEmpty {
                 Text("Nothing renews in \(viewMonth.tallyMonthName) — enjoy the break.")
                     .font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.Colors.textSecondary)
                     .frame(maxWidth: .infinity)
@@ -161,12 +181,11 @@ struct CalendarView: View {
                         .font(.system(size: 13, weight: .bold)).tracking(1.3)
                         .foregroundStyle(Theme.Colors.textTertiary).padding(.horizontal, 4)
                     VStack(spacing: 0) {
-                        let rows = days.flatMap { day in (byDay[day] ?? []).map { (day, $0) } }
-                        ForEach(Array(rows.enumerated()), id: \.offset) { index, entry in
-                            AgendaRow(day: entry.0, month: viewMonth, sub: entry.1) {
-                                appModel.tallySelectedSubscriptionID = entry.1.id
+                        ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, entry in
+                            AgendaRow(day: entry.day, month: viewMonth, sub: entry.subscription) {
+                                appModel.tallySelectedSubscriptionID = entry.subscription.id
                             }
-                            if index < rows.count - 1 { HairlineDivider().padding(.leading, 18) }
+                            if index < snapshot.rows.count - 1 { HairlineDivider().padding(.leading, 18) }
                         }
                     }
                     .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Colors.bgCard))
