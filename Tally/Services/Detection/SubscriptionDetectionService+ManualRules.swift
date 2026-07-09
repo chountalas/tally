@@ -57,7 +57,8 @@ extension SubscriptionDetectionService {
             let key = [
                 rule.canonicalName.lowercased(),
                 rule.isNegativeRule ? "negative" : "positive",
-                rule.createdFromRawValue
+                rule.createdFromRawValue,
+                rule.createdFrom == .hiddenSuggestion ? (rule.hiddenScopeKey ?? "") : ""
             ].joined(separator: "|")
             if let existing = byKey[key] {
                 context.delete(existing)

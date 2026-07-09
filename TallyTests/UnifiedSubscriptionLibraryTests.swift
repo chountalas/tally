@@ -224,6 +224,62 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(matchRules.first?.isNegativeRule, true)
         XCTAssertEqual(matchRules.first?.accountHint, "Wrong Card")
         XCTAssertEqual(matchRules.first?.currencyCode, "USD")
+        XCTAssertNotNil(matchRules.first?.hiddenScopeKey)
+    }
+
+    func testHideSuggestedSubscriptionPreservesMultipleWrongAccountScopesForSameMerchant() throws {
+        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+
+        for accountName in ["Wrong Card A", "Wrong Card B"] {
+            let importRecord = ImportRecord(
+                fileName: "\(accountName).csv",
+                sourceType: "csv",
+                status: .analyzed,
+                mappingSignature: accountName,
+                importedTransactionCount: 1,
+                detectedSubscriptionCount: 1,
+                needsReviewSubscriptionCount: 1
+            )
+            let subscription = Subscription(
+                canonicalName: "Shared Streaming",
+                displayName: "Shared Streaming",
+                status: .needsReview,
+                libraryState: .suggested,
+                creationPath: .imported,
+                cadence: .monthly,
+                priceAmount: Decimal(string: "14.99") ?? 14.99,
+                priceCurrency: "USD",
+                normalizedMonthlyAmount: Decimal(string: "14.99") ?? 14.99,
+                lastChargeDate: .now,
+                predictedNextChargeDate: nil,
+                confidenceScore: 0.91
+            )
+            let transaction = NormalizedTransaction(
+                transactionDate: .now,
+                transactionAmount: Decimal(string: "-14.99") ?? -14.99,
+                merchantRaw: "SHARED STREAMING",
+                merchantNormalized: subscription.canonicalName,
+                currency: "USD",
+                accountName: accountName,
+                importRecordID: importRecord.id,
+                subscriptionID: subscription.id
+            )
+            context.insert(importRecord)
+            context.insert(subscription)
+            context.insert(transaction)
+            try context.save()
+
+            appModel.hideSuggestedSubscription(subscription.id, in: context)
+        }
+
+        let matchRules = try context.fetch(FetchDescriptor<SubscriptionMatchRule>())
+            .filter { $0.createdFrom == .hiddenSuggestion }
+
+        XCTAssertEqual(matchRules.count, 2)
+        XCTAssertEqual(Set(matchRules.compactMap(\.accountHint)), ["Wrong Card A", "Wrong Card B"])
+        XCTAssertEqual(Set(matchRules.compactMap(\.hiddenScopeKey)).count, 2)
     }
 
     func testIgnoredSubscriptionsDoNotRelinkDuringDetectionRebuild() throws {

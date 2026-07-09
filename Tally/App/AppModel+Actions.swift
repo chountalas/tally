@@ -824,6 +824,24 @@ extension AppModel {
         }
 
         let canonicalName = subscription.canonicalName
+        let rawMerchants = Set(transactions.map(\.merchantRaw).filter { $0.isEmpty == false })
+        let accounts = Set(transactions.compactMap { $0.accountName?.nilIfBlank })
+        let currencies = Set(transactions.compactMap { $0.currency?.nilIfBlank?.uppercased() })
+        let sourceRawValues = Set(transactions.map(\.source.rawValue))
+        let importRecordIDs = Set(transactions.compactMap { $0.importRecordID?.uuidString })
+        let amounts = transactions.map {
+            abs(($0.transactionAmount as NSDecimalNumber).doubleValue)
+        }
+        let sortedAmounts = amounts.sorted()
+        let hiddenScopeKey = hiddenSuggestionScopeKey(
+            canonicalName: canonicalName,
+            rawMerchants: rawMerchants,
+            accounts: accounts,
+            currencies: currencies,
+            sourceRawValues: sourceRawValues,
+            importRecordIDs: importRecordIDs,
+            amounts: sortedAmounts
+        )
         let sourceRawValue = SubscriptionMatchRuleSource.hiddenSuggestion.rawValue
         let descriptor = FetchDescriptor<SubscriptionMatchRule>(
             predicate: #Predicate { rule in
@@ -832,26 +850,23 @@ extension AppModel {
                     rule.createdFromRawValue == sourceRawValue
             }
         )
-        let existingRule = try context.fetch(descriptor).first
+        let existingRule = try context.fetch(descriptor).first {
+            $0.hiddenScopeKey == hiddenScopeKey
+        }
         let rule = existingRule ?? SubscriptionMatchRule(
             canonicalName: canonicalName,
             isNegativeRule: true,
-            createdFrom: .hiddenSuggestion
+            createdFrom: .hiddenSuggestion,
+            hiddenScopeKey: hiddenScopeKey
         )
         if existingRule == nil {
             context.insert(rule)
         }
 
-        let rawMerchants = Set(transactions.map(\.merchantRaw).filter { $0.isEmpty == false })
-        let accounts = Set(transactions.compactMap { $0.accountName?.nilIfBlank })
-        let currencies = Set(transactions.compactMap { $0.currency?.nilIfBlank?.uppercased() })
         let sources = Set(transactions.map(\.source))
-        let amounts = transactions.map {
-            abs(($0.transactionAmount as NSDecimalNumber).doubleValue)
-        }
-        let sortedAmounts = amounts.sorted()
 
         rule.subscriptionID = nil
+        rule.hiddenScopeKey = hiddenScopeKey
         rule.allowedRawMerchantsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(rawMerchants).sorted())
         rule.requiredTokensJSON = SubscriptionEvidenceJSON.encodeStrings(
             subscription.canonicalName
@@ -882,6 +897,40 @@ extension AppModel {
         rule.isNegativeRule = true
         rule.createdFrom = .hiddenSuggestion
         rule.updatedAt = .now
+    }
+
+    func hiddenSuggestionScopeKey(
+        canonicalName: String,
+        rawMerchants: Set<String>,
+        accounts: Set<String>,
+        currencies: Set<String>,
+        sourceRawValues: Set<String>,
+        importRecordIDs: Set<String>,
+        amounts: [Double]
+    ) -> String {
+        func component(_ label: String, _ values: Set<String>) -> String {
+            let normalizedValues = values
+                .map {
+                    $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .lowercased()
+                        .replacingOccurrences(of: "|", with: "/")
+                        .replacingOccurrences(of: ",", with: "/")
+                }
+                .filter { $0.isEmpty == false }
+                .sorted()
+            return "\(label)=\(normalizedValues.joined(separator: ","))"
+        }
+
+        let roundedAmounts = Set(amounts.map { String(format: "%.2f", $0) })
+        return [
+            component("canonical", [canonicalName]),
+            component("raw", rawMerchants),
+            component("account", accounts),
+            component("currency", currencies),
+            component("source", sourceRawValues),
+            component("import", importRecordIDs),
+            component("amount", roundedAmounts)
+        ].joined(separator: "|")
     }
 
     func refreshNeedsReviewImportCounts(

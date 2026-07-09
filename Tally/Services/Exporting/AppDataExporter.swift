@@ -276,6 +276,7 @@ private struct AppDataExportPayload: Codable {
         let confidence: Double
         let isNegativeRule: Bool
         let createdFrom: String
+        let hiddenScopeKey: String?
         let updatedAt: Date
 
         init(_ rule: SubscriptionMatchRule) {
@@ -292,6 +293,7 @@ private struct AppDataExportPayload: Codable {
             confidence = rule.confidence
             isNegativeRule = rule.isNegativeRule
             createdFrom = rule.createdFromRawValue
+            hiddenScopeKey = rule.hiddenScopeKey
             updatedAt = rule.updatedAt
         }
     }
