@@ -26,6 +26,12 @@ Subscription detail flows now do less repeated full-library work during render.
 This should make ordinary tab switches, scrolls, taps, and detail opens feel
 substantially less glitchy on larger libraries.
 
+The Transactions root now fetches only the visible page from SwiftData rather
+than loading the entire ledger before showing 100 rows. Logo rows also reuse
+resolved brand matches and catalog-existence results across view invalidations.
+At 25,000 synthetic rows, the bounded fetch took 18.8 ms versus 870.9 ms for
+the prior all-row fetch shape in the same optimized smoke process.
+
 ### Layout resilience
 
 Subscription detail review actions now wrap through `ViewThatFits`, so the
@@ -77,6 +83,10 @@ Instruments pass with representative data before claiming performance is
 finished. Test flows: launch, Home, Subscriptions, Calendar, Transactions search,
 merchant drilldown, subscription detail, import, refresh analysis, and Copilot.
 
+The July 12 synthetic regression coverage now exercises transaction paging at
+250 rows. The 5,000- and 25,000-row timing fixtures below remain necessary for
+stable performance budgets rather than correctness-only coverage.
+
 ### 2. Move detection rebuild work off the main actor
 
 Detection still fetches all transactions and runs a full rebuild on the main
@@ -120,7 +130,17 @@ The brand asset catalog is large. Confirm with Instruments whether asset lookup
 or image decoding contributes to launch or list-scroll cost before pruning or
 lazy-loading assets.
 
-### 8. Realistic live flow QA
+Lookup and existence checks are now cached, but the compiled asset catalog is
+still about 10.8 MB and must be measured before pruning.
+
+### 8. Lazy-load the optional llama runtime
+
+The macOS executable currently links the bundled 9.5 MB `llama.framework`
+eagerly. Introduce and verify a dynamic C-runtime boundary so non-Gemma launches
+do not pay that dyld cost while preserving local inference and clear missing-
+runtime errors.
+
+### 9. Realistic live flow QA
 
 An in-memory empty-library screen walk has been completed safely. Still run a
 manual screen walk with a realistic private test library:
