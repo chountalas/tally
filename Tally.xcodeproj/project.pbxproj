@@ -46,6 +46,7 @@
 		3AA473F1C286E2E1A2EC968E /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 515F92CE131E5A51CCBF3228 /* UserNotifications.framework */; };
 		3AA5446A181DD1ECE9BCEDBE /* ImportReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFB8E15D3DC347B90D7FED5A /* ImportReviewSheet.swift */; };
 		3B25FB977B2AB44CD41B8C64 /* SwiftData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BF65096F1006CB28AE669AAB /* SwiftData.framework */; };
+		3DC094CF8BC6FB0FB30DDD0D /* TransactionPageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D1C1B8B1696A5FEFDC0B3B /* TransactionPageLoader.swift */; };
 		420A84EF8D33E4D145B43C8E /* ServiceLogoBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC32DC3FB24F3ACAF3176F8 /* ServiceLogoBadge.swift */; };
 		4241131E08880F1B7D421ED2 /* ModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A873EA0E2943605200D15E9A /* ModelTypes.swift */; };
 		42947B4DDC12B3D6DBC168F7 /* Tally.iCloud.macOS.entitlements.example in Resources */ = {isa = PBXBuildFile; fileRef = 939C5984FDBBC97FEB0A3B90 /* Tally.iCloud.macOS.entitlements.example */; };
@@ -67,6 +68,7 @@
 		6B936FA52867AC742884F4F5 /* AppDataExportDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BA68EA9D0736C367494DA85 /* AppDataExportDocument.swift */; };
 		6D4350AB93F516CDEE3F54C5 /* CSVTransactionImporterTests+ReviewRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197C32C23C150597CF15E1E1 /* CSVTransactionImporterTests+ReviewRules.swift */; };
 		6F641E03A0B73350B13F6AD9 /* locale.c in Sources */ = {isa = PBXBuildFile; fileRef = D59690DE2C8327A7425E4742 /* locale.c */; };
+		7092C65AB7CB8C2B29F0EDB0 /* TransactionPageLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B7D02DCD4B36579AE23C081 /* TransactionPageLoaderTests.swift */; };
 		71CE45EA0C87AAA67AEE0D44 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3426D81538DA6E21BEAE60F /* InsightsView.swift */; };
 		730782AE92CA58D5651AC656 /* SubscriptionDetectionEvaluationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D7A67D1C3BE41BAADA41D0 /* SubscriptionDetectionEvaluationHelpers.swift */; };
 		74CF43F1ECDCC4FEC216B4CB /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14ECC4416F0E132E01C6A4D1 /* DashboardView.swift */; };
@@ -117,6 +119,7 @@
 		CBF5EBF2E7C485FFDA06CE2D /* SubscriptionDetectionService+Cadence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF97EB1DEE8FA7330D3B3842 /* SubscriptionDetectionService+Cadence.swift */; };
 		CC3CF418DBCB2DF29781290E /* SubscriptionDetectionEvaluationHarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD900C1F968FC17BBC7CCBF /* SubscriptionDetectionEvaluationHarnessTests.swift */; };
 		CC8B1C5111730B7C25491E6A /* SubscriptionCopilotSheetSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7F30986990142B331A0A87 /* SubscriptionCopilotSheetSupport.swift */; };
+		CC8D9CD2B2090FDCF6218218 /* ServiceLogoResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92009136B92DF8746C1C5FBF /* ServiceLogoResolverTests.swift */; };
 		CD7C1731CDA3F54913F780A7 /* AppDataExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E11006388257E98B0C7BC44 /* AppDataExporter.swift */; };
 		D03224186927B17EF57DAB2B /* UnifiedSubscriptionLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF97BE86F67029D340D962A2 /* UnifiedSubscriptionLibraryTests.swift */; };
 		D2D47FE492168B5BD5332232 /* TallyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C459C89EA7705BE5561E7FB8 /* TallyApp.swift */; };
@@ -169,6 +172,7 @@
 
 /* Begin PBXFileReference section */
 		0064664AB8C877EAADF87899 /* AppModel+AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AISettings.swift"; sourceTree = "<group>"; };
+		00D1C1B8B1696A5FEFDC0B3B /* TransactionPageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionPageLoader.swift; sourceTree = "<group>"; };
 		012501F61A3EE9A90E5A36B3 /* SubscriptionReviewRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReviewRule.swift; sourceTree = "<group>"; };
 		01A1EF4625D976E43615BB4C /* UnifiedLibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedLibraryModels.swift; sourceTree = "<group>"; };
 		03A9C475AD7525720C00F909 /* MerchantClassification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantClassification.swift; sourceTree = "<group>"; };
@@ -233,6 +237,7 @@
 		6E27AA7E784A78C7732CAB46 /* PaymentProcessorUnmaskerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProcessorUnmaskerTests.swift; sourceTree = "<group>"; };
 		6F2F5C5DDB14360A0998BB18 /* SubscriptionDetectionService+Scoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionDetectionService+Scoring.swift"; sourceTree = "<group>"; };
 		73260203B76492208D8F62BA /* SubscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionDetailView.swift; sourceTree = "<group>"; };
+		7B7D02DCD4B36579AE23C081 /* TransactionPageLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionPageLoaderTests.swift; sourceTree = "<group>"; };
 		7FB6334988976B2E00F57F06 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7FD5DCF9F7A2661B54010C4E /* DashboardAddSubscriptionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAddSubscriptionSheet.swift; sourceTree = "<group>"; };
 		7FEBA6BB922033C9A0A1DF90 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -247,6 +252,7 @@
 		8C5688CDA037AD47C9564706 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		8E6212B594D59CA9944F895A /* GemmaModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaModelManager.swift; sourceTree = "<group>"; };
 		8F9D37E6EB10A6972954D28D /* xls.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = xls.c; sourceTree = "<group>"; };
+		92009136B92DF8746C1C5FBF /* ServiceLogoResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLogoResolverTests.swift; sourceTree = "<group>"; };
 		939C5984FDBBC97FEB0A3B90 /* Tally.iCloud.macOS.entitlements.example */ = {isa = PBXFileReference; path = Tally.iCloud.macOS.entitlements.example; sourceTree = "<group>"; };
 		95ADCBEF08EF365D561026AF /* ThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeTests.swift; sourceTree = "<group>"; };
 		9611AB6C3562DBAD8537DE39 /* ole.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ole.c; sourceTree = "<group>"; };
@@ -427,6 +433,7 @@
 				4CD5CAFB0C587AE7D3117E8E /* OFXImportWiringTests.swift */,
 				6E27AA7E784A78C7732CAB46 /* PaymentProcessorUnmaskerTests.swift */,
 				39A727A0841A6B1AA299CA9B /* ServiceLogoDatabaseTests.swift */,
+				92009136B92DF8746C1C5FBF /* ServiceLogoResolverTests.swift */,
 				813720D815FAB090769B0280 /* SignalDetectionTests.swift */,
 				3042133CBF3DA908E82F7273 /* SubscriptionDetectionDiagnosticsTests.swift */,
 				1BD900C1F968FC17BBC7CCBF /* SubscriptionDetectionEvaluationHarnessTests.swift */,
@@ -435,6 +442,7 @@
 				F3448244662C43F424C2616E /* SubscriptionIntelligenceServiceTests.swift */,
 				2748EDBA9A6FC124993C4FCA /* TestAppModelFactory.swift */,
 				95ADCBEF08EF365D561026AF /* ThemeTests.swift */,
+				7B7D02DCD4B36579AE23C081 /* TransactionPageLoaderTests.swift */,
 				CF97BE86F67029D340D962A2 /* UnifiedSubscriptionLibraryTests.swift */,
 				ABD67020B51C57E8C0F8EC2D /* Fixtures */,
 			);
@@ -579,6 +587,7 @@
 			isa = PBXGroup;
 			children = (
 				FFB8E15D3DC347B90D7FED5A /* ImportReviewSheet.swift */,
+				00D1C1B8B1696A5FEFDC0B3B /* TransactionPageLoader.swift */,
 				ADF79EEEC06E0D1261DA0597 /* TransactionsView.swift */,
 			);
 			path = Transactions;
@@ -875,6 +884,7 @@
 				2CC6700D150E029F66AAFD0B /* OFXImportWiringTests.swift in Sources */,
 				4D615DC9FB1CBCEF797D4319 /* PaymentProcessorUnmaskerTests.swift in Sources */,
 				8EDD08DFC2A0CC92842B662B /* ServiceLogoDatabaseTests.swift in Sources */,
+				CC8D9CD2B2090FDCF6218218 /* ServiceLogoResolverTests.swift in Sources */,
 				C94280EC212C8B37F56AE709 /* SignalDetectionTests.swift in Sources */,
 				43A4063BB9763808C704AA4F /* SubscriptionDetectionDiagnosticsTests.swift in Sources */,
 				CC3CF418DBCB2DF29781290E /* SubscriptionDetectionEvaluationHarnessTests.swift in Sources */,
@@ -883,6 +893,7 @@
 				494233C904A82487B75B7654 /* SubscriptionIntelligenceServiceTests.swift in Sources */,
 				27B6218C0CA31BD9B58C92ED /* TestAppModelFactory.swift in Sources */,
 				D739E0CA1DD38B719499AD5D /* ThemeTests.swift in Sources */,
+				7092C65AB7CB8C2B29F0EDB0 /* TransactionPageLoaderTests.swift in Sources */,
 				D03224186927B17EF57DAB2B /* UnifiedSubscriptionLibraryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -968,6 +979,7 @@
 				FACC5F757BB3399A6FED62D1 /* TallyPreview.swift in Sources */,
 				90540F9929344D2D24B1BEAE /* Theme.swift in Sources */,
 				162F7AE270EB99499D4DF77A /* TransactionFieldParser.swift in Sources */,
+				3DC094CF8BC6FB0FB30DDD0D /* TransactionPageLoader.swift in Sources */,
 				1003BF5971459A6D6C908CC3 /* TransactionSourceAdapter.swift in Sources */,
 				7D405E0B9A58787CAD7E2E3D /* TransactionsView.swift in Sources */,
 				909F9C5AEDF90C88F25075D7 /* UnifiedLibraryModels.swift in Sources */,
@@ -1077,7 +1089,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\", \"CFBundleURLSchemes\": [\"tally\"]]]";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Tally can create renewal reminders in your calendar.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Tally can create renewal reminders in your calendar.";
@@ -1201,7 +1213,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\", \"CFBundleURLSchemes\": [\"tally\"]]]";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Tally can create renewal reminders in your calendar.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Tally can create renewal reminders in your calendar.";

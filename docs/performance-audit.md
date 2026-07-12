@@ -23,6 +23,28 @@ The slowness was not one isolated bug. The app had a few compounding patterns:
 This pass focuses on immediate responsiveness and workflow correctness without
 changing Tally's local-first architecture.
 
+## Round 2 measurements (July 12, 2026)
+
+The installed app was still the July 8 v0.1.3 release and did not contain the
+merged PR #6 code. The installed build reached
+accessible Home content in 1,516 ms on the first measured launch, then 1,129 ms
+and 1,031 ms on warm launches. The merged debug build reached Home in 501–563
+ms against its developer store and 521–745 ms with the DEBUG in-memory store.
+These are launch-to-accessible-content measurements, not window-creation
+timings, and they log no merchant or account data.
+
+The launch binary also links the optional 9.5 MB `llama.framework` eagerly.
+Because Swift directly imports its C module, removing that launch dependency
+requires a dedicated dynamic-runtime boundary (`dlopen`/typed symbol wrappers
+or a helper process). This pass records that architectural work instead of
+shipping an unverified linker flag that could break local Gemma at runtime.
+
+A release-optimized in-memory SwiftData smoke run with 25,000 synthetic
+transactions measured the new 100-row initial page at 18.8 ms. Fetching all
+25,000 model objects in the same process took 870.9 ms before SwiftUI created
+any rows, roughly 46× longer. Database-side search found three cross-field
+matches and materialized only the requested two-row limit.
+
 The follow-up UX audit also added a DEBUG-only in-memory launch path
 (`TALLY_IN_MEMORY_STORE=1`) and preview routes for utility screens, so windowed
 QA can be run without touching the user's persistent finance library.
@@ -36,6 +58,10 @@ QA can be run without touching the user's persistent finance library.
   those views.
 - Merchant drilldowns in Transactions now use a predicate-backed query per
   merchant instead of filtering a preloaded all-transaction array.
+- The Transactions root now uses database-backed paging. Opening the screen
+  materializes at most 100 rows initially instead of every transaction in the
+  ledger; Show More raises the fetch limit in 100-row steps, and debounced
+  search is applied by SwiftData before the limit.
 
 Primary files:
 
@@ -54,6 +80,9 @@ Primary files:
   agenda row IDs.
 - Subscription detail moves displayed charge-row loading into a task keyed by
   the subscription and library revision instead of fetching from `body`.
+- Service-logo resolution now memoizes complete lookup keys and explicit asset
+  existence probes. A resolved manifest asset is no longer loaded once to
+  prove it exists and then loaded again by the same row render.
 
 Primary files:
 
@@ -147,3 +176,11 @@ data.
 5. Re-run after unplugging or unlocking passcode-protected attached devices;
    Xcode repeatedly probes attached iOS devices during macOS test/build runs and
    those warnings can dominate command time.
+
+### Optional Gemma runtime is still an eager launch dependency
+
+`GemmaRuntime.swift` directly imports the bundled llama C module, so dyld loads
+`llama.framework` even when the selected provider is not Gemma. A future pass
+should isolate the C API behind a dynamically loaded adapter or helper process,
+then compare cold-launch traces and verify inference, unload, and missing-
+framework behavior before changing the shipping link model.

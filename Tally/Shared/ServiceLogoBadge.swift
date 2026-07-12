@@ -48,7 +48,7 @@ struct ServiceLogoBadge: View {
 
     var body: some View {
         Group {
-            if let assetName, ServiceLogoDatabase.assetExists(named: assetName) {
+            if let assetName {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Theme.Colors.bgCard)
                     .overlay {
@@ -88,37 +88,11 @@ enum ServiceLogoDatabase {
         displayName: String,
         canonicalName: String?
     ) -> String? {
-        if let serviceIdentifier = serviceIdentifier?.nilIfBlank {
-            if lookup.keys.contains(serviceIdentifier) {
-                return lookup[serviceIdentifier]
-            }
-            if assetExists(named: serviceIdentifier) {
-                return serviceIdentifier
-            }
-        }
-
-        let candidates = [serviceIdentifier, canonicalName, displayName]
-            .compactMap { $0 }
-            .map(normalize)
-            .filter { !$0.isEmpty }
-
-        for candidate in candidates {
-            if let exact = lookup[candidate] {
-                return exact
-            }
-        }
-
-        for candidate in candidates {
-            if let fuzzy = entries.first(where: { entry in
-                entry.aliases.contains { alias in
-                    candidate.hasPrefix(alias) || candidate.hasSuffix(alias)
-                }
-            }) {
-                return fuzzy.assetName
-            }
-        }
-
-        return nil
+        resolver.assetName(
+            serviceIdentifier: serviceIdentifier,
+            displayName: displayName,
+            canonicalName: canonicalName
+        )
     }
 
     static func suggestedIdentifier(
@@ -187,6 +161,10 @@ enum ServiceLogoDatabase {
     }
 
     static func assetExists(named name: String) -> Bool {
+        resolver.assetExists(named: name)
+    }
+
+    private static func platformAssetExists(named name: String) -> Bool {
         #if os(iOS)
         UIImage(named: name) != nil
         #elseif os(macOS)
@@ -197,16 +175,10 @@ enum ServiceLogoDatabase {
     }
 
     private static let entries: [Entry] = GeneratedServiceLogoManifest.entries
-
-    private static let lookup: [String: String] = {
-        var resolved: [String: String] = [:]
-        for entry in entries {
-            for alias in entry.aliases {
-                resolved[alias] = entry.assetName
-            }
-        }
-        return resolved
-    }()
+    private static let resolver = ServiceLogoResolver(
+        entries: entries,
+        assetExists: platformAssetExists
+    )
 
     private static func matchScore(for entry: Entry, query: String) -> Int? {
         let aliases = entry.aliases
@@ -233,7 +205,7 @@ enum ServiceLogoDatabase {
             .joined(separator: " ")
     }
 
-    private static func normalize(_ rawValue: String) -> String {
+    static func normalize(_ rawValue: String) -> String {
         rawValue
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             .lowercased()
@@ -242,6 +214,132 @@ enum ServiceLogoDatabase {
                 with: "",
                 options: .regularExpression
             )
+    }
+}
+
+final class ServiceLogoResolver: @unchecked Sendable {
+    private struct ResolutionKey: Hashable {
+        let serviceIdentifier: String?
+        let displayName: String
+        let canonicalName: String?
+    }
+
+    private enum CachedResolution {
+        case found(String)
+        case missing
+
+        var assetName: String? {
+            switch self {
+            case let .found(assetName): assetName
+            case .missing: nil
+            }
+        }
+    }
+
+    private let entries: [ServiceLogoDatabase.Entry]
+    private let lookup: [String: String]
+    private let assetExistsProbe: (String) -> Bool
+    private let lock = NSLock()
+    private var resolutionCache: [ResolutionKey: CachedResolution] = [:]
+    private var assetExistenceCache: [String: Bool] = [:]
+
+    init(
+        entries: [ServiceLogoDatabase.Entry],
+        assetExists: @escaping (String) -> Bool
+    ) {
+        self.entries = entries
+        assetExistsProbe = assetExists
+
+        var lookup: [String: String] = [:]
+        for entry in entries {
+            for alias in entry.aliases {
+                lookup[alias] = entry.assetName
+            }
+        }
+        self.lookup = lookup
+    }
+
+    func assetName(
+        serviceIdentifier: String? = nil,
+        displayName: String,
+        canonicalName: String?
+    ) -> String? {
+        let key = ResolutionKey(
+            serviceIdentifier: serviceIdentifier,
+            displayName: displayName,
+            canonicalName: canonicalName
+        )
+
+        lock.lock()
+        let cached = resolutionCache[key]
+        lock.unlock()
+        if let cached {
+            return cached.assetName
+        }
+
+        let resolved = resolveAssetName(
+            serviceIdentifier: serviceIdentifier,
+            displayName: displayName,
+            canonicalName: canonicalName
+        )
+
+        lock.lock()
+        resolutionCache[key] = resolved.map(CachedResolution.found) ?? .missing
+        lock.unlock()
+        return resolved
+    }
+
+    func assetExists(named name: String) -> Bool {
+        lock.lock()
+        let cached = assetExistenceCache[name]
+        lock.unlock()
+        if let cached {
+            return cached
+        }
+
+        let exists = assetExistsProbe(name)
+        lock.lock()
+        assetExistenceCache[name] = exists
+        lock.unlock()
+        return exists
+    }
+
+    private func resolveAssetName(
+        serviceIdentifier: String?,
+        displayName: String,
+        canonicalName: String?
+    ) -> String? {
+        if let serviceIdentifier = serviceIdentifier?.nilIfBlank {
+            if let exact = lookup[serviceIdentifier] {
+                return exact
+            }
+            if assetExists(named: serviceIdentifier) {
+                return serviceIdentifier
+            }
+        }
+
+        let candidates = [serviceIdentifier, canonicalName, displayName]
+            .compactMap { $0 }
+            .map(ServiceLogoDatabase.normalize)
+            .filter { $0.isEmpty == false }
+
+        for candidate in candidates {
+            if let exact = lookup[candidate] {
+                return exact
+            }
+        }
+
+        for candidate in candidates {
+            if let fuzzy = entries.first(where: { entry in
+                entry.aliases.contains { alias in
+                    candidate.hasPrefix(alias) || candidate.hasSuffix(alias)
+                }
+            }) {
+                return fuzzy.assetName
+            }
+        }
+
+        return nil
     }
 }
 
