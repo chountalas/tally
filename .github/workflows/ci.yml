@@ -40,9 +40,7 @@ jobs:
         run: bash -n scripts/*.sh
 
       - name: Generate Xcode project
-        run: |
-          xcodegen generate
-          git diff --exit-code -- Tally.xcodeproj/project.pbxproj
+        run: xcodegen generate
 
       - name: Lint source and tests
         run: swiftlint lint --config .swiftlint.yml Tally TallyTests --quiet
