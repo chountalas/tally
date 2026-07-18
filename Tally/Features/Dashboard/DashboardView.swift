@@ -73,18 +73,22 @@ struct DashboardView: View {
         let heroContext = DashboardHeroContext(metrics: metrics)
         let monthly = metrics.monthlyRunRate
         let yearly = metrics.annualizedSpend
+        let monthlyCopy = Text("\(monthly.tallyMoney(showCents: false)) a month")
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .bold()
+        let yearlyCopy = Text(yearly.tallyMoney(showCents: false))
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .bold()
         return VStack(alignment: .leading, spacing: 0) {
             Text(greeting)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .padding(.bottom, 8)
 
-            (Text("You're spending about ")
+            Text(
+                "You're spending about \(monthlyCopy) across \(heroContext.activeSubscriptionCount) subscriptions."
+            )
                 .foregroundStyle(Theme.Colors.textSecondary)
-             + Text("\(monthly.tallyMoney(showCents: false)) a month")
-                .foregroundStyle(Theme.Colors.textPrimary).bold()
-             + Text(" across \(heroContext.activeSubscriptionCount) subscriptions.")
-                .foregroundStyle(Theme.Colors.textSecondary))
                 .font(.system(size: 25, weight: .semibold))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -94,9 +98,8 @@ struct DashboardView: View {
                 .padding(.top, 6)
                 .padding(.bottom, 4)
 
-            (Text("That's ").foregroundStyle(Theme.Colors.textSecondary)
-             + Text(yearly.tallyMoney(showCents: false)).foregroundStyle(Theme.Colors.textPrimary).bold()
-             + Text(" a year.").foregroundStyle(Theme.Colors.textSecondary))
+            Text("That's \(yearlyCopy) a year.")
+                .foregroundStyle(Theme.Colors.textSecondary)
                 .font(.system(size: 15, weight: .medium))
 
             heroStats(
@@ -122,8 +125,9 @@ struct DashboardView: View {
                     referenceDate: referenceDate
                 )
                 StatTile(icon: "calendar", label: "Next renewal") {
-                    (Text(next.tallyName)
-                     + statUnit(renewalDate.map { " · \($0.tallyRelativeDay)" } ?? ""))
+                    Text(
+                        "\(Text(next.tallyName))\(statUnit(renewalDate.map { " · \($0.tallyRelativeDay)" } ?? ""))"
+                    )
                         .modifier(StatValueText())
                 }
             }
@@ -135,8 +139,9 @@ struct DashboardView: View {
                     appModel.selectedTab = .audit
                 } label: {
                     StatTile(icon: "lightbulb", label: "Worth a look") {
-                        (Text("\(overlap.subscriptions.count) \(overlap.category.lowercased())")
-                         + statUnit(" · review overlap"))
+                        Text(
+                            "\(Text("\(overlap.subscriptions.count) \(overlap.category.lowercased())"))\(statUnit(" · review overlap"))"
+                        )
                             .modifier(StatValueText())
                     }
                 }
@@ -176,9 +181,10 @@ struct DashboardView: View {
                 .foregroundStyle(Theme.Colors.textTertiary)
             Group {
                 if let updated = lastUpdatedLabel {
-                    Text("Your list was last updated ").foregroundStyle(Theme.Colors.textTertiary)
-                    + Text(updated).foregroundStyle(Theme.Colors.textSecondary).bold()
-                    + Text(".").foregroundStyle(Theme.Colors.textTertiary)
+                    Text(
+                        "Your list was last updated \(Text(updated).foregroundStyle(Theme.Colors.textSecondary).bold())."
+                    )
+                    .foregroundStyle(Theme.Colors.textTertiary)
                 } else {
                     Text("Keep your list fresh as new charges land.").foregroundStyle(Theme.Colors.textTertiary)
                 }
@@ -465,6 +471,9 @@ private struct OverlapNudge: View {
     let onSeeInsights: () -> Void
 
     var body: some View {
+        let exposureCopy = Text("\(group.monthlyExposure.tallyMoney(showCents: false)) a month")
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .bold()
         HStack(spacing: 16) {
             Circle().fill(Theme.Colors.bgCard).frame(width: 42, height: 42)
                 .overlay(Image(systemName: "lightbulb").font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.Colors.accent))
@@ -472,9 +481,8 @@ private struct OverlapNudge: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("You're paying for \(group.subscriptions.count) \(group.category.lowercased()) services")
                     .font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.Colors.textPrimary)
-                (Text("That's ").foregroundStyle(Theme.Colors.textSecondary)
-                 + Text("\(group.monthlyExposure.tallyMoney(showCents: false)) a month").foregroundStyle(Theme.Colors.textPrimary).bold()
-                 + Text(" on \(group.category.lowercased()) alone. Worth a quick look?").foregroundStyle(Theme.Colors.textSecondary))
+                Text("That's \(exposureCopy) on \(group.category.lowercased()) alone. Worth a quick look?")
+                    .foregroundStyle(Theme.Colors.textSecondary)
                     .font(.system(size: 13.5, weight: .medium))
                     .fixedSize(horizontal: false, vertical: true)
             }

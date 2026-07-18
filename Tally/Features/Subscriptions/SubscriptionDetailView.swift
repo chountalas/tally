@@ -202,9 +202,12 @@ struct SubscriptionDetailView: View {
             .minimumScaleFactor(0.6)
 
             if isOngoing, let next = currentRenewalDate {
+                let relativeDate = Text(next.tallyRelativeDay)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .bold()
                 detailFact(label: "Next charge") {
-                    (Text("\(next.tallyShortDate) · ").foregroundStyle(Theme.Colors.textPrimary)
-                     + Text(next.tallyRelativeDay).foregroundStyle(Theme.Colors.accent).bold())
+                    Text("\(next.tallyShortDate) · \(relativeDate)")
+                        .foregroundStyle(Theme.Colors.textPrimary)
                         .font(.system(size: 18, weight: .semibold))
                 }
             }
@@ -248,14 +251,17 @@ struct SubscriptionDetailView: View {
         let factor = 1.0 / (1.0 + pct)
         let wasRaw = sub.priceAmount * Decimal(factor)
         let moreAYear = (sub.normalizedMonthlyAmount - sub.normalizedMonthlyAmount * Decimal(factor)) * 12
+        let annualIncreaseCopy = Text(
+            "\(moreAYear.tallyMoney(code: sub.priceCurrency, showCents: false)) more a year"
+        )
+        .bold()
         return HStack(spacing: 14) {
             Circle().fill(Theme.Colors.bgCard).frame(width: 38, height: 38)
                 .overlay(Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.Colors.warning))
             VStack(alignment: .leading, spacing: 1) {
                 Text("The price went up")
                     .font(.system(size: 14.5, weight: .bold)).foregroundStyle(Theme.Colors.textPrimary)
-                (Text("You used to pay \(wasRaw.tallyMoney(code: sub.priceCurrency)) — that's ")
-                 + Text("\(moreAYear.tallyMoney(code: sub.priceCurrency, showCents: false)) more a year").bold())
+                Text("You used to pay \(wasRaw.tallyMoney(code: sub.priceCurrency)) — that's \(annualIncreaseCopy)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

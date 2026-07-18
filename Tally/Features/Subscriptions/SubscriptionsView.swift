@@ -316,16 +316,18 @@ struct SubscriptionsView: View {
     }
 
     private func headerCopy(snapshot: SubscriptionListSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let monthlyCopy = Text(snapshot.monthlyTotal.tallyMoney())
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .bold()
+        return VStack(alignment: .leading, spacing: 4) {
             Text("Your subscriptions")
                 .font(.system(size: 34, weight: .heavy, design: .rounded))
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .kerning(-0.7)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            (Text("\(snapshot.activeCount) active · ").foregroundStyle(Theme.Colors.textSecondary)
-             + Text(snapshot.monthlyTotal.tallyMoney()).foregroundStyle(Theme.Colors.textPrimary).bold()
-             + Text(" a month").foregroundStyle(Theme.Colors.textSecondary))
+            Text("\(snapshot.activeCount) active · \(monthlyCopy) a month")
+                .foregroundStyle(Theme.Colors.textSecondary)
                 .font(.system(size: 14.5, weight: .medium))
         }
     }
