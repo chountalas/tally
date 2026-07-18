@@ -380,9 +380,13 @@ final class AppModel {
     }
 
     func prepareImport(from url: URL, into context: ModelContext) {
+        guard let fileFormat = ImportFileFormat(fileName: url.lastPathComponent) else {
+            importErrorMessage = ImportPreparationError.unsupportedFileType(url.pathExtension).localizedDescription
+            return
+        }
         let importRecord = ImportRecord(
             fileName: url.lastPathComponent,
-            sourceType: url.pathExtension.lowercased(),
+            fileFormat: fileFormat,
             status: .parsing,
             mappingSignature: "pending"
         )
@@ -739,7 +743,7 @@ private extension AppModel {
 
         let importRecord = ImportRecord(
             fileName: importDraft.fileName,
-            sourceType: URL(fileURLWithPath: importDraft.fileName).pathExtension.lowercased(),
+            fileFormat: ImportFileFormat(fileName: importDraft.fileName) ?? .csv,
             status: .queued,
             mappingSignature: mapping.signature
         )
@@ -853,7 +857,7 @@ private extension AppModel {
     ) {
         let failedRecord = currentImportRecord ?? ImportRecord(
             fileName: importDraft.fileName,
-            sourceType: URL(fileURLWithPath: importDraft.fileName).pathExtension.lowercased(),
+            fileFormat: ImportFileFormat(fileName: importDraft.fileName) ?? .csv,
             status: .failed,
             mappingSignature: mapping.signature
         )

@@ -739,7 +739,7 @@ extension AppModel {
         let accounts = Set(transactions.compactMap { $0.accountName?.nilIfBlank })
         let currencies = Set(transactions.compactMap { $0.currency?.nilIfBlank?.uppercased() })
         let sourceRawValues = Set(transactions.map(\.source.rawValue))
-        let importRecordIDs = Set(transactions.compactMap { $0.importRecordID?.uuidString })
+        let importRecordIDs = Set(transactions.compactMap(\.importRecordID))
         let amounts = transactions.map {
             abs(($0.transactionAmount as NSDecimalNumber).doubleValue)
         }
@@ -750,7 +750,7 @@ extension AppModel {
             accounts: accounts,
             currencies: currencies,
             sourceRawValues: sourceRawValues,
-            importRecordIDs: importRecordIDs,
+            importRecordIDs: Set(importRecordIDs.map(\.uuidString)),
             amounts: sortedAmounts
         )
         let sourceRawValue = SubscriptionMatchRuleSource.hiddenSuggestion.rawValue
@@ -778,7 +778,7 @@ extension AppModel {
 
         rule.subscriptionID = nil
         rule.hiddenScopeKey = hiddenScopeKey
-        rule.hiddenImportRecordIDsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(importRecordIDs).sorted())
+        rule.hiddenImportScope = importRecordIDs.isEmpty ? .allImports : .importRecords(importRecordIDs)
         rule.allowedRawMerchantsJSON = SubscriptionEvidenceJSON.encodeStrings(Array(rawMerchants).sorted())
         rule.requiredTokensJSON = SubscriptionEvidenceJSON.encodeStrings(
             subscription.canonicalName

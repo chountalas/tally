@@ -424,7 +424,7 @@ enum SubscriptionDetectionFixtureHarness {
         let context = container.mainContext
         let importRecord = ImportRecord(
             fileName: "\(fixture.id).csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: fixture.id
         )

@@ -10,7 +10,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "seed.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -67,7 +67,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "groceries.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -113,7 +113,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "chiro.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -151,7 +151,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "costco-membership.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )

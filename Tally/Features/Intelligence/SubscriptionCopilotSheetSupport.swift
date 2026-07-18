@@ -340,37 +340,17 @@ extension SubscriptionCopilotSheet {
     func apply(action: IntelligenceActionSuggestion) {
         defer { pendingAction = nil }
 
-        switch action.kind {
-        case .openSubscription:
-            guard let rawID = action.payload["subscriptionID"],
-                  let subscriptionID = UUID(uuidString: rawID) else {
-                actionMessage = "The suggested subscription could not be opened."
-                return
-            }
+        switch action.action {
+        case let .openSubscription(subscriptionID):
             appModel.openSubscription(subscriptionID)
             dismiss()
-        case .openTab:
-            guard let routeRawValue = action.payload["route"],
-                  let route = IntelligenceNavigationRoute(rawValue: routeRawValue) else {
-                actionMessage = "The suggested screen could not be opened."
-                return
-            }
+        case let .openTab(route):
             appModel.openRoute(route)
             dismiss()
-        case .createAliasDraft:
-            guard let rawMerchant = action.payload["rawMerchant"]?.nilIfBlank,
-                  let canonicalName = action.payload["canonicalName"]?.nilIfBlank else {
-                actionMessage = "The alias suggestion was incomplete."
-                return
-            }
+        case let .createAliasDraft(rawMerchant, canonicalName):
             applyAlias(rawMerchant: rawMerchant, canonicalName: canonicalName)
-        case .draftReviewUpdate:
-            guard let rawID = action.payload["subscriptionID"],
-                  let subscriptionID = UUID(uuidString: rawID) else {
-                actionMessage = "The review update was incomplete."
-                return
-            }
-            applyReviewUpdate(subscriptionID: subscriptionID, fields: action.payload)
+        case let .draftReviewUpdate(subscriptionID, fields):
+            applyReviewUpdate(subscriptionID: subscriptionID, fields: fields)
         }
     }
 

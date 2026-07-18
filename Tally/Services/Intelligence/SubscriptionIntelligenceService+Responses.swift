@@ -138,9 +138,8 @@ extension SubscriptionIntelligenceService {
             actions.append(
                 IntelligenceActionSuggestion(
                     id: "subscription:\(first.id.uuidString)",
-                    kind: .openSubscription,
                     title: "Open \(first.displayName)",
-                    payload: ["subscriptionID": first.id.uuidString],
+                    action: .openSubscription(first.id),
                     requiresConfirmation: false
                 )
             )
@@ -186,9 +185,8 @@ extension SubscriptionIntelligenceService {
     func openAuditAction() -> IntelligenceActionSuggestion {
         IntelligenceActionSuggestion(
             id: "tab:audit",
-            kind: .openTab,
             title: "Open audit",
-            payload: ["route": IntelligenceNavigationRoute.audit.rawValue],
+            action: .openTab(.audit),
             requiresConfirmation: false
         )
     }
@@ -204,9 +202,8 @@ extension SubscriptionIntelligenceService {
             actions: [
                 IntelligenceActionSuggestion(
                     id: "tab:calendar",
-                    kind: .openTab,
                     title: "Open calendar reminders",
-                    payload: ["route": IntelligenceNavigationRoute.calendar.rawValue],
+                    action: .openTab(.calendar),
                     requiresConfirmation: false
                 )
             ],
@@ -243,9 +240,8 @@ extension SubscriptionIntelligenceService {
             actions.append(
                 IntelligenceActionSuggestion(
                     id: "subscription:\(firstRenewal.id.uuidString)",
-                    kind: .openSubscription,
                     title: "Open \(firstRenewal.displayName)",
-                    payload: ["subscriptionID": firstRenewal.id.uuidString],
+                    action: .openSubscription(firstRenewal.id),
                     requiresConfirmation: false
                 )
             )
@@ -253,9 +249,8 @@ extension SubscriptionIntelligenceService {
         actions.append(
             IntelligenceActionSuggestion(
                 id: "tab:calendar",
-                kind: .openTab,
                 title: "Open calendar",
-                payload: ["route": IntelligenceNavigationRoute.calendar.rawValue],
+                action: .openTab(.calendar),
                 requiresConfirmation: false
             )
         )

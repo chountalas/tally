@@ -190,9 +190,8 @@ extension SubscriptionIntelligenceService {
         [
             IntelligenceActionSuggestion(
                 id: "subscription:\(subscription.id.uuidString)",
-                kind: .openSubscription,
                 title: "Open \(subscription.displayName)",
-                payload: ["subscriptionID": subscription.id.uuidString],
+                action: .openSubscription(subscription.id),
                 requiresConfirmation: false
             ),
             tooling.draftReviewUpdate(

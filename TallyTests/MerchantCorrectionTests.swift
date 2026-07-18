@@ -35,7 +35,7 @@ final class MerchantCorrectionTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         let importRecord = ImportRecord(
             fileName: "studio.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )

@@ -1,6 +1,49 @@
 import Foundation
 import SwiftData
 
+enum HiddenImportScope: Equatable, Sendable {
+    case allImports
+    case importRecords(Set<UUID>)
+    case invalid
+
+    init(rawJSON: String) {
+        guard let data = rawJSON.data(using: .utf8),
+              let rawIDs = try? JSONDecoder().decode([String].self, from: data) else {
+            self = .invalid
+            return
+        }
+        guard rawIDs.isEmpty == false else {
+            self = .allImports
+            return
+        }
+
+        let ids = rawIDs.compactMap(UUID.init(uuidString:))
+        self = ids.count == rawIDs.count ? .importRecords(Set(ids)) : .invalid
+    }
+
+    func contains(_ importRecordID: UUID?) -> Bool {
+        switch self {
+        case .allImports:
+            return true
+        case let .importRecords(ids):
+            return importRecordID.map(ids.contains) ?? false
+        case .invalid:
+            return false
+        }
+    }
+
+    var rawJSON: String {
+        switch self {
+        case .allImports:
+            return "[]"
+        case let .importRecords(ids):
+            return SubscriptionEvidenceJSON.encodeUUIDs(ids.sorted { $0.uuidString < $1.uuidString })
+        case .invalid:
+            return ""
+        }
+    }
+}
+
 enum SourceTransactionIdentityStatus: String, Codable, CaseIterable, Identifiable {
     case pending
     case posted
@@ -418,6 +461,11 @@ final class SubscriptionMatchRule {
     var createdFrom: SubscriptionMatchRuleSource {
         get { SubscriptionMatchRuleSource(rawValue: createdFromRawValue) ?? .detectedCandidate }
         set { createdFromRawValue = newValue.rawValue }
+    }
+
+    var hiddenImportScope: HiddenImportScope {
+        get { HiddenImportScope(rawJSON: hiddenImportRecordIDsJSON) }
+        set { hiddenImportRecordIDsJSON = newValue.rawJSON }
     }
 }
 

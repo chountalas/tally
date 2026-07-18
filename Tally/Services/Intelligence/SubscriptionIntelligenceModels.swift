@@ -55,12 +55,33 @@ enum IntelligenceNavigationRoute: String, Codable, Hashable, Sendable {
     case transactions
 }
 
+enum IntelligenceAction: Codable, Hashable, Sendable {
+    case openSubscription(UUID)
+    case createAliasDraft(rawMerchant: String, canonicalName: String)
+    case draftReviewUpdate(subscriptionID: UUID, fields: [String: String])
+    case openTab(IntelligenceNavigationRoute)
+
+    var kind: IntelligenceActionKind {
+        switch self {
+        case .openSubscription:
+            return .openSubscription
+        case .createAliasDraft:
+            return .createAliasDraft
+        case .draftReviewUpdate:
+            return .draftReviewUpdate
+        case .openTab:
+            return .openTab
+        }
+    }
+}
+
 struct IntelligenceActionSuggestion: Identifiable, Codable, Hashable, Sendable {
     let id: String
-    let kind: IntelligenceActionKind
     let title: String
-    let payload: [String: String]
+    let action: IntelligenceAction
     let requiresConfirmation: Bool
+
+    var kind: IntelligenceActionKind { action.kind }
 }
 
 struct IntelligenceResponse: Codable, Hashable, Sendable {
@@ -197,12 +218,11 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
     ) -> IntelligenceActionSuggestion {
         IntelligenceActionSuggestion(
             id: "alias:\(rawMerchant.lowercased()):\(canonicalName.lowercased())",
-            kind: .createAliasDraft,
             title: "Save alias for \(rawMerchant)",
-            payload: [
-                "rawMerchant": rawMerchant,
-                "canonicalName": canonicalName
-            ],
+            action: .createAliasDraft(
+                rawMerchant: rawMerchant,
+                canonicalName: canonicalName
+            ),
             requiresConfirmation: true
         )
     }
@@ -211,14 +231,13 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
         subscriptionID: UUID,
         fields: [String: String]
     ) -> IntelligenceActionSuggestion {
-        var payload = fields
-        payload["subscriptionID"] = subscriptionID.uuidString
-
         return IntelligenceActionSuggestion(
             id: "review:\(subscriptionID.uuidString)",
-            kind: .draftReviewUpdate,
             title: "Apply review update",
-            payload: payload,
+            action: .draftReviewUpdate(
+                subscriptionID: subscriptionID,
+                fields: fields
+            ),
             requiresConfirmation: true
         )
     }

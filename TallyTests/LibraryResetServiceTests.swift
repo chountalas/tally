@@ -4,6 +4,18 @@ import XCTest
 
 @MainActor
 final class LibraryResetServiceTests: XCTestCase {
+    func testImportRecordPreservesTypedFileFormatAsRawValue() {
+        let record = ImportRecord(
+            fileName: "statement.xlsx",
+            fileFormat: .xlsx,
+            status: .queued,
+            mappingSignature: "test"
+        )
+
+        XCTAssertEqual(record.fileFormat, .xlsx)
+        XCTAssertEqual(record.sourceType, "xlsx")
+    }
+
     /// A full reset must clear every library-owned model. If any store is left
     /// behind, previously-suppressed merchants stay suppressed and dedup ghosts
     /// persist after the user asks for a clean slate.
@@ -100,7 +112,7 @@ final class LibraryResetServiceTests: XCTestCase {
 
         context.insert(ImportRecord(
             fileName: "seed.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         ))

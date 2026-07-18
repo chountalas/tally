@@ -13,9 +13,8 @@ extension SubscriptionIntelligenceService {
             actions: [
                 IntelligenceActionSuggestion(
                     id: "tab:transactions",
-                    kind: .openTab,
                     title: "Open transactions",
-                    payload: ["route": IntelligenceNavigationRoute.transactions.rawValue],
+                    action: .openTab(.transactions),
                     requiresConfirmation: false
                 )
             ],
@@ -37,9 +36,8 @@ extension SubscriptionIntelligenceService {
             actions: [
                 IntelligenceActionSuggestion(
                     id: "tab:subscriptions",
-                    kind: .openTab,
                     title: "Open subscriptions",
-                    payload: ["route": IntelligenceNavigationRoute.subscriptions.rawValue],
+                    action: .openTab(.subscriptions),
                     requiresConfirmation: false
                 )
             ],

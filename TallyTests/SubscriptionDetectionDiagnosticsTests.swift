@@ -15,7 +15,7 @@ final class SubscriptionDetectionDiagnosticsTests: XCTestCase {
         let context = container.mainContext
         let importRecord = ImportRecord(
             fileName: "diagnostics.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "diagnostics"
         )

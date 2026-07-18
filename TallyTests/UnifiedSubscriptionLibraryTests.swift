@@ -175,7 +175,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         let appModel = AppModel.testing()
         let importRecord = ImportRecord(
             fileName: "wrong-card.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test",
             importedTransactionCount: 1,
@@ -249,7 +249,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         for accountName in ["Wrong Card A", "Wrong Card B"] {
             let importRecord = ImportRecord(
                 fileName: "\(accountName).csv",
-                sourceType: "csv",
+                fileFormat: .csv,
                 status: .analyzed,
                 mappingSignature: accountName,
                 importedTransactionCount: 1,
@@ -296,13 +296,32 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(Set(matchRules.compactMap(\.hiddenScopeKey)).count, 2)
     }
 
+    func testMalformedHiddenImportScopeFailsClosed() {
+        let rule = SubscriptionMatchRule(
+            canonicalName: "Hidden Streaming",
+            isNegativeRule: true,
+            createdFrom: .hiddenSuggestion,
+            hiddenImportRecordIDsJSON: "not-json"
+        )
+        let transaction = NormalizedTransaction(
+            transactionDate: .now,
+            transactionAmount: -10,
+            merchantRaw: "HIDDEN STREAMING",
+            merchantNormalized: "Hidden Streaming",
+            importRecordID: UUID()
+        )
+
+        XCTAssertEqual(rule.hiddenImportScope, .invalid)
+        XCTAssertFalse(SubscriptionDetectionService().ruleMatches(rule, transaction: transaction))
+    }
+
     func testHideSuggestedSubscriptionSplitsMultiAccountLinkedCharges() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let importRecord = ImportRecord(
             fileName: "multi-account.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test",
             importedTransactionCount: 2,
@@ -520,7 +539,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -680,7 +699,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "euro-tool.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -764,7 +783,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -839,7 +858,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -894,7 +913,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -963,7 +982,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -1167,7 +1186,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )

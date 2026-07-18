@@ -35,6 +35,12 @@ struct SubscriptionIntelligenceServiceTests {
 
         #expect(response.evidence.contains(where: { $0.kind == .renewal }))
         #expect(response.actions.contains(where: { $0.kind == .openTab }))
+        #expect(response.actions.contains { suggestion in
+            if case .openTab(.calendar) = suggestion.action {
+                return true
+            }
+            return false
+        })
     }
 
     @Test func merchantFixProducesAliasDraft() async {

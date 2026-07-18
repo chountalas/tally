@@ -421,7 +421,7 @@ private extension CSVTransactionImporterTests {
     func insertSeedImportRecord(named fileName: String, into context: ModelContext) -> ImportRecord {
         let importRecord = ImportRecord(
             fileName: fileName,
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )

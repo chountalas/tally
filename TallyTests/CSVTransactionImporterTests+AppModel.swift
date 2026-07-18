@@ -438,7 +438,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "netflix.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -574,13 +574,13 @@ extension CSVTransactionImporterTests {
         let appModel = AppModel.testing()
         let firstImport = ImportRecord(
             fileName: "first.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "first"
         )
         let secondImport = ImportRecord(
             fileName: "second.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "second"
         )
@@ -739,7 +739,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "automation.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "automation"
         )
@@ -1179,7 +1179,7 @@ private extension CSVTransactionImporterTests {
         [
             ImportRecord(
                 fileName: "ledger.csv",
-                sourceType: "csv",
+                fileFormat: .csv,
                 status: .analyzed,
                 mappingSignature: "sig",
                 importedTransactionCount: 2,
@@ -1265,7 +1265,7 @@ private extension CSVTransactionImporterTests {
     func makePersistedImportRecord(mapping: ColumnMappingConfig) -> ImportRecord {
         ImportRecord(
             fileName: "seed.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: mapping.signature
         )
