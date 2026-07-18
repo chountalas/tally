@@ -91,15 +91,15 @@ final class RenewalNotificationService {
         let previousScheduleDates = Dictionary(
             uniqueKeysWithValues: subscriptions.map { ($0.id, $0.lastNotificationScheduledAt) }
         )
-        for subscription in subscriptions {
-            subscription.lastNotificationScheduledAt = scheduledSubscriptionIDs.contains(subscription.id) ? .now : nil
-        }
-        try context.save()
 
         do {
             for request in requests {
                 try await notificationCenter.add(request)
             }
+            for subscription in subscriptions {
+                subscription.lastNotificationScheduledAt = scheduledSubscriptionIDs.contains(subscription.id) ? .now : nil
+            }
+            try context.save()
         } catch {
             let desiredIdentifiers = requests.map(\.identifier)
             notificationCenter.removePendingNotificationRequests(withIdentifiers: desiredIdentifiers)

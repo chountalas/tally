@@ -5,6 +5,26 @@ import XCTest
 
 @MainActor
 final class RenewalNotificationServiceTests: XCTestCase {
+    func testSchedulePersistsMetadataOnlyAfterRequestIsAdded() async throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let context = container.mainContext
+        let subscription = makeSubscription(name: "New", priorScheduleDate: nil)
+        context.insert(subscription)
+        try context.save()
+
+        let notificationCenter = RecordingRenewalNotificationCenter()
+        notificationCenter.onAdd = { _ in
+            XCTAssertNil(subscription.lastNotificationScheduledAt)
+        }
+        let service = RenewalNotificationService(notificationCenter: notificationCenter)
+
+        let scheduledCount = try await service.schedule(subscriptions: [subscription], context: context)
+
+        XCTAssertEqual(scheduledCount, 1)
+        XCTAssertNotNil(subscription.lastNotificationScheduledAt)
+        XCTAssertNotNil(notificationCenter.requestsByIdentifier[notificationIdentifier(for: subscription)])
+    }
+
     func testScheduleRestoresPreviousRequestsAndMetadataWhenAddingFails() async throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
@@ -48,7 +68,7 @@ final class RenewalNotificationServiceTests: XCTestCase {
         )
     }
 
-    private func makeSubscription(name: String, priorScheduleDate: Date) -> Subscription {
+    private func makeSubscription(name: String, priorScheduleDate: Date?) -> Subscription {
         let nextChargeDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
         return Subscription(
             canonicalName: name,
@@ -82,6 +102,7 @@ final class RenewalNotificationServiceTests: XCTestCase {
 private final class RecordingRenewalNotificationCenter: RenewalNotificationCenter {
     var requestsByIdentifier: [String: UNNotificationRequest] = [:]
     var failingAddAttempt: Int?
+    var onAdd: ((UNNotificationRequest) -> Void)?
     private var addAttempt = 0
 
     func authorizationStatus() async -> UNAuthorizationStatus {
@@ -94,6 +115,7 @@ private final class RecordingRenewalNotificationCenter: RenewalNotificationCente
 
     func add(_ request: UNNotificationRequest) async throws {
         addAttempt += 1
+        onAdd?(request)
         if addAttempt == failingAddAttempt {
             throw RecordingNotificationCenterError.addFailed
         }
