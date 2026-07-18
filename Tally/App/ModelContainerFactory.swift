@@ -7,17 +7,8 @@ enum ModelContainerFactory {
         let startupMessage: String?
     }
 
-    static func makeSharedContainer(inMemoryOnly: Bool = false) throws -> ModelContainer {
-        do {
-            return try makeContainer(
-                configuration: inMemoryOnly ? inMemoryConfiguration : cloudKitConfiguration
-            )
-        } catch {
-            if inMemoryOnly == false {
-                return try makeContainer(configuration: inMemoryConfiguration)
-            }
-            throw error
-        }
+    static func makeInMemoryContainer() throws -> ModelContainer {
+        try makeContainer(configuration: inMemoryConfiguration)
     }
 
     static func makePersistentSharedContainer() throws -> ModelContainer {

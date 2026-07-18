@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
 
 private struct CachedIntelligenceResult<Value: Sendable>: Sendable {
     let value: Value

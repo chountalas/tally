@@ -29,7 +29,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testDismissImportRemovesPendingImportRecord() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -52,7 +52,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testClearImportedLibraryRemovesPersistedImportDataAndDraftState() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -94,7 +94,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsReappliedWhenHeadersMatch() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -137,7 +137,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateKeepsInferredDebitSignWhenHeaderOnlyMatchDisagrees() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -184,7 +184,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsIgnoredWhenIncomingHeadersAreMoreSpecific() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -235,7 +235,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsIgnoredWhenOnlyNormalizedHeadersMatch() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -279,7 +279,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplatePreservesDraftWarnings() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -314,7 +314,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsIgnoredWhenColumnsMissing() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -413,7 +413,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSaveChangesAndApplyReviewRuleLocallyReplaysMerchantLearningForConfirmedRule() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let calendar = Calendar.current
@@ -716,7 +716,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewConfirmationDoesNotDeleteUntouchedSubscriptions() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -809,7 +809,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewLearnsStableServiceNameForProcessorDescriptors() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -876,7 +876,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewDoesNotRewriteDistinctOpenAIProductToChatGPT() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -919,7 +919,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewUsesLinkedChargeDateBeforePersistingConfirmedStatus() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -966,7 +966,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewAppliesSuppressionCandidates() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -1066,7 +1066,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewRevalidatesStalePlanBeforeApplying() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 

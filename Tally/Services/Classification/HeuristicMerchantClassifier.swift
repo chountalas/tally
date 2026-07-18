@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(FoundationModels)
 import FoundationModels
-#endif
 
 private struct KnownBrandProfile {
     let name: String
@@ -1056,7 +1054,6 @@ struct HeuristicMerchantClassifier {
     }
 }
 
-#if canImport(FoundationModels)
 @available(iOS 26.0, macOS 26.0, *)
 extension SystemLanguageModel.Availability.UnavailableReason {
     var description: String {
@@ -1072,4 +1069,3 @@ extension SystemLanguageModel.Availability.UnavailableReason {
         }
     }
 }
-#endif

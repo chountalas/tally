@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 
 extension SubscriptionIntelligenceService {
     func emptySavingsResponse() -> IntelligenceResponse {
@@ -50,9 +51,6 @@ extension SubscriptionIntelligenceService {
         )
     }
 }
-
-#if canImport(FoundationModels)
-import FoundationModels
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FoundationModelsIntelligenceGenerator: SubscriptionIntelligenceGenerating {
@@ -448,4 +446,3 @@ private struct SubscriptionEvidenceEvaluationPayload {
     let negativeSignals: [String]
     let reasonSummary: String
 }
-#endif

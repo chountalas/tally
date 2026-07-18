@@ -8,7 +8,7 @@ final class LibraryResetServiceTests: XCTestCase {
     /// behind, previously-suppressed merchants stay suppressed and dedup ghosts
     /// persist after the user asks for a clean slate.
     func testClearLibraryDeletesAllModelTypes() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         seedOneOfEachModel(in: context)
         try context.save()
@@ -44,7 +44,7 @@ final class LibraryResetServiceTests: XCTestCase {
     /// "clear imported data" doesn't force the user to re-map their bank's CSV,
     /// while every other learning store is still wiped.
     func testClearLibraryKeepsTemplatesWhenNotIncluded() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         seedOneOfEachModel(in: context)
         try context.save()
@@ -60,7 +60,7 @@ final class LibraryResetServiceTests: XCTestCase {
     }
 
     func testClearLibraryQueuesCalendarCleanupWhenAccessDenied() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         seedOneOfEachModel(in: context)
         let subscription = try XCTUnwrap(try context.fetch(FetchDescriptor<Subscription>()).first)

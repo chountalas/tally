@@ -1,8 +1,6 @@
 import Foundation
-import OSLog
-#if canImport(FoundationModels)
 import FoundationModels
-#endif
+import OSLog
 
 private let aiProviderLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "Tally",
@@ -179,14 +177,9 @@ enum AIProviderRegistry {
             return nil
             #endif
         case .appleIntelligence:
-            #if canImport(FoundationModels)
-            if #available(iOS 26.0, macOS 26.0, *) {
-                let model = SystemLanguageModel(useCase: .general)
-                guard model.isAvailable else { return nil }
-                return FoundationModelsIntelligenceGenerator()
-            }
-            #endif
-            return nil
+            let model = SystemLanguageModel(useCase: .general)
+            guard model.isAvailable else { return nil }
+            return FoundationModelsIntelligenceGenerator()
         }
     }
 
@@ -254,36 +247,25 @@ enum AIProviderRegistry {
             )
             #endif
         case .appleIntelligence:
-            #if canImport(FoundationModels)
-            if #available(iOS 26.0, macOS 26.0, *) {
-                let model = SystemLanguageModel(useCase: .contentTagging)
-                switch model.availability {
-                case .available:
-                    return AIProviderStatusSnapshot(
-                        health: .ready,
-                        fallbackState: .none,
-                        isReady: true,
-                        title: "Apple Intelligence is ready",
-                        detail: "The system language model is available on this Mac."
-                    )
-                case let .unavailable(reason):
-                    return AIProviderStatusSnapshot(
-                        health: .unavailable,
-                        fallbackState: .degraded,
-                        isReady: false,
-                        title: "Apple Intelligence is unavailable",
-                        detail: "\(reason.description) Subscription detection and summaries will continue with fallback generation."
-                    )
-                }
+            let model = SystemLanguageModel(useCase: .contentTagging)
+            switch model.availability {
+            case .available:
+                return AIProviderStatusSnapshot(
+                    health: .ready,
+                    fallbackState: .none,
+                    isReady: true,
+                    title: "Apple Intelligence is ready",
+                    detail: "The system language model is available on this Mac."
+                )
+            case let .unavailable(reason):
+                return AIProviderStatusSnapshot(
+                    health: .unavailable,
+                    fallbackState: .degraded,
+                    isReady: false,
+                    title: "Apple Intelligence is unavailable",
+                    detail: "\(reason.description) Subscription detection and summaries will continue with fallback generation."
+                )
             }
-            #endif
-            return AIProviderStatusSnapshot(
-                health: .unavailable,
-                fallbackState: .degraded,
-                isReady: false,
-                title: "Apple Intelligence is unavailable",
-                detail: "This runtime does not expose Foundation Models here. Subscription detection and summaries will continue with fallback generation."
-            )
         }
     }
 

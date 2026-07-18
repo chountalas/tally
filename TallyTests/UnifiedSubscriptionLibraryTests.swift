@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testManualSubscriptionCreationPersistsFirstClassManualEntry() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -42,7 +42,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testManualSubscriptionCreationInfersServiceIdentityWhenLeftBlank() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -62,7 +62,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testFormerManualSubscriptionPersistsReplacementLink() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -99,7 +99,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testCancelSubscriptionClearsSyncedCalendarEventBeforeMarkingFormer() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         var cleanedIDs: [UUID] = []
         let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
@@ -136,7 +136,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testRemoveSubscriptionClearsSyncedCalendarEventBeforeDeleting() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         var cleanedIDs: [UUID] = []
         let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
@@ -170,7 +170,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testHideSuggestedSubscriptionUnlinksWrongAccountCharges() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let importRecord = ImportRecord(
@@ -242,7 +242,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testHideSuggestedSubscriptionPreservesMultipleWrongAccountScopesForSameMerchant() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -297,7 +297,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testHideSuggestedSubscriptionSplitsMultiAccountLinkedCharges() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let importRecord = ImportRecord(
@@ -353,7 +353,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testIgnoredSubscriptionsDoNotRelinkDuringDetectionRebuild() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let subscription = Subscription(
             canonicalName: "Hidden Streaming",
@@ -431,7 +431,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         var cleanupAttempts = 0
         var recordedPendingCalendarEventIDs: [String] = []
@@ -483,7 +483,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -514,7 +514,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testEditedDetectedSubscriptionSurvivesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -605,7 +605,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testEditingDetectedSubscriptionStatusUpdatesLibraryStateImmediately() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let lastChargeDate = Date.now
@@ -673,7 +673,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testMerchantLearningPersistsNonUSDCurrencyForKeptSuggestion() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let lastChargeDate = Date.now
@@ -758,7 +758,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testEditingSuggestedDetectedSubscriptionPreservesReviewQueueState() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -833,7 +833,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testHidingDetectedSuggestionSuppressesCurrentImportWithoutFalsePositiveRule() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -888,7 +888,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testCancellingDetectedSubscriptionSurvivesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -957,7 +957,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testRemovingDetectedFormerSubscriptionSuppressesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -1162,7 +1162,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testRecurringSaaSClusterPromotesToConfirmedInsteadOfLingeringInReview() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(

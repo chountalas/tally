@@ -5,7 +5,7 @@ import XCTest
 extension CSVTransactionImporterTests {
     @MainActor
     func testRefreshSubscriptionAnalysisClearsExistingFalsePositiveGroceries() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -55,7 +55,7 @@ extension CSVTransactionImporterTests {
     @MainActor
     func testImportReclassifiesPreviousVersionCachedMerchantClassification() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -109,7 +109,7 @@ extension CSVTransactionImporterTests {
     @MainActor
     func testAliasImportIgnoresPreviousVersionNonUserCorrectedPrior() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -164,7 +164,7 @@ extension CSVTransactionImporterTests {
     @MainActor
     func testAliasImportUsesCurrentCanonicalPriorWhenPreviousVersionRowSharesCanonicalName() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -222,7 +222,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testRefreshSubscriptionAnalysisReusesCurrentVersionCachedClassification() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -287,7 +287,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionReviewRulesPersistAcrossRebuilds() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertSeedImportRecord(named: "seed.csv", into: context)
@@ -328,7 +328,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionReviewRulesPersistAfterReimport() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertSeedImportRecord(named: "seed.csv", into: context)
@@ -374,7 +374,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testManualReviewRuleCreatesStandaloneSubscriptionAndSurvivesRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         context.insert(

@@ -5,7 +5,7 @@ import XCTest
 extension CSVTransactionImporterTests {
     @MainActor
     func testSubscriptionDetectionCreatesMonthlyAndAnnualRecords() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
@@ -62,7 +62,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionDetectionIgnoresRepeatedGroceries() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
@@ -108,7 +108,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionDetectionIgnoresRepeatedWellnessVisits() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
@@ -146,7 +146,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testCostcoMembershipRenewalIsDetected() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
@@ -187,7 +187,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAliasImportPreservesMerchantPriorSignals() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
