@@ -97,7 +97,7 @@ extension DashboardMetrics {
                 dates.append(current)
             }
 
-            guard let next = subscription.cadence.tallyAdvanced(current, by: 1, using: calendar)
+            guard let next = subscription.cadence.advanced(current, by: 1, using: calendar)
                 .map(calendar.startOfDay(for:)),
                   next > current else {
                 break
@@ -107,32 +107,6 @@ extension DashboardMetrics {
         }
 
         return dates
-    }
-
-    static func probableRenewals(
-        from subscriptions: [Subscription],
-        renewalCutoff: Date,
-        transactionsBySubscription: [UUID: [NormalizedTransaction]],
-        referenceDate: Date = .now
-    ) -> [Subscription] {
-        subscriptions
-            .filter { subscription in
-                guard subscription.status == .needsReview,
-                      let nextChargeDate = currentRenewalDate(
-                        for: subscription,
-                        referenceDate: referenceDate
-                      ),
-                      nextChargeDate < renewalCutoff else {
-                    return false
-                }
-
-                let linkedCount = transactionsBySubscription[subscription.id]?.count ?? 0
-                return linkedCount == 1
-            }
-            .sorted {
-                (currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
-                    (currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
-            }
     }
 
     static func overlapGroups(from subscriptions: [Subscription]) -> [OverlapGroup] {
@@ -203,13 +177,9 @@ extension DashboardMetrics {
 
         for (_, group) in categoryGroups where group.count > 1 {
             let category = group.first?.serviceCategory ?? "Uncategorized"
-            let names = group.map(\.displayName).sorted().joined(separator: ", ")
-            let monthlyExposure = group.reduce(Decimal.zero) { $0 + $1.normalizedMonthlyAmount }
-            let exposure = monthlyExposure.currencyString()
             items.append(
                 SavingsOpportunity(
                     title: "Overlap in \(category)",
-                    detail: "\(names) are all active in the same category. Review \(exposure) per month.",
                     priority: 0
                 )
             )
@@ -221,15 +191,13 @@ extension DashboardMetrics {
                 continue
             }
 
-            guard let percentChange = priceIncreasePercent(in: linkedTransactions) else {
+            guard hasPriceIncrease(in: linkedTransactions) else {
                 continue
             }
 
-            let formattedPercent = percentChange.percentString
             items.append(
                 SavingsOpportunity(
                     title: "Price increase: \(subscription.displayName)",
-                    detail: "Latest charge is \(formattedPercent) above the earlier average.",
                     priority: 1
                 )
             )
@@ -286,8 +254,6 @@ extension DashboardMetrics {
                 subscriptionID: subscription.id,
                 subscriptionName: subscription.displayName,
                 renewalDate: renewalDate,
-                price: subscription.priceAmount,
-                currencyCode: subscription.priceCurrency,
                 action: action,
                 detail: renewalDecisionDetail(
                     renewalDate: renewalDate,

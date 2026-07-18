@@ -20,7 +20,7 @@ final class ImportRecord {
         id: UUID = UUID(),
         fileName: String,
         importedAt: Date = Date.now,
-        sourceType: String,
+        fileFormat: ImportFileFormat,
         status: ImportStatus,
         mappingSignature: String,
         importedTransactionCount: Int = 0,
@@ -33,7 +33,7 @@ final class ImportRecord {
         self.id = id
         self.fileName = fileName
         self.importedAt = importedAt
-        self.sourceType = sourceType
+        sourceType = fileFormat.rawValue
         self.statusRawValue = status.rawValue
         self.mappingSignature = mappingSignature
         self.importedTransactionCount = importedTransactionCount
@@ -47,5 +47,10 @@ final class ImportRecord {
     var status: ImportStatus {
         get { ImportStatus(rawValue: statusRawValue) ?? .queued }
         set { statusRawValue = newValue.rawValue }
+    }
+
+    var fileFormat: ImportFileFormat? {
+        get { ImportFileFormat(rawValue: sourceType) }
+        set { sourceType = newValue?.rawValue ?? sourceType }
     }
 }

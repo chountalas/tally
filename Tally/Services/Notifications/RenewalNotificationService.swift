@@ -3,11 +3,30 @@ import SwiftData
 import UserNotifications
 
 @MainActor
+protocol RenewalNotificationCenter: AnyObject {
+    func authorizationStatus() async -> UNAuthorizationStatus
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    func add(_ request: UNNotificationRequest) async throws
+    func pendingNotificationRequests() async -> [UNNotificationRequest]
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+}
+
+extension UNUserNotificationCenter: RenewalNotificationCenter {
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await notificationSettings().authorizationStatus
+    }
+}
+
+@MainActor
 final class RenewalNotificationService {
-    private let notificationCenter = UNUserNotificationCenter.current()
+    private let notificationCenter: any RenewalNotificationCenter
+
+    init(notificationCenter: any RenewalNotificationCenter = UNUserNotificationCenter.current()) {
+        self.notificationCenter = notificationCenter
+    }
 
     func authorizationStatus() async -> UNAuthorizationStatus {
-        await notificationCenter.notificationSettings().authorizationStatus
+        await notificationCenter.authorizationStatus()
     }
 
     func requestAccess() async throws -> Bool {
@@ -25,16 +44,8 @@ final class RenewalNotificationService {
             from: subscriptions,
             referenceDate: referenceDate
         )
-        let activeSubscriptionIDs = Set(activeSubscriptions.map(\.id))
-        await clearTrackerNotifications()
-
-        var scheduledCount = 0
-
-        for subscription in subscriptions
-        where activeSubscriptionIDs.contains(subscription.id) == false ||
-            subscription.predictedNextChargeDate == nil {
-            subscription.lastNotificationScheduledAt = nil
-        }
+        var scheduledSubscriptions: [Subscription] = []
+        var requests: [UNNotificationRequest] = []
 
         for subscription in activeSubscriptions {
             guard let renewalDate = DashboardMetrics.currentRenewalDate(
@@ -71,24 +82,49 @@ final class RenewalNotificationService {
                 trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             )
 
-            try await notificationCenter.add(request)
-            subscription.lastNotificationScheduledAt = .now
-            scheduledCount += 1
+            requests.append(request)
+            scheduledSubscriptions.append(subscription)
         }
 
-        try context.save()
-        return scheduledCount
+        let scheduledSubscriptionIDs = Set(scheduledSubscriptions.map(\.id))
+        let previousPendingRequests = await pendingTrackerNotificationRequests()
+        let previousScheduleDates = Dictionary(
+            uniqueKeysWithValues: subscriptions.map { ($0.id, $0.lastNotificationScheduledAt) }
+        )
+
+        do {
+            for request in requests {
+                try await notificationCenter.add(request)
+            }
+            for subscription in subscriptions {
+                subscription.lastNotificationScheduledAt = scheduledSubscriptionIDs.contains(subscription.id) ? .now : nil
+            }
+            try context.save()
+        } catch {
+            let desiredIdentifiers = requests.map(\.identifier)
+            notificationCenter.removePendingNotificationRequests(withIdentifiers: desiredIdentifiers)
+            for previousRequest in previousPendingRequests
+            where desiredIdentifiers.contains(previousRequest.identifier) {
+                try? await notificationCenter.add(previousRequest)
+            }
+            for subscription in subscriptions {
+                subscription.lastNotificationScheduledAt = previousScheduleDates[subscription.id] ?? nil
+            }
+            try context.save()
+            throw error
+        }
+
+        let desiredIdentifiers = Set(requests.map(\.identifier))
+        let staleIdentifiers = previousPendingRequests
+            .map(\.identifier)
+            .filter { desiredIdentifiers.contains($0) == false }
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: staleIdentifiers)
+        return requests.count
     }
 
-    func clearScheduledNotifications(for subscriptions: [Subscription], context: ModelContext) throws {
-        let identifiers = subscriptions.map(notificationIdentifier(for:))
+    func clearScheduledNotifications(forSubscriptionIDs subscriptionIDs: [UUID]) {
+        let identifiers = subscriptionIDs.map { "renewal.\($0.uuidString)" }
         notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
-
-        for subscription in subscriptions {
-            subscription.lastNotificationScheduledAt = nil
-        }
-
-        try context.save()
     }
 
     private func notificationIdentifier(for subscription: Subscription) -> String {
@@ -108,15 +144,9 @@ final class RenewalNotificationService {
         }
     }
 
-    private func clearTrackerNotifications() async {
-        let identifiers = await pendingTrackerNotificationIdentifiers()
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
-    }
-
-    private func pendingTrackerNotificationIdentifiers() async -> [String] {
+    private func pendingTrackerNotificationRequests() async -> [UNNotificationRequest] {
         await notificationCenter.pendingNotificationRequests()
-            .map(\.identifier)
-            .filter { $0.hasPrefix("renewal.") }
+            .filter { $0.identifier.hasPrefix("renewal.") }
     }
 }
 

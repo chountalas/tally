@@ -5,12 +5,12 @@ import XCTest
 extension CSVTransactionImporterTests {
     @MainActor
     func testSubscriptionDetectionCreatesMonthlyAndAnnualRecords() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
             fileName: "seed.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -62,12 +62,12 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionDetectionIgnoresRepeatedGroceries() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
             fileName: "groceries.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -108,12 +108,12 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionDetectionIgnoresRepeatedWellnessVisits() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
             fileName: "chiro.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -146,12 +146,12 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testCostcoMembershipRenewalIsDetected() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
             fileName: "costco-membership.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -187,7 +187,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAliasImportPreservesMerchantPriorSignals() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 

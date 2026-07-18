@@ -5,7 +5,7 @@ import XCTest
 extension CSVTransactionImporterTests {
     @MainActor
     func testAppModelImportsOFXThroughSourceAdapterPath() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let url = FileManager.default.temporaryDirectory
@@ -70,7 +70,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testEmptyOFXImportFailsInsteadOfReportingSuccess() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let url = FileManager.default.temporaryDirectory
@@ -103,7 +103,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAppModelImportsWindows1252OFXBeforeUTF16Fallbacks() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let url = FileManager.default.temporaryDirectory

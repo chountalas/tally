@@ -11,11 +11,11 @@ final class SubscriptionDetectionDiagnosticsTests: XCTestCase {
             throw XCTSkip("Create the diagnostics flag file to run diagnostics output.")
         }
 
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let importRecord = ImportRecord(
             fileName: "diagnostics.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "diagnostics"
         )

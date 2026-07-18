@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// The friendly "Add or update" chooser — the one task a non-technical user
-/// needs. Matches the Tally design's sheet: drop a statement, add by hand, or
-/// refresh. Each choice routes to the corresponding real flow.
 struct AddUpdateSheet: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext

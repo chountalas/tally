@@ -9,9 +9,6 @@ private struct ChargeRowData: Identifiable, Equatable {
     let isOld: Bool
 }
 
-/// Subscription detail — opened from any list/card. Big price, next charge,
-/// how long you've had it, a price-increase callout, recent charges, and the
-/// friendly actions. Matches the Tally design.
 struct SubscriptionDetailView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
@@ -22,6 +19,7 @@ struct SubscriptionDetailView: View {
     @State private var isConfirmingCancellation = false
     @State private var displayedChargeRows: [ChargeRowData] = []
     @State private var chargeRowsAreProjected = false
+    @State private var chargeLoadErrorMessage: String?
 
     init(subscription: Subscription) {
         self.subscription = subscription
@@ -70,7 +68,14 @@ struct SubscriptionDetailView: View {
                         .foregroundStyle(Theme.Colors.textTertiary)
                         .padding(.bottom, 14)
                 }
-                chargeList
+                if let chargeLoadErrorMessage {
+                    Text(chargeLoadErrorMessage)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .padding(.vertical, 8)
+                } else {
+                    chargeList
+                }
                 actions.padding(.top, 22)
             }
             .padding(Theme.Spacing.page)
@@ -79,9 +84,16 @@ struct SubscriptionDetailView: View {
         }
         .scrollIndicators(.hidden)
         .task(id: chargeRefreshID) {
-            let loadedCharges = loadDisplayedCharges()
-            displayedChargeRows = loadedCharges.rows
-            chargeRowsAreProjected = loadedCharges.isProjected
+            do {
+                let loadedCharges = try loadDisplayedCharges()
+                displayedChargeRows = loadedCharges.rows
+                chargeRowsAreProjected = loadedCharges.isProjected
+                chargeLoadErrorMessage = nil
+            } catch {
+                displayedChargeRows = []
+                chargeRowsAreProjected = false
+                chargeLoadErrorMessage = "Tally couldn't load this subscription's charges."
+            }
         }
         .confirmationDialog(
             "Mark \(sub.tallyName) as cancelled?",
@@ -190,9 +202,12 @@ struct SubscriptionDetailView: View {
             .minimumScaleFactor(0.6)
 
             if isOngoing, let next = currentRenewalDate {
+                let relativeDate = Text(next.tallyRelativeDay)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .bold()
                 detailFact(label: "Next charge") {
-                    (Text("\(next.tallyShortDate) · ").foregroundStyle(Theme.Colors.textPrimary)
-                     + Text(next.tallyRelativeDay).foregroundStyle(Theme.Colors.accent).bold())
+                    Text("\(next.tallyShortDate) · \(relativeDate)")
+                        .foregroundStyle(Theme.Colors.textPrimary)
                         .font(.system(size: 18, weight: .semibold))
                 }
             }
@@ -236,14 +251,17 @@ struct SubscriptionDetailView: View {
         let factor = 1.0 / (1.0 + pct)
         let wasRaw = sub.priceAmount * Decimal(factor)
         let moreAYear = (sub.normalizedMonthlyAmount - sub.normalizedMonthlyAmount * Decimal(factor)) * 12
+        let annualIncreaseCopy = Text(
+            "\(moreAYear.tallyMoney(code: sub.priceCurrency, showCents: false)) more a year"
+        )
+        .bold()
         return HStack(spacing: 14) {
             Circle().fill(Theme.Colors.bgCard).frame(width: 38, height: 38)
                 .overlay(Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.Colors.warning))
             VStack(alignment: .leading, spacing: 1) {
                 Text("The price went up")
                     .font(.system(size: 14.5, weight: .bold)).foregroundStyle(Theme.Colors.textPrimary)
-                (Text("You used to pay \(wasRaw.tallyMoney(code: sub.priceCurrency)) — that's ")
-                 + Text("\(moreAYear.tallyMoney(code: sub.priceCurrency, showCents: false)) more a year").bold())
+                Text("You used to pay \(wasRaw.tallyMoney(code: sub.priceCurrency)) — that's \(annualIncreaseCopy)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -315,15 +333,15 @@ struct SubscriptionDetailView: View {
 
     /// Prefer the subscription's actual imported charges; only synthesize a
     /// cadence-based history when there are no linked transactions at all.
-    private func loadDisplayedCharges() -> (rows: [ChargeRowData], isProjected: Bool) {
-        let actual = loadActualCharges()
+    private func loadDisplayedCharges() throws -> (rows: [ChargeRowData], isProjected: Bool) {
+        let actual = try loadActualCharges()
         return actual.isEmpty ? (recentCharges(), true) : (actual, false)
     }
 
     /// Real `NormalizedTransaction` rows for this subscription, most-recent first,
     /// shown with their own dates / amounts / currencies.
-    private func loadActualCharges(count: Int = 6) -> [ChargeRowData] {
-        linkedTransactions().prefix(count).map { transaction in
+    private func loadActualCharges(count: Int = 6) throws -> [ChargeRowData] {
+        try linkedTransactions().prefix(count).map { transaction in
             let label = transaction.transactionDate.formatted(.dateTime.month(.abbreviated).day().year())
             let amount = abs(transaction.transactionAmount)
             return ChargeRowData(
@@ -339,13 +357,14 @@ struct SubscriptionDetailView: View {
     /// Transactions linked to this subscription, most-recent first. Falls back to a
     /// canonical-name match (mirrors `AppModel.fetchLinkedTransactions`) so charges
     /// still surface for items linked by merchant rather than id.
-    private func linkedTransactions() -> [NormalizedTransaction] {
+    private func linkedTransactions() throws -> [NormalizedTransaction] {
         let subscriptionID = sub.id
         let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
             predicate: #Predicate { $0.subscriptionID == subscriptionID },
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
-        if let linked = try? modelContext.fetch(linkedDescriptor), linked.isEmpty == false {
+        let linked = try modelContext.fetch(linkedDescriptor)
+        if linked.isEmpty == false {
             return linked
         }
         let canonicalName = sub.canonicalName
@@ -353,18 +372,18 @@ struct SubscriptionDetailView: View {
             predicate: #Predicate { $0.merchantNormalized == canonicalName },
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
-        return (try? modelContext.fetch(canonicalDescriptor)) ?? []
+        return try modelContext.fetch(canonicalDescriptor)
     }
 
     private func recentCharges(count: Int = 6) -> [ChargeRowData] {
         let cal = Calendar.current
         let anchor: Date = isOngoing
-            ? (sub.cadence.tallyAdvanced(currentRenewalDate ?? .now, by: -1, using: cal) ?? .now)
+            ? (sub.cadence.advanced(currentRenewalDate ?? .now, by: -1, using: cal) ?? .now)
             : (sub.lastChargeDate ?? .now)
         let pct = sub.priceChangePercent ?? 0
         let oldAmount = pct > 0 ? sub.priceAmount * Decimal(1.0 / (1.0 + pct)) : sub.priceAmount
         return (0..<count).map { i in
-            let date = sub.cadence.tallyAdvanced(anchor, by: -i, using: cal) ?? anchor
+            let date = sub.cadence.advanced(anchor, by: -i, using: cal) ?? anchor
             let isOld = pct > 0.05 && i >= 3
             let label = date.formatted(.dateTime.month(.abbreviated).day().year())
             return ChargeRowData(
@@ -446,26 +465,20 @@ struct SubscriptionDetailView: View {
     /// keeping each subscription's saved reminder lead time. The service
     /// updates `lastNotificationScheduledAt` and saves the context itself.
     private func scheduleRenewalReminder() {
-        try? modelContext.save()
         let context = modelContext
         let name = sub.tallyName
         Task { @MainActor in
-            let service = RenewalNotificationService()
-            let granted = (try? await service.requestAccess()) ?? false
-            guard granted else {
-                // Denied (or undetermined) authorization silently does nothing
-                // otherwise, so tell the user why no reminder was set.
-                appModel.importErrorMessage =
-                    "Tally can't set a reminder without notification permission. " +
-                    "Turn on notifications for Tally in System Settings, then try again."
-                return
-            }
-            // The service clears every pending renewal notification and rebuilds
-            // the set from the subscriptions it's handed, so pass the full set —
-            // passing only this one would wipe the reminders other subscriptions
-            // already have.
-            let all = (try? context.fetch(FetchDescriptor<Subscription>())) ?? []
             do {
+                try context.save()
+                let service = RenewalNotificationService()
+                let granted = try await service.requestAccess()
+                guard granted else {
+                    appModel.importErrorMessage =
+                        "Tally can't set a reminder without notification permission. " +
+                        "Turn on notifications for Tally in System Settings, then try again."
+                    return
+                }
+                let all = try context.fetch(FetchDescriptor<Subscription>())
                 _ = try await service.schedule(subscriptions: all, context: context)
                 appModel.infoMessage = "You'll get a reminder before \(name) renews."
             } catch {

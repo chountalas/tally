@@ -29,7 +29,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testDismissImportRemovesPendingImportRecord() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -51,8 +51,53 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testUnsupportedImportClearsPreviousPreparationState() throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+        let mapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Merchant",
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let pendingImportRecord = ImportRecord(
+            fileName: "previous.csv",
+            fileFormat: .csv,
+            status: .needsMapping,
+            mappingSignature: mapping.signature
+        )
+        context.insert(pendingImportRecord)
+        try context.save()
+
+        appModel.importDraft = makePendingDraft(mapping: mapping)
+        appModel.currentImportRecord = pendingImportRecord
+        appModel.isPreparingImport = true
+        let previousToken = appModel.importPreparationToken
+        let unsupportedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unsupported")
+            .appendingPathExtension("txt")
+
+        appModel.prepareImport(from: unsupportedURL, into: context)
+
+        XCTAssertNotEqual(appModel.importPreparationToken, previousToken)
+        XCTAssertFalse(appModel.isPreparingImport)
+        XCTAssertNil(appModel.importDraft)
+        XCTAssertNil(appModel.currentImportRecord)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ImportRecord>()).isEmpty)
+        XCTAssertEqual(
+            appModel.importErrorMessage,
+            ImportPreparationError.unsupportedFileType("txt").localizedDescription
+        )
+    }
+
+    @MainActor
     func testClearImportedLibraryRemovesPersistedImportDataAndDraftState() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -94,7 +139,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsReappliedWhenHeadersMatch() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -129,7 +174,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.33
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, storedMapping)
         XCTAssertEqual(resolved.confidence, 1.0)
@@ -137,7 +182,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateKeepsInferredDebitSignWhenHeaderOnlyMatchDisagrees() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -173,7 +218,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.68
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping.dateColumn, storedMapping.dateColumn)
         XCTAssertEqual(resolved.suggestedMapping.amountColumn, storedMapping.amountColumn)
@@ -184,7 +229,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsIgnoredWhenIncomingHeadersAreMoreSpecific() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -227,7 +272,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.72
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
         XCTAssertEqual(resolved.confidence, 0.72)
@@ -235,7 +280,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsIgnoredWhenOnlyNormalizedHeadersMatch() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -271,7 +316,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.61
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
         XCTAssertEqual(resolved.confidence, 0.61)
@@ -279,7 +324,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplatePreservesDraftWarnings() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -306,7 +351,7 @@ extension CSVTransactionImporterTests {
             warnings: ["Skipped 2 leading preamble rows before the detected header row."]
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, storedMapping)
         XCTAssertEqual(resolved.warnings, draft.warnings)
@@ -314,7 +359,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testStoredTemplateIsIgnoredWhenColumnsMissing() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -350,7 +395,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.66
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
         XCTAssertEqual(resolved.confidence, 0.66)
@@ -413,7 +458,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSaveChangesAndApplyReviewRuleLocallyReplaysMerchantLearningForConfirmedRule() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let calendar = Calendar.current
@@ -438,7 +483,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "netflix.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )
@@ -574,13 +619,13 @@ extension CSVTransactionImporterTests {
         let appModel = AppModel.testing()
         let firstImport = ImportRecord(
             fileName: "first.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "first"
         )
         let secondImport = ImportRecord(
             fileName: "second.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "second"
         )
@@ -716,7 +761,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewConfirmationDoesNotDeleteUntouchedSubscriptions() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -739,7 +784,7 @@ extension CSVTransactionImporterTests {
 
         let importRecord = ImportRecord(
             fileName: "automation.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "automation"
         )
@@ -809,7 +854,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewLearnsStableServiceNameForProcessorDescriptors() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -876,7 +921,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewDoesNotRewriteDistinctOpenAIProductToChatGPT() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -919,7 +964,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewUsesLinkedChargeDateBeforePersistingConfirmedStatus() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -966,7 +1011,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewAppliesSuppressionCandidates() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -1066,7 +1111,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAutomatedReviewRevalidatesStalePlanBeforeApplying() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -1179,7 +1224,7 @@ private extension CSVTransactionImporterTests {
         [
             ImportRecord(
                 fileName: "ledger.csv",
-                sourceType: "csv",
+                fileFormat: .csv,
                 status: .analyzed,
                 mappingSignature: "sig",
                 importedTransactionCount: 2,
@@ -1265,7 +1310,7 @@ private extension CSVTransactionImporterTests {
     func makePersistedImportRecord(mapping: ColumnMappingConfig) -> ImportRecord {
         ImportRecord(
             fileName: "seed.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: mapping.signature
         )

@@ -33,7 +33,6 @@ extension SubscriptionDetectionService {
 
         state.clusterReports.append(
             SubscriptionClusterReport(
-                canonicalName: request.canonicalName,
                 displayName: request.displayName,
                 status: .suppressed,
                 source: request.source,
@@ -88,9 +87,8 @@ extension SubscriptionDetectionService {
                 from: resolvedLastChargeDate,
                 cadence: resolvedCadence
             ),
-            normalizedMonthlyAmount: normalizeMonthly(
-                price: rule?.overridePriceAmount ?? summary.priceAmount,
-                cadence: resolvedCadence
+            normalizedMonthlyAmount: resolvedCadence.normalizedMonthlyAmount(
+                for: rule?.overridePriceAmount ?? summary.priceAmount
             )
         )
         let subscription = existing ?? Subscription(

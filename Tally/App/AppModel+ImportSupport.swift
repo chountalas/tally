@@ -33,7 +33,7 @@ extension AppModel {
         let startedAt = Date()
         let seedByMerchant = representativeSeeds(from: seeds)
         let uniqueMerchantCount = seedByMerchant.count
-        let requestedStrategy = classifier.importStrategy(forUniqueMerchantCount: uniqueMerchantCount)
+        let requestedStrategy = classifier.strategy(forUniqueMerchantCount: uniqueMerchantCount)
         let caches = try fetchClassificationCaches(in: context)
 
         var results: [String: MerchantClassificationResult] = [:]
@@ -111,25 +111,30 @@ extension AppModel {
             return
         }
 
-        switch outcome {
-        case let .success(draft):
-            let resolvedDraft = draftApplyingStoredTemplate(draft, context: context)
-            importDraft = resolvedDraft
-            importRecord.status = .needsMapping
-            importRecord.mappingSignature = resolvedDraft.suggestedMapping.signature
-            importRecord.errorMessage = nil
-            try? context.save()
-
-            currentImportRecord = importRecord
-            importErrorMessage = nil
-        case let .failure(message):
-            importRecord.status = .failed
-            importRecord.mappingSignature = "unavailable"
-            importRecord.errorMessage = message
-            try? context.save()
-
+        do {
+            switch outcome {
+            case let .success(draft):
+                let resolvedDraft = try draftApplyingStoredTemplate(draft, context: context)
+                importRecord.status = .needsMapping
+                importRecord.mappingSignature = resolvedDraft.suggestedMapping.signature
+                importRecord.errorMessage = nil
+                try context.save()
+                importDraft = resolvedDraft
+                currentImportRecord = importRecord
+                importErrorMessage = nil
+            case let .failure(message):
+                importRecord.status = .failed
+                importRecord.mappingSignature = "unavailable"
+                importRecord.errorMessage = message
+                try context.save()
+                currentImportRecord = nil
+                importErrorMessage = message
+            }
+        } catch {
+            context.rollback()
             currentImportRecord = nil
-            importErrorMessage = message
+            importDraft = nil
+            importErrorMessage = "Tally couldn't save the import state. \(error.localizedDescription)"
         }
     }
 
@@ -213,8 +218,8 @@ extension AppModel {
     func draftApplyingStoredTemplate(
         _ draft: TransactionImportDraft,
         context: ModelContext
-    ) -> TransactionImportDraft {
-        guard var config = matchingTemplateConfig(forHeaders: draft.headers, context: context) else {
+    ) throws -> TransactionImportDraft {
+        guard var config = try matchingTemplateConfig(forHeaders: draft.headers, context: context) else {
             return draft
         }
 
@@ -238,13 +243,8 @@ extension AppModel {
     func matchingTemplateConfig(
         forHeaders headers: [String],
         context: ModelContext
-    ) -> ColumnMappingConfig? {
-        let templates: [ColumnMappingTemplate]
-        do {
-            templates = try context.fetch(FetchDescriptor<ColumnMappingTemplate>())
-        } catch {
-            return nil
-        }
+    ) throws -> ColumnMappingConfig? {
+        let templates = try context.fetch(FetchDescriptor<ColumnMappingTemplate>())
 
         let headerSet = Set(headers)
         return templates

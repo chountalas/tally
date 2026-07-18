@@ -3,9 +3,6 @@ import Observation
 import OSLog
 import SwiftData
 
-/// Tally "Add or update" flow. One sheet host swaps between the friendly chooser
-/// and the real add/edit form, so the chooser → form hand-off is a single
-/// `.sheet(item:)` identity change rather than a dismiss-then-present race.
 enum AddOrEditSheet: Identifiable, Hashable {
     case chooser
     case create
@@ -73,7 +70,6 @@ struct DashboardContentSnapshot {
     let reviewQueueTotalCount: Int
     let reviewQueueSubscriptions: [Subscription]
     let upcomingRenewals: [Subscription]
-    let probableRenewals: [Subscription]
     let activePreviewSubscriptions: [Subscription]
     let reviewPreviews: [UUID: MerchantLearningPreview]
 }
@@ -198,7 +194,6 @@ final class DashboardMetricsProvider {
             reviewQueueTotalCount: reviewQueueTotalCount,
             reviewQueueSubscriptions: reviewQueueSubscriptions,
             upcomingRenewals: Array(metrics.upcomingRenewals.prefix(6)),
-            probableRenewals: Array(metrics.probableRenewals.prefix(4)),
             activePreviewSubscriptions: Array(activeSubscriptions.prefix(8)),
             reviewPreviews: Dictionary(
                 uniqueKeysWithValues: reviewQueueSubscriptions.map { subscription in
@@ -269,7 +264,7 @@ final class AppModel {
     @ObservationIgnored let gemmaModelManager: GemmaModelManager
     @ObservationIgnored let aiProviderStateResolver: AIProviderStateResolver
     @ObservationIgnored let dashboardMetricsProvider: DashboardMetricsProvider
-    @ObservationIgnored let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
+    @ObservationIgnored let calendarEventCleaner: ([String]) throws -> Void
     @ObservationIgnored let calendarEventCleanupFailureRecorder: ([String]) -> Void
 
     @ObservationIgnored
@@ -303,8 +298,8 @@ final class AppModel {
         gemmaModelManager: GemmaModelManager = GemmaModelManager(),
         libraryResetService: LibraryResetService = LibraryResetService(),
         dashboardMetricsProvider: DashboardMetricsProvider? = nil,
-        calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { subscriptions, context in
-            try RenewalCalendarService().clearSyncedEvents(for: subscriptions, context: context)
+        calendarEventCleaner: @escaping ([String]) throws -> Void = { identifiers in
+            try RenewalCalendarService().clearSyncedEvents(withIdentifiers: identifiers)
         },
         calendarEventCleanupFailureRecorder: @escaping ([String]) -> Void = { identifiers in
             PendingCalendarEventCleanupStore.record(identifiers)
@@ -338,13 +333,9 @@ final class AppModel {
         intelligenceProviderStatus = providerState.providerStatus
     }
 
-    func clearSyncedCalendarEventsIfNeeded(
-        for subscriptions: [Subscription],
-        in context: ModelContext
-    ) throws {
-        let syncedSubscriptions = subscriptions.filter { $0.calendarEventIdentifier != nil }
-        guard syncedSubscriptions.isEmpty == false else { return }
-        try calendarEventCleaner(syncedSubscriptions, context)
+    func clearSyncedCalendarEventsIfNeeded(identifiers: [String]) throws {
+        guard identifiers.isEmpty == false else { return }
+        try calendarEventCleaner(identifiers)
     }
 
     func dashboardMetricsSnapshot(
@@ -369,13 +360,12 @@ final class AppModel {
             subscriptions: subscriptions,
             transactions: transactions,
             revision: resolvedRevision
-        ) { [self] subscription, allTransactions in
+        ) { [self] subscription, _ in
             merchantLearningPreview(
                 for: subscription,
                 proposedDisplayName: subscription.displayName,
                 applyAliasToFutureImports: false,
-                isFalsePositive: false,
-                transactions: allTransactions
+                isFalsePositive: false
             )
         }
     }
@@ -385,9 +375,33 @@ final class AppModel {
     }
 
     func prepareImport(from url: URL, into context: ModelContext) {
+        guard let fileFormat = ImportFileFormat(fileName: url.lastPathComponent) else {
+            let unsupportedMessage = ImportPreparationError
+                .unsupportedFileType(url.pathExtension)
+                .localizedDescription
+            let pendingImportRecord = currentImportRecord
+            importPreparationToken = UUID()
+            isPreparingImport = false
+            importDraft = nil
+            currentImportRecord = nil
+
+            if let pendingImportRecord, shouldDiscardImportRecord(pendingImportRecord) {
+                context.delete(pendingImportRecord)
+                do {
+                    try context.save()
+                } catch {
+                    context.rollback()
+                    importErrorMessage = "\(unsupportedMessage) Tally also couldn't clear the previous import state."
+                    return
+                }
+            }
+
+            importErrorMessage = unsupportedMessage
+            return
+        }
         let importRecord = ImportRecord(
             fileName: url.lastPathComponent,
-            sourceType: url.pathExtension.lowercased(),
+            fileFormat: fileFormat,
             status: .parsing,
             mappingSignature: "pending"
         )
@@ -399,7 +413,15 @@ final class AppModel {
 
         let preparationToken = UUID()
         importPreparationToken = preparationToken
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            currentImportRecord = nil
+            isPreparingImport = false
+            importErrorMessage = "Tally couldn't start the import. \(error.localizedDescription)"
+            return
+        }
 
         if let source = bankFeedTransactionSource(for: url) {
             Task { [url, importRecordID = importRecord.id] in
@@ -495,7 +517,13 @@ final class AppModel {
 
         if let currentImportRecord, shouldDiscardImportRecord(currentImportRecord) {
             context.delete(currentImportRecord)
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                importErrorMessage = "Tally couldn't dismiss the import. \(error.localizedDescription)"
+                return
+            }
         }
 
         currentImportRecord = nil
@@ -649,10 +677,15 @@ private extension AppModel {
             importRecord.status = .failed
             importRecord.mappingSignature = "\(source.rawValue)_adapter"
             importRecord.errorMessage = message
-            try? context.save()
-
-            currentImportRecord = nil
-            importErrorMessage = message
+            do {
+                try context.save()
+                currentImportRecord = nil
+                importErrorMessage = message
+            } catch {
+                context.rollback()
+                currentImportRecord = nil
+                importErrorMessage = "Tally couldn't save the failed import state. \(error.localizedDescription)"
+            }
         }
     }
 
@@ -703,10 +736,17 @@ private extension AppModel {
         } catch {
             importRecord.status = .failed
             importRecord.errorMessage = error.localizedDescription
-            try? context.save()
-
+            let originalMessage = error.localizedDescription
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                importErrorMessage = "\(originalMessage) Tally also couldn't save the failed import state."
+                currentImportRecord = nil
+                return
+            }
             currentImportRecord = nil
-            importErrorMessage = error.localizedDescription
+            importErrorMessage = originalMessage
         }
     }
 
@@ -723,9 +763,8 @@ private extension AppModel {
             return SourceTransactionMaterialization(
                 draft: draft,
                 merchantNormalized: classification.canonicalName,
-                category: resolvedTransactionCategory(
-                    sourceCategory: draft.seed.category,
-                    classification: classification
+                category: classification.resolvedTransactionCategory(
+                    sourceCategory: draft.seed.category
                 ),
                 merchantKind: classification.merchantKind,
                 merchantSubscriptionAffinity: classification.subscriptionAffinity,
@@ -745,7 +784,7 @@ private extension AppModel {
 
         let importRecord = ImportRecord(
             fileName: importDraft.fileName,
-            sourceType: URL(fileURLWithPath: importDraft.fileName).pathExtension.lowercased(),
+            fileFormat: ImportFileFormat(fileName: importDraft.fileName) ?? .csv,
             status: .queued,
             mappingSignature: mapping.signature
         )
@@ -775,9 +814,8 @@ private extension AppModel {
                     sourceMetadata: ["adapter": "tabular_import"]
                 ),
                 merchantNormalized: classification.canonicalName,
-                category: resolvedTransactionCategory(
-                    sourceCategory: seed.category,
-                    classification: classification
+                category: classification.resolvedTransactionCategory(
+                    sourceCategory: seed.category
                 ),
                 merchantKind: classification.merchantKind,
                 merchantSubscriptionAffinity: classification.subscriptionAffinity,
@@ -814,40 +852,6 @@ private extension AppModel {
             subscriptionAffinity: 0.2,
             confidence: 0.2
         )
-    }
-
-    func resolvedTransactionCategory(
-        sourceCategory: String?,
-        classification: MerchantClassificationResult,
-        preferClassification: Bool = false
-    ) -> String? {
-        let sourceCategory = sourceCategory?.nilIfBlank
-        let classifiedCategory = classification.serviceCategory.nilIfBlank
-
-        guard let classifiedCategory else {
-            return sourceCategory
-        }
-
-        if preferClassification {
-            return classifiedCategory
-        }
-
-        guard let sourceCategory else {
-            return classifiedCategory
-        }
-
-        if sourceCategory == "Uncategorized" {
-            return classifiedCategory
-        }
-
-        let shouldTrustClassification =
-            classification.confidence >= 0.8 &&
-            (
-                classification.subscriptionAffinity >= 0.65 ||
-                classification.merchantKind.isUsuallyNonSubscription == false
-            )
-
-        return shouldTrustClassification ? classifiedCategory : sourceCategory
     }
 
     func completeImportSuccess(
@@ -894,7 +898,7 @@ private extension AppModel {
     ) {
         let failedRecord = currentImportRecord ?? ImportRecord(
             fileName: importDraft.fileName,
-            sourceType: URL(fileURLWithPath: importDraft.fileName).pathExtension.lowercased(),
+            fileFormat: ImportFileFormat(fileName: importDraft.fileName) ?? .csv,
             status: .failed,
             mappingSignature: mapping.signature
         )
@@ -906,21 +910,24 @@ private extension AppModel {
         failedRecord.status = .failed
         failedRecord.mappingSignature = mapping.signature
         failedRecord.errorMessage = error.localizedDescription
-        try? context.save()
-
+        let originalMessage = error.localizedDescription
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            currentImportRecord = nil
+            importErrorMessage = "\(originalMessage) Tally also couldn't save the failed import state."
+            return
+        }
         currentImportRecord = nil
-        importErrorMessage = error.localizedDescription
+        importErrorMessage = originalMessage
     }
 
     func applyImportSummary(
         from detectionReport: SubscriptionDetectionReport,
         to importRecord: ImportRecord
     ) {
-        let summary = detectionReport.summary(for: importRecord.id)
-        importRecord.detectedSubscriptionCount = summary.detectedCount
-        importRecord.needsReviewSubscriptionCount = summary.needsReviewCount
-        importRecord.suppressedRecurringCandidateCount = summary.suppressedCount
-        importRecord.recoveredRecurringCandidateCount = summary.recoveredCount
+        importRecord.apply(detectionReport.summary(for: importRecord.id))
     }
 
 }

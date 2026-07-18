@@ -18,6 +18,7 @@ struct SubscriptionDetectionService {
     func rebuildSubscriptions(
         in context: ModelContext
     ) async throws -> SubscriptionDetectionReport {
+        try Task.checkCancellation()
         let startedAt = Date()
         let transactions = try fetchTransactions(in: context)
         let detectionRun = DetectionRun(
@@ -28,6 +29,7 @@ struct SubscriptionDetectionService {
         let state = DetectionAccumulator()
 
         await prepareTransactions(transactions)
+        try checkCancellationAndRollback(in: context)
 
         let debitTransactions = transactions.filter { $0.transactionAmount < 0 }
         try synchronizeDerivedMatchRules(in: context, transactions: debitTransactions)
@@ -37,11 +39,13 @@ struct SubscriptionDetectionService {
             environment: environment,
             state: state
         )
+        try checkCancellationAndRollback(in: context)
         await runDetectionPasses(
             on: debitTransactions,
             environment: environment,
             state: state
         )
+        try checkCancellationAndRollback(in: context)
 
         removeStaleSubscriptions(
             from: environment.existingSubscriptions,
@@ -75,6 +79,12 @@ struct SubscriptionDetectionService {
         )
 
         return report
+    }
+
+    private func checkCancellationAndRollback(in context: ModelContext) throws {
+        guard Task.isCancelled else { return }
+        context.rollback()
+        throw CancellationError()
     }
 
     @discardableResult

@@ -420,11 +420,11 @@ enum SubscriptionDetectionFixtureHarness {
     private static func evaluate(
         _ fixture: DetectionFixtureCase
     ) async throws -> DetectionFixtureCaseResult {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let importRecord = ImportRecord(
             fileName: "\(fixture.id).csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: fixture.id
         )

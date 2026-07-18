@@ -79,10 +79,17 @@ struct InsightsView: View {
     // MARK: Cards
 
     private func overlapCard(_ overlap: OverlapGroup) -> some View {
-        InsightCard(icon: "square.3.layers.3d", title: "You're paying for \(overlap.subscriptions.count) \(overlap.category.lowercased()) services") {
-            (Text("That's ").foregroundStyle(Theme.Colors.textSecondary)
-             + Text("\(overlap.monthlyExposure.tallyMoney()) a month").foregroundStyle(Theme.Colors.textPrimary).bold()
-             + Text(" — about \(monthlyToYearly(overlap.monthlyExposure)) a year. Keeping one or two could save the rest.").foregroundStyle(Theme.Colors.textSecondary))
+        let monthlyCopy = Text("\(overlap.monthlyExposure.tallyMoney()) a month")
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .bold()
+        return InsightCard(
+            icon: "square.3.layers.3d",
+            title: "You're paying for \(overlap.subscriptions.count) \(overlap.category.lowercased()) services"
+        ) {
+            Text(
+                "That's \(monthlyCopy) — about \(monthlyToYearly(overlap.monthlyExposure)) a year. Keeping one or two could save the rest."
+            )
+                .foregroundStyle(Theme.Colors.textSecondary)
                 .font(.system(size: 13.5, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true)
         } rows: {
@@ -141,10 +148,12 @@ struct InsightsView: View {
 
     private var categoryCard: some View {
         let maxValue = max(Decimal(1), categories.map(\.value).max() ?? 1)
+        let monthlyCopy = Text(metrics.monthlyRunRate.tallyMoney())
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .bold()
         return InsightCard(icon: "rectangle.stack", title: "Where your money goes") {
-            (Text("Your ").foregroundStyle(Theme.Colors.textSecondary)
-             + Text(metrics.monthlyRunRate.tallyMoney()).foregroundStyle(Theme.Colors.textPrimary).bold()
-             + Text(" a month, by type of service.").foregroundStyle(Theme.Colors.textSecondary))
+            Text("Your \(monthlyCopy) a month, by type of service.")
+                .foregroundStyle(Theme.Colors.textSecondary)
                 .font(.system(size: 13.5, weight: .medium))
         } rows: {
             ForEach(categories, id: \.name) { cat in

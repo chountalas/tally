@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
 
 enum SubscriptionIntelligenceUsage: Sendable {
     case interactive

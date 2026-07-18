@@ -35,6 +35,12 @@ struct SubscriptionIntelligenceServiceTests {
 
         #expect(response.evidence.contains(where: { $0.kind == .renewal }))
         #expect(response.actions.contains(where: { $0.kind == .openTab }))
+        #expect(response.actions.contains { suggestion in
+            if case .openTab(.calendar) = suggestion.action {
+                return true
+            }
+            return false
+        })
     }
 
     @Test func merchantFixProducesAliasDraft() async {
@@ -324,10 +330,6 @@ private struct InvalidCopyGenerator: SubscriptionIntelligenceGenerating {
         IntelligenceCopyPayload(headline: "", summary: "", followUps: [])
     }
 
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        ""
-    }
-
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,
@@ -384,10 +386,6 @@ private struct ValidCopyGenerator: SubscriptionIntelligenceGenerating {
             summary: "Custom summary",
             followUps: ["What renews next?", "Which merchant should I fix?"]
         )
-    }
-
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        "Custom text"
     }
 
     func classifyMerchant(

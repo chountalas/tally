@@ -36,6 +36,8 @@ mkdir -p "$DIST_DIR" "$STAGING_DIR"
 BUILD_SETTINGS=(
   CODE_SIGN_STYLE=Manual
   CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
+  OTHER_CODE_SIGN_FLAGS="$TIMESTAMP_FLAG"
   TALLY_BUNDLE_IDENTIFIER="$BUNDLE_IDENTIFIER"
   MARKETING_VERSION="$VERSION"
   ARCHS=arm64
@@ -54,6 +56,7 @@ xcodebuild \
   -derivedDataPath "$DERIVED_DATA" \
   -destination 'platform=macOS,arch=arm64' \
   "${BUILD_SETTINGS[@]}" \
+  clean \
   build
 
 if [[ ! -d "$APP_PATH" ]]; then
@@ -61,7 +64,6 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-codesign --force --deep --options runtime "$TIMESTAMP_FLAG" --sign "$SIGN_IDENTITY" "$APP_PATH"
 codesign --verify --deep --strict "$APP_PATH"
 
 ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"

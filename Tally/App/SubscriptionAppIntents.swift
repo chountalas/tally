@@ -147,15 +147,13 @@ struct RenewalEntityQuery: EntityQuery {
 struct AuditRecommendationEntityQuery: EntityQuery {
     func suggestedEntities() async throws -> [AuditRecommendationEntity] {
         let subscriptions = try AppIntentSubscriptionStore.subscriptions()
-        let transactions = try AppIntentSubscriptionStore.transactions()
         let activeSubscriptions = DashboardMetrics.currentActiveSubscriptions(from: subscriptions)
 
         return activeSubscriptions
             .map { subscription in
                 let score = AuditEngine.score(
                     subscription: subscription,
-                    allActive: activeSubscriptions,
-                    transactions: transactions
+                    allActive: activeSubscriptions
                 )
                 return AuditRecommendationEntity(
                     id: subscription.id.uuidString,

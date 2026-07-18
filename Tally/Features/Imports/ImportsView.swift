@@ -44,7 +44,7 @@ struct ImportsView: View {
                                             .font(Theme.Typography.subheadline)
                                             .foregroundStyle(Theme.Colors.textPrimary)
                                         HStack(spacing: Theme.Spacing.sm) {
-                                            Text(record.sourceType.uppercased())
+                                            Text(record.fileFormat?.displayName ?? record.sourceType.uppercased())
                                                 .font(Theme.Typography.caption)
                                                 .foregroundStyle(Theme.Colors.textTertiary)
                                             Text("\(record.importedTransactionCount) rows")

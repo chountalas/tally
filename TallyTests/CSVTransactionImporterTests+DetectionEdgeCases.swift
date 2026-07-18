@@ -6,7 +6,7 @@ extension CSVTransactionImporterTests {
     @MainActor
     func testImportDetectsSubscriptionBrandVariantsAcrossMerchantNames() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -43,7 +43,7 @@ extension CSVTransactionImporterTests {
     @MainActor
     func testTwoChargeHighSignalMonthlySubscriptionCanAutoConfirm() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -77,7 +77,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testRecurringFinancialMovementIsSuppressedInsteadOfQueuedForReview() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "transfers.csv", into: context)
@@ -113,7 +113,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testManualRuleDoesNotLinkMixedUseMerchantPurchases() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         context.insert(
@@ -150,7 +150,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testAmbiguousRecurringChargesStayInReviewQueue() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "club.csv", into: context)
@@ -176,7 +176,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testLowConfidenceRecurringChargesAreSuppressed() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "misc.csv", into: context)
@@ -199,7 +199,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testLongCancelledBorderlineRecurringChargesBecomeFormerInsteadOfReview() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "borderline.csv", into: context)
@@ -234,7 +234,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testRecentBorderlineRecurringChargesStillNeedReview() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let calendar = Calendar.current
@@ -270,7 +270,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testExplicitSubscriptionCategoryOverridesBillSuppression() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "internet-subscription.csv", into: context)
@@ -305,7 +305,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testGenericSubstringSignalsDoNotAutoConfirmWeakSoftwareCandidate() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "weak-software.csv", into: context)
@@ -335,7 +335,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testGenericCloudOrPersonalWordsDoNotProtectRetailNoiseFromSuppression() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "cloud-paper.csv", into: context)
@@ -366,7 +366,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testFallbackRecoverySurfacesFragmentedAmountsForReview() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "fragmented.csv", into: context)
@@ -405,7 +405,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testRecentHighSignalSingleChargeBecomesReviewCandidateWithPredictedRenewal() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "recent-purchase.csv", into: context)
@@ -444,7 +444,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testLowSignalSingleChargeDoesNotCreateSubscriptionCandidate() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "recent-shopping.csv", into: context)
@@ -471,7 +471,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testManualBillingAnchorPersistsAcrossDetectionRefresh() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let billingAnchor = Calendar.current.date(byAdding: .day, value: -9, to: .now) ?? .now
@@ -505,7 +505,7 @@ extension CSVTransactionImporterTests {
 
     @MainActor
     func testSubscriptionDetectionSeparatesRecurringClusterFromMerchantShopping() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = insertImportRecord(named: "amazon.csv", into: context)
@@ -568,7 +568,7 @@ private extension CSVTransactionImporterTests {
     func insertImportRecord(named fileName: String, into context: ModelContext) -> ImportRecord {
         let importRecord = ImportRecord(
             fileName: fileName,
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )

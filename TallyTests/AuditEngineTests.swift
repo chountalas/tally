@@ -15,8 +15,7 @@ struct AuditEngineTests {
         )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: [subscription],
-            transactions: []
+            allActive: [subscription]
         )
         #expect(score.cancelWorthiness < 30)
         #expect(score.action == .keep)
@@ -41,8 +40,7 @@ struct AuditEngineTests {
         )
         let score = AuditEngine.score(
             subscription: hulu,
-            allActive: [netflix, hulu],
-            transactions: []
+            allActive: [netflix, hulu]
         )
         #expect(score.cancelWorthiness >= 25)
     }
@@ -58,8 +56,7 @@ struct AuditEngineTests {
         )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: [subscription],
-            transactions: []
+            allActive: [subscription]
         )
         #expect(score.cancelWorthiness >= 20)
     }
@@ -513,11 +510,7 @@ struct DashboardMetricsRegressionTests {
         ) { subscription, _ in
             MerchantLearningPreview(
                 mode: .rename,
-                sourceCanonicalName: subscription.canonicalName,
-                targetCanonicalName: subscription.displayName,
-                rawMerchants: [subscription.displayName],
-                affectedTransactionCount: 0,
-                affectedImportCount: 0
+                targetCanonicalName: subscription.displayName
             )
         }
         let revisedSnapshot = provider.contentSnapshot(
@@ -527,11 +520,7 @@ struct DashboardMetricsRegressionTests {
         ) { subscription, _ in
             MerchantLearningPreview(
                 mode: .rename,
-                sourceCanonicalName: subscription.canonicalName,
-                targetCanonicalName: subscription.displayName,
-                rawMerchants: [subscription.displayName],
-                affectedTransactionCount: 0,
-                affectedImportCount: 0
+                targetCanonicalName: subscription.displayName
             )
         }
 

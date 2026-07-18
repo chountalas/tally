@@ -184,7 +184,6 @@ struct TransactionsView: View {
             }
             .sheet(isPresented: $isShowingCopilot) {
                 SubscriptionCopilotSheet(
-                    title: "Ask from Transactions",
                     seedQuery: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         ? nil
                         : IntelligenceQuery(
@@ -351,7 +350,6 @@ private struct MerchantTransactionsView: View {
         .navigationTitle(merchantName)
         .sheet(isPresented: $isShowingCopilot) {
             SubscriptionCopilotSheet(
-                title: "Fix \(merchantName)",
                 seedQuery: IntelligenceQuery(
                     kind: .merchantFix,
                     prompt: "Fix this merchant / create alias",

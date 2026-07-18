@@ -375,7 +375,6 @@ extension SubscriptionDetectionService {
 
         state.clusterReports.append(
             SubscriptionClusterReport(
-                canonicalName: rule.canonicalName,
                 displayName: rule.canonicalName,
                 status: .suppressed,
                 source: .primary,
@@ -419,7 +418,6 @@ extension SubscriptionDetectionService {
             refreshSubscriptionFromRuleMatches(
                 subscription,
                 matches: matches,
-                rule: rule,
                 reviewRule: reviewRule
             )
         }
@@ -464,7 +462,6 @@ extension SubscriptionDetectionService {
 
         state.clusterReports.append(
             SubscriptionClusterReport(
-                canonicalName: subscription.canonicalName,
                 displayName: subscription.displayName,
                 status: .detected,
                 source: .primary,
@@ -478,7 +475,6 @@ extension SubscriptionDetectionService {
     func refreshSubscriptionFromRuleMatches(
         _ subscription: Subscription,
         matches: [NormalizedTransaction],
-        rule: SubscriptionMatchRule,
         reviewRule: SubscriptionReviewRule?
     ) {
         let sorted = matches.sorted { $0.transactionDate < $1.transactionDate }
@@ -498,7 +494,7 @@ extension SubscriptionDetectionService {
             subscription.priceAmount = amount
         }
         subscription.priceCurrency = reviewRule?.overridePriceCurrency ?? latest.currency ?? subscription.priceCurrency
-        subscription.normalizedMonthlyAmount = normalizeMonthly(price: subscription.priceAmount, cadence: cadence)
+        subscription.normalizedMonthlyAmount = cadence.normalizedMonthlyAmount(for: subscription.priceAmount)
         subscription.lastChargeDate = lastChargeDate
         subscription.predictedNextChargeDate = predictNextCharge(from: lastChargeDate, cadence: cadence)
         subscription.firstChargeDate = sorted.first?.transactionDate ?? subscription.firstChargeDate
@@ -525,7 +521,7 @@ extension SubscriptionDetectionService {
             cadence: cadence,
             priceAmount: amount,
             priceCurrency: reviewRule?.overridePriceCurrency?.nilIfBlank ?? rule.currencyCode ?? sorted.last?.currency ?? "USD",
-            normalizedMonthlyAmount: normalizeMonthly(price: amount, cadence: cadence),
+            normalizedMonthlyAmount: cadence.normalizedMonthlyAmount(for: amount),
             lastChargeDate: lastChargeDate,
             predictedNextChargeDate: predictNextCharge(from: lastChargeDate, cadence: cadence),
             confidenceScore: rule.confidence,
@@ -538,12 +534,8 @@ extension SubscriptionDetectionService {
 
     func ruleMatches(_ rule: SubscriptionMatchRule, transaction: NormalizedTransaction) -> Bool {
         if rule.createdFrom == .hiddenSuggestion {
-            let importRecordIDs = Set(SubscriptionEvidenceJSON.decodeStrings(rule.hiddenImportRecordIDsJSON))
-            if importRecordIDs.isEmpty == false {
-                guard let importRecordID = transaction.importRecordID?.uuidString,
-                      importRecordIDs.contains(importRecordID) else {
-                    return false
-                }
+            guard rule.hiddenImportScope.contains(transaction.importRecordID) else {
+                return false
             }
         }
 
@@ -583,9 +575,11 @@ extension SubscriptionDetectionService {
         ]
             .joined(separator: " ")
             .lowercased()
-        let allowedRawMerchants = SubscriptionEvidenceJSON.decodeStrings(rule.allowedRawMerchantsJSON)
-        let requiredTokens = SubscriptionEvidenceJSON.decodeStrings(rule.requiredTokensJSON)
-        let excludedTokens = SubscriptionEvidenceJSON.decodeStrings(rule.excludedTokensJSON)
+        guard let allowedRawMerchants = SubscriptionEvidenceJSON.decodeStrings(rule.allowedRawMerchantsJSON),
+              let requiredTokens = SubscriptionEvidenceJSON.decodeStrings(rule.requiredTokensJSON),
+              let excludedTokens = SubscriptionEvidenceJSON.decodeStrings(rule.excludedTokensJSON) else {
+            return false
+        }
 
         if excludedTokens.contains(where: { text.localizedStandardContains($0) }) {
             return false
@@ -920,7 +914,7 @@ private extension SubscriptionDetectionService {
         let expectation = SubscriptionScheduleExpectation(
             subscriptionID: subscription.id,
             cadence: subscription.cadence,
-            interval: interval(for: subscription.cadence),
+            interval: 1,
             anchorPolicy: anchorPolicy(for: subscription, linkedTransactions: linkedTransactions),
             dateToleranceBeforeDays: dateTolerance(for: subscription.cadence),
             dateToleranceAfterDays: dateTolerance(for: subscription.cadence),
@@ -938,7 +932,7 @@ private extension SubscriptionDetectionService {
         linkedTransactions: [NormalizedTransaction]
     ) {
         expectation.cadence = subscription.cadence
-        expectation.interval = interval(for: subscription.cadence)
+        expectation.interval = 1
         expectation.anchorPolicy = anchorPolicy(for: subscription, linkedTransactions: linkedTransactions)
         expectation.anchorDay = anchorDay(for: subscription, linkedTransactions: linkedTransactions)
         expectation.anchorWeekday = anchorWeekday(for: subscription, linkedTransactions: linkedTransactions)
@@ -982,7 +976,6 @@ private extension SubscriptionDetectionService {
             }
             let matchedTransaction = matchIndex.map { unmatchedTransactions.remove(at: $0) }
             let status = occurrenceStatus(
-                expectedDate: expectedDate,
                 windowEnd: windowEnd,
                 matchedTransaction: matchedTransaction,
                 subscription: subscription,
@@ -1115,7 +1108,6 @@ private extension SubscriptionDetectionService {
     }
 
     func occurrenceStatus(
-        expectedDate: Date,
         windowEnd: Date,
         matchedTransaction: NormalizedTransaction?,
         subscription: Subscription,
@@ -1186,10 +1178,6 @@ private extension SubscriptionDetectionService {
         )
         context.insert(evidence)
         return evidence
-    }
-
-    func interval(for cadence: SubscriptionCadence) -> Int {
-        1
     }
 
     func dateTolerance(for cadence: SubscriptionCadence) -> Int {

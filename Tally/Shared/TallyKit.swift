@@ -316,9 +316,6 @@ extension View {
 }
 
 // MARK: - Live dot (footer "Saved on this Mac")
-//
-// Static green core + soft halo. Deliberately not a repeating pulse — keeps the
-// chrome calm, consistent with the project's anti-perpetual-motion calibration.
 
 struct LiveDot: View {
     var color: Color = Theme.Colors.positive
@@ -422,36 +419,13 @@ extension Subscription {
 
     var tallyIsYearly: Bool { cadence == .annual }
 
-    var tallyIsActive: Bool { status == .active }
-
     var tallyPriceWentUp: Bool { (priceChangePercent ?? 0) > 0.05 }
-
-    /// Whole-day distance to the next predicted charge (nil if unknown).
-    var tallyDaysUntilRenewal: Int? { predictedNextChargeDate?.tallyDaysFromNow }
-
-    var tallyRenewsSoon: Bool {
-        guard let days = tallyDaysUntilRenewal else { return false }
-        return days >= 0 && days <= 7
-    }
-
-    /// Raw price label, e.g. "$22.99 / month" or "$139 / year".
-    var tallyPriceLabel: String {
-        "\(priceAmount.tallyMoney(code: priceCurrency)) / \(cadence.tallyBillingUnit)"
-    }
 
     var tallyCategory: String {
         let trimmed = (serviceCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Other" : trimmed
     }
 
-    /// Months held — from `tenureMonths` if present, else derived from `firstChargeDate`.
-    var tallyTenureMonths: Int? {
-        if let t = tenureMonths, t > 0 { return t }
-        guard let start = firstChargeDate else { return nil }
-        let end = status == .active ? Date.now : (lastChargeDate ?? .now)
-        let comps = Calendar.current.dateComponents([.month], from: start, to: end)
-        return max(0, comps.month ?? 0)
-    }
 }
 
 extension SubscriptionCadence {
@@ -499,20 +473,4 @@ extension SubscriptionCadence {
         }
     }
 
-    func tallyAdvanced(_ date: Date, by periods: Int, using calendar: Calendar = .current) -> Date? {
-        switch self {
-        case .weekly:
-            return calendar.date(byAdding: .day, value: 7 * periods, to: date)
-        case .biweekly:
-            return calendar.date(byAdding: .day, value: 14 * periods, to: date)
-        case .monthly, .unknown:
-            return calendar.date(byAdding: .month, value: periods, to: date)
-        case .quarterly:
-            return calendar.date(byAdding: .month, value: 3 * periods, to: date)
-        case .semiannual:
-            return calendar.date(byAdding: .month, value: 6 * periods, to: date)
-        case .annual:
-            return calendar.date(byAdding: .year, value: periods, to: date)
-        }
-    }
 }

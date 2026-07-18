@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class MerchantCorrectionTests: XCTestCase {
     func testRecordUserCorrectionUpsertsByCanonicalName() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let service = SubscriptionDetectionService()
 
@@ -30,12 +30,12 @@ final class MerchantCorrectionTests: XCTestCase {
     }
 
     func testFalsePositiveCorrectionSuppressesRecurringCluster() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let formatter = ISO8601DateFormatter()
         let importRecord = ImportRecord(
             fileName: "studio.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         )

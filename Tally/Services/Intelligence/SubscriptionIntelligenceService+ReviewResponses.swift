@@ -111,8 +111,7 @@ extension SubscriptionIntelligenceService {
         )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: currentActiveSubscriptions,
-            transactions: transactions
+            allActive: currentActiveSubscriptions
         )
 
         return PriceChangeAnalysis(
@@ -191,20 +190,19 @@ extension SubscriptionIntelligenceService {
         [
             IntelligenceActionSuggestion(
                 id: "subscription:\(subscription.id.uuidString)",
-                kind: .openSubscription,
                 title: "Open \(subscription.displayName)",
-                payload: ["subscriptionID": subscription.id.uuidString],
+                action: .openSubscription(subscription.id),
                 requiresConfirmation: false
             ),
             tooling.draftReviewUpdate(
                 subscriptionID: subscription.id,
-                fields: [
-                    "status": SubscriptionStatus.needsReview.rawValue,
-                    "notes": """
+                draft: ReviewUpdateDraft(
+                    status: .needsReview,
+                    notes: """
                     Copilot flagged a \(change.percentString) price change against the
                     earlier baseline.
                     """
-                ]
+                )
             )
         ]
     }

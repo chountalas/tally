@@ -61,6 +61,8 @@ Run tests:
 xcodebuild test -project Tally.xcodeproj -scheme Tally -destination 'platform=macOS' -derivedDataPath .build/derived
 ```
 
+Maintainers can find the signed and notarized macOS release procedure in [docs/releasing.md](docs/releasing.md).
+
 ## Signing And iCloud
 
 The repo ships local-only public defaults in [Config/Tally.xcconfig](Config/Tally.xcconfig). The macOS target signs to run locally and keeps App Sandbox enabled. For a real device build or CloudKit sync, copy the example config and set values owned by your Apple developer account:

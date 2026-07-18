@@ -41,8 +41,8 @@ struct AIProviderSelectionTests {
             gemmaModelManager: Self.emptyGemmaModelManager()
         )
 
-        #expect(engine.importStrategy(forUniqueMerchantCount: 3) == .individual)
-        #expect(engine.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
+        #expect(engine.strategy(forUniqueMerchantCount: 3) == .individual)
+        #expect(engine.strategy(forUniqueMerchantCount: 300) == .providerBatch)
     }
 
     @Test func detectionServiceEnablesBackgroundAIWhenGemmaIsReady() async throws {
@@ -114,10 +114,9 @@ struct AIProviderSelectionTests {
             gemmaModelManager: manager
         )
 
-        // Gemma must not be adopted in background automation. The generator may
-        // legitimately fall back to Apple Intelligence on OS 26+, so only assert
-        // that Gemma itself was not used.
-        #expect(intelligence.evidenceProviderKind != .gemmaLocal)
+        // Background detection must stay deterministic and must not trigger a
+        // different provider's model startup when the selected model is absent.
+        #expect(intelligence.evidenceProviderKind == nil)
         #expect(fileManager.fileExists(atPath: manager.managedModelURL.path) == false)
         #expect(manager.statusSnapshot().health == .adoptable)
     }
@@ -134,11 +133,11 @@ struct AIProviderSelectionTests {
             gemmaModelManager: Self.emptyGemmaModelManager()
         )
 
-        #expect(appModel.classifier.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
+        #expect(appModel.classifier.strategy(forUniqueMerchantCount: 300) == .providerBatch)
 
         appModel.selectIntelligenceProvider(.appleIntelligence)
 
-        #expect(appModel.classifier.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
+        #expect(appModel.classifier.strategy(forUniqueMerchantCount: 300) == .providerBatch)
     }
 
     @Test func adoptsCompatibleExistingModelIntoManagedPath() throws {

@@ -53,20 +53,20 @@ struct LibraryResetSummary {
 @MainActor
 final class LibraryResetService {
     private let notificationService: RenewalNotificationService
-    private let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
+    private let calendarEventCleaner: ([String]) throws -> Void
     private let pendingCalendarEventRecorder: ([String]) -> Void
 
     init(
         calendarService: RenewalCalendarService = RenewalCalendarService(),
         notificationService: RenewalNotificationService = RenewalNotificationService(),
-        calendarEventCleaner: (([Subscription], ModelContext) throws -> Void)? = nil,
+        calendarEventCleaner: (([String]) throws -> Void)? = nil,
         pendingCalendarEventRecorder: @escaping ([String]) -> Void = { identifiers in
             PendingCalendarEventCleanupStore.record(identifiers)
         }
     ) {
         self.notificationService = notificationService
-        self.calendarEventCleaner = calendarEventCleaner ?? { subscriptions, context in
-            try calendarService.clearSyncedEvents(for: subscriptions, context: context)
+        self.calendarEventCleaner = calendarEventCleaner ?? { identifiers in
+            try calendarService.clearSyncedEvents(withIdentifiers: identifiers)
         }
         self.pendingCalendarEventRecorder = pendingCalendarEventRecorder
     }
@@ -79,19 +79,8 @@ final class LibraryResetService {
         let aliases = try context.fetch(FetchDescriptor<MerchantAlias>())
         let reviewRules = try context.fetch(FetchDescriptor<SubscriptionReviewRule>())
         let templates = includeTemplates ? try context.fetch(FetchDescriptor<ColumnMappingTemplate>()) : []
-
-        do {
-            try calendarEventCleaner(subscriptions, context)
-        } catch RenewalCalendarError.accessDenied {
-            // Local subscription state is about to be deleted, so cleanup failure should not block the reset.
-            pendingCalendarEventRecorder(subscriptions.compactMap(\.calendarEventIdentifier))
-        }
-
-        do {
-            try notificationService.clearScheduledNotifications(for: subscriptions, context: context)
-        } catch RenewalNotificationError.accessDenied {
-            // Local subscription state is about to be deleted, so cleanup failure should not block the reset.
-        }
+        let subscriptionIDs = subscriptions.map(\.id)
+        let calendarEventIdentifiers = subscriptions.compactMap(\.calendarEventIdentifier)
 
         // Delete every library model so a reset is a true clean slate. Anything
         // left behind (suppressions, dedup identities, detection evidence) would
@@ -122,6 +111,15 @@ final class LibraryResetService {
         }
 
         try context.save()
+
+        notificationService.clearScheduledNotifications(forSubscriptionIDs: subscriptionIDs)
+        do {
+            try calendarEventCleaner(calendarEventIdentifiers)
+        } catch {
+            // The local reset is already durable. Preserve identifiers so the
+            // external cleanup can be retried when Calendar becomes available.
+            pendingCalendarEventRecorder(calendarEventIdentifiers)
+        }
 
         return LibraryResetSummary(
             importCount: imports.count,

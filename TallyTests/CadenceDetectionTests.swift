@@ -50,6 +50,16 @@ final class CadenceDetectionTests: XCTestCase {
         XCTAssertEqual(result, .quarterly)
     }
 
+    func testCadenceOwnsExactMonthlyNormalizationRules() {
+        XCTAssertEqual(SubscriptionCadence.monthly.normalizedMonthlyAmount(for: 12), 12)
+        XCTAssertEqual(SubscriptionCadence.annual.normalizedMonthlyAmount(for: 120), 10)
+        XCTAssertEqual(SubscriptionCadence.quarterly.normalizedMonthlyAmount(for: 30), 10)
+        XCTAssertEqual(SubscriptionCadence.semiannual.normalizedMonthlyAmount(for: 60), 10)
+        XCTAssertEqual(SubscriptionCadence.biweekly.normalizedMonthlyAmount(for: 12), 26)
+        XCTAssertEqual(SubscriptionCadence.weekly.normalizedMonthlyAmount(for: 12), 52)
+        XCTAssertEqual(SubscriptionCadence.unknown.normalizedMonthlyAmount(for: 12), 12)
+    }
+
     func testConsistencyUsesWidenedMonthlyTolerance() {
         let consistency = service.recurrenceConsistency(for: [28, 31, 30, 31], cadence: .monthly)
         XCTAssertGreaterThan(consistency, 0.75)

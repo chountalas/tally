@@ -80,7 +80,7 @@ extension SubscriptionDetectionService {
         let resolvedStatus = rule.overrideStatus ?? (resolvedCadence == .unknown ? .needsReview : .active)
         let resolvedCategory = rule.overrideCategory?.nilIfBlank
         let resolvedCurrency = rule.overridePriceCurrency?.nilIfBlank ?? "USD"
-        let normalizedMonthlyAmount = normalizeMonthly(price: priceAmount, cadence: resolvedCadence)
+        let normalizedMonthlyAmount = resolvedCadence.normalizedMonthlyAmount(for: priceAmount)
         let lastChargeDate = rule.overrideLastChargeDate ?? existing?.lastChargeDate
         let nextChargeDate = predictNextCharge(from: lastChargeDate, cadence: resolvedCadence)
 

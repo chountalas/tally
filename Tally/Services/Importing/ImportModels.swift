@@ -1,5 +1,19 @@
 import Foundation
 
+enum ImportFileFormat: String, Codable, CaseIterable, Sendable {
+    case csv
+    case xls
+    case xlsx
+    case ofx
+    case qfx
+
+    init?(fileName: String) {
+        self.init(rawValue: URL(fileURLWithPath: fileName).pathExtension.lowercased())
+    }
+
+    var displayName: String { rawValue.uppercased() }
+}
+
 struct TransactionImportDraft: Identifiable, Equatable, Sendable {
     let id: UUID
     let fileName: String
@@ -79,9 +93,13 @@ enum ImportPreparationService {
 
             try validateImportFileSize(at: url)
 
+            guard let format = ImportFileFormat(fileName: url.lastPathComponent) else {
+                throw ImportPreparationError.unsupportedFileType(url.pathExtension)
+            }
+
             let draft: TransactionImportDraft
-            switch url.pathExtension.lowercased() {
-            case "csv":
+            switch format {
+            case .csv:
                 let data = try Data(contentsOf: url)
                 guard let decoded = decodeImportText(from: data) else {
                     throw ImportPreparationError.unreadableContent
@@ -91,17 +109,17 @@ enum ImportPreparationService {
                     csvText: decoded.text,
                     warnings: decoded.warnings
                 )
-            case "xlsx":
+            case .xlsx:
                 draft = try XLSXTransactionImporter().makeDraft(
                     fileName: url.lastPathComponent,
                     fileURL: url
                 )
-            case "xls":
+            case .xls:
                 draft = try XLSBinaryTransactionImporter().makeDraft(
                     fileName: url.lastPathComponent,
                     fileURL: url
                 )
-            default:
+            case .ofx, .qfx:
                 throw ImportPreparationError.unsupportedFileType(url.pathExtension)
             }
 
@@ -452,7 +470,7 @@ enum TabularHeaderDetector {
     }
 }
 
-private enum ImportPreparationError: LocalizedError {
+enum ImportPreparationError: LocalizedError {
     case unsupportedFileType(String)
     case unreadableContent
     case fileTooLarge(actualBytes: Int64, maxBytes: Int64)

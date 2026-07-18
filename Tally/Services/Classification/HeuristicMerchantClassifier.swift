@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
 
 private struct KnownBrandProfile {
     let name: String
@@ -1055,21 +1052,3 @@ struct HeuristicMerchantClassifier {
         return words.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
-
-#if canImport(FoundationModels)
-@available(iOS 26.0, macOS 26.0, *)
-extension SystemLanguageModel.Availability.UnavailableReason {
-    var description: String {
-        switch self {
-        case .deviceNotEligible:
-            return "device not eligible"
-        case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence is not enabled"
-        case .modelNotReady:
-            return "model assets are not ready"
-        @unknown default:
-            return "unknown availability reason"
-        }
-    }
-}
-#endif

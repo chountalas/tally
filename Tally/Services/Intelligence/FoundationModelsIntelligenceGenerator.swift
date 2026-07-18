@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 
 extension SubscriptionIntelligenceService {
     func emptySavingsResponse() -> IntelligenceResponse {
@@ -12,9 +13,8 @@ extension SubscriptionIntelligenceService {
             actions: [
                 IntelligenceActionSuggestion(
                     id: "tab:transactions",
-                    kind: .openTab,
                     title: "Open transactions",
-                    payload: ["route": IntelligenceNavigationRoute.transactions.rawValue],
+                    action: .openTab(.transactions),
                     requiresConfirmation: false
                 )
             ],
@@ -36,9 +36,8 @@ extension SubscriptionIntelligenceService {
             actions: [
                 IntelligenceActionSuggestion(
                     id: "tab:subscriptions",
-                    kind: .openTab,
                     title: "Open subscriptions",
-                    payload: ["route": IntelligenceNavigationRoute.subscriptions.rawValue],
+                    action: .openTab(.subscriptions),
                     requiresConfirmation: false
                 )
             ],
@@ -50,9 +49,6 @@ extension SubscriptionIntelligenceService {
         )
     }
 }
-
-#if canImport(FoundationModels)
-import FoundationModels
 
 @available(iOS 26.0, macOS 26.0, *)
 struct FoundationModelsIntelligenceGenerator: SubscriptionIntelligenceGenerating {
@@ -92,16 +88,6 @@ struct FoundationModelsIntelligenceGenerator: SubscriptionIntelligenceGenerating
             summary: response.content.summary,
             followUps: response.content.followUps
         )
-    }
-
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        let session = LanguageModelSession(
-            model: SystemLanguageModel(useCase: .general),
-            instructions: instructions
-        )
-
-        let response = try await session.respond(to: prompt, options: deterministicOptions)
-        return response.content
     }
 
     func classifyMerchant(
@@ -458,4 +444,3 @@ private struct SubscriptionEvidenceEvaluationPayload {
     let negativeSignals: [String]
     let reasonSummary: String
 }
-#endif

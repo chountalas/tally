@@ -13,7 +13,6 @@ struct SubscriptionCopilotSheet: View {
     @Query var aliases: [MerchantAlias]
     @Query var classifications: [MerchantClassification]
 
-    let title: String
     let seedQuery: IntelligenceQuery?
     let suggestionQueries: [IntelligenceQuery]
 
@@ -27,11 +26,9 @@ struct SubscriptionCopilotSheet: View {
     let intelligenceTask: Task<SubscriptionIntelligenceService, Never>
 
     init(
-        title: String = "Ask Tally",
         seedQuery: IntelligenceQuery? = nil,
         suggestionQueries: [IntelligenceQuery] = SubscriptionCopilotSheet.defaultSuggestions
     ) {
-        self.title = title
         self.seedQuery = seedQuery
         self.suggestionQueries = suggestionQueries
         intelligenceTask = Task.detached(priority: .userInitiated) {

@@ -1,5 +1,27 @@
 import Foundation
 
+enum AIServiceCategoryValidator {
+    private static let invalidTokens = [
+        "confidence",
+        "score",
+        "between",
+        "likely",
+        "merchant",
+        "merchant type",
+        "brand",
+        "name",
+        "boolean",
+        "business type"
+    ]
+
+    static func isValid(_ category: String) -> Bool {
+        let normalizedCategory = category.lowercased()
+        return category.count <= 32 && invalidTokens.contains { token in
+            normalizedCategory.localizedStandardContains(token)
+        } == false
+    }
+}
+
 enum IntelligenceEvidenceKind: String, Codable, Hashable, Sendable {
     case subscription
     case transaction
@@ -33,12 +55,52 @@ enum IntelligenceNavigationRoute: String, Codable, Hashable, Sendable {
     case transactions
 }
 
+struct ReviewUpdateDraft: Codable, Hashable, Sendable {
+    let status: SubscriptionStatus?
+    let displayName: String?
+    let category: String?
+    let notes: String?
+
+    init(
+        status: SubscriptionStatus? = nil,
+        displayName: String? = nil,
+        category: String? = nil,
+        notes: String? = nil
+    ) {
+        self.status = status
+        self.displayName = displayName
+        self.category = category
+        self.notes = notes
+    }
+}
+
+enum IntelligenceAction: Codable, Hashable, Sendable {
+    case openSubscription(UUID)
+    case createAliasDraft(rawMerchant: String, canonicalName: String)
+    case draftReviewUpdate(subscriptionID: UUID, draft: ReviewUpdateDraft)
+    case openTab(IntelligenceNavigationRoute)
+
+    var kind: IntelligenceActionKind {
+        switch self {
+        case .openSubscription:
+            return .openSubscription
+        case .createAliasDraft:
+            return .createAliasDraft
+        case .draftReviewUpdate:
+            return .draftReviewUpdate
+        case .openTab:
+            return .openTab
+        }
+    }
+}
+
 struct IntelligenceActionSuggestion: Identifiable, Codable, Hashable, Sendable {
     let id: String
-    let kind: IntelligenceActionKind
     let title: String
-    let payload: [String: String]
+    let action: IntelligenceAction
     let requiresConfirmation: Bool
+
+    var kind: IntelligenceActionKind { action.kind }
 }
 
 struct IntelligenceResponse: Codable, Hashable, Sendable {
@@ -91,7 +153,6 @@ protocol SubscriptionIntelligenceTooling {
     func allTransactions() -> [NormalizedTransaction]
     func allAliases() -> [MerchantAlias]
     func allClassifications() -> [MerchantClassification]
-    func libraryOverview() -> LibraryOverviewSnapshot
     func upcomingRenewals(days: Int) -> [Subscription]
     func subscriptionDetail(id: UUID) -> Subscription?
     func merchantHistory(name: String) -> [NormalizedTransaction]
@@ -99,7 +160,7 @@ protocol SubscriptionIntelligenceTooling {
     func draftAlias(rawMerchant: String, canonicalName: String) -> IntelligenceActionSuggestion
     func draftReviewUpdate(
         subscriptionID: UUID,
-        fields: [String: String]
+        draft: ReviewUpdateDraft
     ) -> IntelligenceActionSuggestion
 }
 
@@ -130,19 +191,6 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
 
     func allClassifications() -> [MerchantClassification] {
         classifications
-    }
-
-    func libraryOverview() -> LibraryOverviewSnapshot {
-        let metrics = DashboardMetrics(
-            subscriptions: subscriptions,
-            transactions: transactions
-        )
-        return LibraryOverviewSnapshot(
-            monthlyRunRate: metrics.monthlyRunRate,
-            annualizedSpend: metrics.annualizedSpend,
-            activeCount: metrics.activeCount,
-            needsReviewCount: metrics.needsReviewCount
-        )
     }
 
     func upcomingRenewals(days: Int) -> [Subscription] {
@@ -189,28 +237,26 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
     ) -> IntelligenceActionSuggestion {
         IntelligenceActionSuggestion(
             id: "alias:\(rawMerchant.lowercased()):\(canonicalName.lowercased())",
-            kind: .createAliasDraft,
             title: "Save alias for \(rawMerchant)",
-            payload: [
-                "rawMerchant": rawMerchant,
-                "canonicalName": canonicalName
-            ],
+            action: .createAliasDraft(
+                rawMerchant: rawMerchant,
+                canonicalName: canonicalName
+            ),
             requiresConfirmation: true
         )
     }
 
     func draftReviewUpdate(
         subscriptionID: UUID,
-        fields: [String: String]
+        draft: ReviewUpdateDraft
     ) -> IntelligenceActionSuggestion {
-        var payload = fields
-        payload["subscriptionID"] = subscriptionID.uuidString
-
         return IntelligenceActionSuggestion(
             id: "review:\(subscriptionID.uuidString)",
-            kind: .draftReviewUpdate,
             title: "Apply review update",
-            payload: payload,
+            action: .draftReviewUpdate(
+                subscriptionID: subscriptionID,
+                draft: draft
+            ),
             requiresConfirmation: true
         )
     }
@@ -225,7 +271,6 @@ protocol SubscriptionIntelligenceGenerating: Sendable {
         facts: String,
         draft: IntelligenceResponse
     ) async throws -> IntelligenceCopyPayload
-    func generateText(instructions: String, prompt: String) async throws -> String
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,

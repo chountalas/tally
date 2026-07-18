@@ -55,6 +55,7 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Tally/Support/Tally-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - $(inherited)
+          - $(SRCROOT)/Tally/Support/LibXLSConfig
           - $(SRCROOT)/Vendor/libxls/include
         # SDK-conditional runpath because this is a multi-destination target.
         #   macOS: executable lives at .app/Contents/MacOS, frameworks at
@@ -100,7 +101,6 @@ targets:
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: SwiftData.framework
-      - sdk: Charts.framework
       - sdk: UniformTypeIdentifiers.framework
       - sdk: EventKit.framework
       - sdk: UserNotifications.framework

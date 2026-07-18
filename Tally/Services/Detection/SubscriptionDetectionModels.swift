@@ -8,7 +8,6 @@ enum SubscriptionDetectionClusterStatus {
 }
 
 struct SubscriptionClusterReport {
-    let canonicalName: String
     let displayName: String
     let status: SubscriptionDetectionClusterStatus
     let source: SubscriptionDetectionSource
@@ -22,6 +21,15 @@ struct SubscriptionDetectionImportSummary {
     let needsReviewCount: Int
     let suppressedCount: Int
     let recoveredCount: Int
+}
+
+extension ImportRecord {
+    func apply(_ summary: SubscriptionDetectionImportSummary) {
+        detectedSubscriptionCount = summary.detectedCount
+        needsReviewSubscriptionCount = summary.needsReviewCount
+        suppressedRecurringCandidateCount = summary.suppressedCount
+        recoveredRecurringCandidateCount = summary.recoveredCount
+    }
 }
 
 struct SubscriptionDetectionReport {

@@ -4,11 +4,23 @@ import XCTest
 
 @MainActor
 final class LibraryResetServiceTests: XCTestCase {
+    func testImportRecordPreservesTypedFileFormatAsRawValue() {
+        let record = ImportRecord(
+            fileName: "statement.xlsx",
+            fileFormat: .xlsx,
+            status: .queued,
+            mappingSignature: "test"
+        )
+
+        XCTAssertEqual(record.fileFormat, .xlsx)
+        XCTAssertEqual(record.sourceType, "xlsx")
+    }
+
     /// A full reset must clear every library-owned model. If any store is left
     /// behind, previously-suppressed merchants stay suppressed and dedup ghosts
     /// persist after the user asks for a clean slate.
     func testClearLibraryDeletesAllModelTypes() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         seedOneOfEachModel(in: context)
         try context.save()
@@ -44,7 +56,7 @@ final class LibraryResetServiceTests: XCTestCase {
     /// "clear imported data" doesn't force the user to re-map their bank's CSV,
     /// while every other learning store is still wiped.
     func testClearLibraryKeepsTemplatesWhenNotIncluded() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         seedOneOfEachModel(in: context)
         try context.save()
@@ -60,7 +72,7 @@ final class LibraryResetServiceTests: XCTestCase {
     }
 
     func testClearLibraryQueuesCalendarCleanupWhenAccessDenied() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         seedOneOfEachModel(in: context)
         let subscription = try XCTUnwrap(try context.fetch(FetchDescriptor<Subscription>()).first)
@@ -69,7 +81,7 @@ final class LibraryResetServiceTests: XCTestCase {
 
         var recordedPendingIDs: [String] = []
         let service = LibraryResetService(
-            calendarEventCleaner: { _, _ in
+            calendarEventCleaner: { _ in
                 throw RenewalCalendarError.accessDenied
             },
             pendingCalendarEventRecorder: { identifiers in
@@ -100,7 +112,7 @@ final class LibraryResetServiceTests: XCTestCase {
 
         context.insert(ImportRecord(
             fileName: "seed.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "seed"
         ))

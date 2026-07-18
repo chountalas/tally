@@ -39,6 +39,7 @@ extension SubscriptionDetectionService {
         environment: DetectionEnvironment,
         state: DetectionAccumulator
     ) async {
+        guard Task.isCancelled == false else { return }
         let discoverableTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
         }
@@ -50,6 +51,7 @@ extension SubscriptionDetectionService {
             source: .primary,
             reviewOnly: false
         )
+        guard Task.isCancelled == false else { return }
 
         let remainingDebitTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
@@ -59,6 +61,7 @@ extension SubscriptionDetectionService {
             environment: environment,
             state: state
         )
+        guard Task.isCancelled == false else { return }
 
         let postFallbackTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
@@ -68,6 +71,7 @@ extension SubscriptionDetectionService {
             environment: environment,
             state: state
         )
+        guard Task.isCancelled == false else { return }
 
         await applyManualSubscriptions(
             from: environment.rulesByCanonical,
@@ -80,6 +84,7 @@ extension SubscriptionDetectionService {
 
     func resetSubscriptionLinks(for transactions: [NormalizedTransaction]) async {
         for (index, transaction) in transactions.enumerated() {
+            guard Task.isCancelled == false else { return }
             transaction.subscriptionID = nil
             if index.isMultiple(of: 250) {
                 await Task.yield()
@@ -92,6 +97,7 @@ extension SubscriptionDetectionService {
         let classifier = HeuristicMerchantClassifier()
 
         for transaction in transactions {
+            guard Task.isCancelled == false else { return }
             let result = unmasker.unmask(
                 rawMerchant: transaction.merchantRaw,
                 memo: transaction.memo,
@@ -131,11 +137,13 @@ extension SubscriptionDetectionService {
         reviewOnly: Bool
     ) async {
         for (index, merchant) in groups.keys.sorted().enumerated() {
+            guard Task.isCancelled == false else { return }
             guard let merchantTransactions = groups[merchant] else {
                 continue
             }
 
             for cluster in candidateClusters(for: merchant, transactions: merchantTransactions) {
+                guard Task.isCancelled == false else { return }
                 await applyDetectedCluster(
                     cluster,
                     environment: environment,
@@ -157,11 +165,13 @@ extension SubscriptionDetectionService {
         state: DetectionAccumulator
     ) async {
         for group in fallbackRecoveryGroups(from: transactions) {
+            guard Task.isCancelled == false else { return }
             for cluster in candidateClusters(
                 for: group.merchant,
                 transactions: group.transactions,
                 mode: .fallback
             ) {
+                guard Task.isCancelled == false else { return }
                 await applyDetectedCluster(
                     cluster,
                     environment: environment,
@@ -181,6 +191,7 @@ extension SubscriptionDetectionService {
         let singleChargeCandidates = singleChargeCandidates(from: transactions)
 
         for (index, transaction) in singleChargeCandidates.enumerated() {
+            guard Task.isCancelled == false else { return }
             guard let candidate = recentPurchaseCandidate(
                 for: transaction,
                 environment: environment,
@@ -304,7 +315,6 @@ extension SubscriptionDetectionService {
             )
             state.clusterReports.append(
                 SubscriptionClusterReport(
-                    canonicalName: suppression.canonicalName,
                     displayName: suppression.displayName,
                     status: .suppressed,
                     source: suppression.detectionSource,
@@ -366,7 +376,6 @@ extension SubscriptionDetectionService {
             )
             state.clusterReports.append(
                 SubscriptionClusterReport(
-                    canonicalName: summary.canonicalName,
                     displayName: summary.displayName,
                     status: .needsReview,
                     source: .recentPurchase,

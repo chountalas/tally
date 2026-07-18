@@ -160,10 +160,6 @@ enum ServiceLogoDatabase {
             .map(\.1)
     }
 
-    static func assetExists(named name: String) -> Bool {
-        resolver.assetExists(named: name)
-    }
-
     private static func platformAssetExists(named name: String) -> Bool {
         #if os(iOS)
         UIImage(named: name) != nil
@@ -185,14 +181,24 @@ enum ServiceLogoDatabase {
         if aliases.contains(query) {
             return 0
         }
-        if aliases.contains(where: { $0.hasPrefix(query) }) {
-            return 1
+
+        let prefixDistance = aliases
+            .filter { $0.hasPrefix(query) }
+            .map { $0.count - query.count }
+            .min()
+        if let prefixDistance {
+            return 1_000 + prefixDistance
         }
-        if aliases.contains(where: { $0.contains(query) || query.contains($0) }) {
-            return 2
+
+        let containmentDistance = aliases
+            .filter { $0.contains(query) || query.contains($0) }
+            .map { abs($0.count - query.count) }
+            .min()
+        if let containmentDistance {
+            return 2_000 + containmentDistance
         }
         if title(for: entry.assetName).lowercased().contains(query) {
-            return 3
+            return 3_000
         }
         return nil
     }
@@ -330,12 +336,25 @@ final class ServiceLogoResolver: @unchecked Sendable {
         }
 
         for candidate in candidates {
-            if let fuzzy = entries.first(where: { entry in
-                entry.aliases.contains { alias in
-                    candidate.hasPrefix(alias) || candidate.hasSuffix(alias)
+            var bestMatch: ServiceLogoDatabase.Entry?
+            var bestAliasLength = 0
+
+            for entry in entries {
+                let matchingAliasLength = entry.aliases
+                    .filter { alias in
+                        candidate.hasPrefix(alias) || candidate.hasSuffix(alias)
+                    }
+                    .map(\.count)
+                    .max() ?? 0
+
+                if matchingAliasLength > bestAliasLength {
+                    bestMatch = entry
+                    bestAliasLength = matchingAliasLength
                 }
-            }) {
-                return fuzzy.assetName
+            }
+
+            if let bestMatch {
+                return bestMatch.assetName
             }
         }
 

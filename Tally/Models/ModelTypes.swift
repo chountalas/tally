@@ -1,6 +1,6 @@
 import Foundation
 
-enum SubscriptionStatus: String, Codable, CaseIterable, Identifiable {
+enum SubscriptionStatus: String, Codable, CaseIterable, Hashable, Identifiable, Sendable {
     case active
     case former
     case needsReview
@@ -75,28 +75,49 @@ enum SubscriptionCadence: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var monthDivisor: Decimal? {
+    func normalizedMonthlyAmount(for price: Decimal) -> Decimal {
         switch self {
         case .monthly:
-            return 1
+            return price
         case .annual:
-            return 12
+            return price / 12
         case .quarterly:
-            return 3
+            return price / 3
         case .semiannual:
-            return 6
+            return price / 6
         case .biweekly:
-            return Decimal(string: "0.461538") // 12 / 26
+            return price * 26 / 12
         case .weekly:
-            return Decimal(string: "0.230769") // 12 / 52
+            return price * 52 / 12
         case .unknown:
-            return nil
+            return price
         }
     }
 
     func advance(_ date: Date, using calendar: Calendar = .current) -> Date? {
         guard self != .unknown else { return nil }
-        return tallyAdvanced(date, by: 1, using: calendar)
+        return advanced(date, by: 1, using: calendar)
+    }
+
+    func advanced(
+        _ date: Date,
+        by periods: Int,
+        using calendar: Calendar = .current
+    ) -> Date? {
+        switch self {
+        case .weekly:
+            return calendar.date(byAdding: .day, value: 7 * periods, to: date)
+        case .biweekly:
+            return calendar.date(byAdding: .day, value: 14 * periods, to: date)
+        case .monthly, .unknown:
+            return calendar.date(byAdding: .month, value: periods, to: date)
+        case .quarterly:
+            return calendar.date(byAdding: .month, value: 3 * periods, to: date)
+        case .semiannual:
+            return calendar.date(byAdding: .month, value: 6 * periods, to: date)
+        case .annual:
+            return calendar.date(byAdding: .year, value: periods, to: date)
+        }
     }
 }
 
@@ -280,6 +301,33 @@ struct MerchantClassificationResult: Codable, Hashable, Sendable {
     var merchantKind: MerchantKind
     var subscriptionAffinity: Double
     var confidence: Double
+}
+
+struct MerchantClassificationRequest: Sendable {
+    let rawMerchant: String
+    let memo: String?
+    let category: String?
+    let amount: Decimal
+}
+
+extension MerchantClassificationResult {
+    func resolvedTransactionCategory(
+        sourceCategory: String?,
+        preferClassification: Bool = false
+    ) -> String? {
+        let sourceCategory = sourceCategory?.nilIfBlank
+        guard let classifiedCategory = serviceCategory.nilIfBlank else {
+            return sourceCategory
+        }
+        if preferClassification || sourceCategory == nil || sourceCategory == "Uncategorized" {
+            return classifiedCategory
+        }
+
+        let shouldTrustClassification = confidence >= 0.8 && (
+            subscriptionAffinity >= 0.65 || merchantKind.isUsuallyNonSubscription == false
+        )
+        return shouldTrustClassification ? classifiedCategory : sourceCategory
+    }
 }
 
 struct RecurringClusterEvaluationInput: Hashable, Sendable {

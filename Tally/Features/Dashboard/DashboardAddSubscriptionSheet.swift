@@ -472,7 +472,7 @@ struct ManualSubscriptionDraftSuggestion: Sendable {
     let websiteURL: String?
     let reminderDaysBefore: Int?
     let replacementSubscriptionID: UUID?
-    let modelSource: String?
+    let modelSource: AIProviderKind?
     let summary: String
 }
 
@@ -556,7 +556,7 @@ struct ManualSubscriptionDraftAdvisor: Sendable {
             reminderDaysBefore: suggestedReminderLead,
             replacementSubscriptionID: suggestedReplacement,
             existingSubscriptions: existingSubscriptions,
-            modelSource: aiClassification == nil ? nil : "Gemma"
+            modelSource: aiClassification == nil ? nil : AIProviderPreferences().selectedKind
         )
 
         guard matchedServiceIdentifier != nil ||
@@ -573,7 +573,7 @@ struct ManualSubscriptionDraftAdvisor: Sendable {
             websiteURL: suggestedWebsite,
             reminderDaysBefore: suggestedReminderLead,
             replacementSubscriptionID: suggestedReplacement,
-            modelSource: aiClassification == nil ? nil : "Gemma",
+            modelSource: aiClassification == nil ? nil : AIProviderPreferences().selectedKind,
             summary: summary
         )
     }
@@ -715,12 +715,12 @@ struct ManualSubscriptionDraftAdvisor: Sendable {
         reminderDaysBefore: Int?,
         replacementSubscriptionID: UUID?,
         existingSubscriptions: [Subscription],
-        modelSource: String?
+        modelSource: AIProviderKind?
     ) -> String {
         var parts: [String] = []
 
         if let modelSource {
-            parts.append("\(modelSource) drafted the service match")
+            parts.append("\(modelSource.title) drafted the service match")
         }
 
         if let matchedServiceIdentifier,

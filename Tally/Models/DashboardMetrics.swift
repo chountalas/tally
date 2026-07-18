@@ -4,22 +4,13 @@ struct DashboardMetrics {
     let monthlyRunRate: Decimal
     let annualizedSpend: Decimal
     let activeCount: Int
-    let annualCount: Int
-    let monthlyCount: Int
-    let needsReviewCount: Int
     let upcomingRenewals: [Subscription]
-    let probableRenewals: [Subscription]
     let monthlySpend: [MonthlySpendPoint]
     let yearlySpend: [YearlySpendPoint]
     let opportunities: [SavingsOpportunity]
     let actNowItems: [RenewalDecisionItem]
     let overlapGroups: [OverlapGroup]
     let priceChangedSubscriptions: [Subscription]
-
-    var averagePerSubscription: Decimal {
-        guard activeCount > 0 else { return 0 }
-        return monthlyRunRate / Decimal(activeCount)
-    }
 
     var monthlyChange: MetricChange? {
         guard monthlySpend.count >= 2 else { return nil }
@@ -69,20 +60,11 @@ struct DashboardMetrics {
         monthlyRunRate = activeSubscriptions.reduce(Decimal.zero) { $0 + $1.normalizedMonthlyAmount }
         annualizedSpend = monthlyRunRate * 12
         activeCount = activeSubscriptions.count
-        annualCount = activeSubscriptions.filter { $0.cadence == .annual }.count
-        monthlyCount = activeSubscriptions.filter { $0.cadence == .monthly }.count
-        needsReviewCount = subscriptions.filter { $0.status == .needsReview }.count
         let renewalCutoff =
             Calendar.current.date(byAdding: .day, value: 90, to: referenceDate) ?? .distantFuture
         upcomingRenewals = Self.upcomingRenewals(
             from: activeSubscriptions,
             renewalCutoff: renewalCutoff,
-            referenceDate: referenceDate
-        )
-        probableRenewals = Self.probableRenewals(
-            from: subscriptions,
-            renewalCutoff: renewalCutoff,
-            transactionsBySubscription: transactionsBySubscription,
             referenceDate: referenceDate
         )
         monthlySpend = DashboardMetrics.buildMonthlySpend(from: subscriptionDebitTransactions)
@@ -125,7 +107,6 @@ struct YearlySpendPoint: Identifiable {
 struct SavingsOpportunity: Identifiable {
     let id = UUID()
     let title: String
-    let detail: String
     let priority: Int
 }
 
@@ -133,8 +114,6 @@ struct RenewalDecisionItem: Identifiable {
     let subscriptionID: UUID
     let subscriptionName: String
     let renewalDate: Date?
-    let price: Decimal
-    let currencyCode: String
     let action: RenewalAction
     let detail: String
 

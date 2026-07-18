@@ -3,9 +3,11 @@ import XCTest
 @testable import Tally
 
 @MainActor
+// This cohesive integration suite intentionally exercises the unified library lifecycle end to end.
+// swiftlint:disable type_body_length
 final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testManualSubscriptionCreationPersistsFirstClassManualEntry() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -42,7 +44,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testManualSubscriptionCreationInfersServiceIdentityWhenLeftBlank() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -62,7 +64,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testFormerManualSubscriptionPersistsReplacementLink() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -98,18 +100,12 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(legacy.replacementSubscriptionID, replacement.id)
     }
 
-    func testCancelSubscriptionClearsSyncedCalendarEventBeforeMarkingFormer() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+    func testCancelSubscriptionClearsSyncedCalendarEventAfterMarkingFormer() throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
-        var cleanedIDs: [UUID] = []
-        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
-            cleanedIDs = subscriptions.map(\.id)
-            XCTAssertEqual(subscriptions.first?.status, .active)
-            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
-            subscriptions.forEach {
-                $0.calendarEventIdentifier = nil
-                $0.lastCalendarSyncAt = nil
-            }
+        var cleanedEventIDs: [String] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { identifiers in
+            cleanedEventIDs = identifiers
         })
 
         let subscription = try appModel.createManualSubscription(
@@ -129,23 +125,18 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         try appModel.cancelSubscription(id: subscription.id, in: context)
 
-        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertEqual(cleanedEventIDs, ["event-to-clear"])
         XCTAssertNil(subscription.calendarEventIdentifier)
         XCTAssertNil(subscription.lastCalendarSyncAt)
         XCTAssertEqual(subscription.status, .former)
     }
 
-    func testRemoveSubscriptionClearsSyncedCalendarEventBeforeDeleting() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+    func testRemoveSubscriptionClearsSyncedCalendarEventAfterDeleting() throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
-        var cleanedIDs: [UUID] = []
-        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
-            cleanedIDs = subscriptions.map(\.id)
-            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
-            subscriptions.forEach {
-                $0.calendarEventIdentifier = nil
-                $0.lastCalendarSyncAt = nil
-            }
+        var cleanedEventIDs: [String] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { identifiers in
+            cleanedEventIDs = identifiers
         })
 
         let subscription = try appModel.createManualSubscription(
@@ -165,17 +156,17 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         try appModel.removeSubscription(id: subscription.id, in: context)
 
-        XCTAssertEqual(cleanedIDs, [subscription.id])
-        XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
+        XCTAssertEqual(cleanedEventIDs, ["event-to-clear"])
+        XCTAssertNil(try appModel.subscription(withID: subscription.id, in: context))
     }
 
     func testHideSuggestedSubscriptionUnlinksWrongAccountCharges() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let importRecord = ImportRecord(
             fileName: "wrong-card.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test",
             importedTransactionCount: 1,
@@ -242,14 +233,14 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testHideSuggestedSubscriptionPreservesMultipleWrongAccountScopesForSameMerchant() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
         for accountName in ["Wrong Card A", "Wrong Card B"] {
             let importRecord = ImportRecord(
                 fileName: "\(accountName).csv",
-                sourceType: "csv",
+                fileFormat: .csv,
                 status: .analyzed,
                 mappingSignature: accountName,
                 importedTransactionCount: 1,
@@ -296,13 +287,32 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(Set(matchRules.compactMap(\.hiddenScopeKey)).count, 2)
     }
 
+    func testMalformedHiddenImportScopeFailsClosed() {
+        let rule = SubscriptionMatchRule(
+            canonicalName: "Hidden Streaming",
+            isNegativeRule: true,
+            createdFrom: .hiddenSuggestion,
+            hiddenImportRecordIDsJSON: "not-json"
+        )
+        let transaction = NormalizedTransaction(
+            transactionDate: .now,
+            transactionAmount: -10,
+            merchantRaw: "HIDDEN STREAMING",
+            merchantNormalized: "Hidden Streaming",
+            importRecordID: UUID()
+        )
+
+        XCTAssertEqual(rule.hiddenImportScope, .invalid)
+        XCTAssertFalse(SubscriptionDetectionService().ruleMatches(rule, transaction: transaction))
+    }
+
     func testHideSuggestedSubscriptionSplitsMultiAccountLinkedCharges() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let importRecord = ImportRecord(
             fileName: "multi-account.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test",
             importedTransactionCount: 2,
@@ -353,7 +363,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testIgnoredSubscriptionsDoNotRelinkDuringDetectionRebuild() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let subscription = Subscription(
             canonicalName: "Hidden Streaming",
@@ -411,9 +421,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
             status: .needsReview,
             priceAmount: Decimal(string: "12.99") ?? 12.99,
             currency: "USD",
-            normalizedMonthlyAmount: Decimal(string: "12.99") ?? 12.99,
             lastChargeDate: .now,
-            predictedNextChargeDate: nil,
             confidence: 0.9,
             category: "Streaming",
             reason: "New non-suppressed recurring charges were detected.",
@@ -431,12 +439,12 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testCalendarCleanupFailureDoesNotBlockLocalCancellationOrRemoval() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         var cleanupAttempts = 0
         var recordedPendingCalendarEventIDs: [String] = []
         let appModel = AppModel.testing(
-            calendarEventCleaner: { _, _ in
+            calendarEventCleaner: { _ in
                 cleanupAttempts += 1
                 throw RenewalCalendarError.accessDenied
             },
@@ -477,13 +485,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         XCTAssertEqual(cleanupAttempts, 2)
         XCTAssertEqual(activeSubscription.status, .former)
-        XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
-        XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
+        XCTAssertNil(activeSubscription.calendarEventIdentifier)
+        XCTAssertNil(try appModel.subscription(withID: formerSubscription.id, in: context))
         XCTAssertEqual(recordedPendingCalendarEventIDs, ["event-to-clear", "old-event-to-clear"])
     }
 
     func testManualSubscriptionSurvivesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
@@ -514,13 +522,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testEditedDetectedSubscriptionSurvivesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -605,7 +613,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testEditingDetectedSubscriptionStatusUpdatesLibraryStateImmediately() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let lastChargeDate = Date.now
@@ -673,14 +681,14 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testMerchantLearningPersistsNonUSDCurrencyForKeptSuggestion() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let lastChargeDate = Date.now
 
         let importRecord = ImportRecord(
             fileName: "euro-tool.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -758,13 +766,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testEditingSuggestedDetectedSubscriptionPreservesReviewQueueState() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -833,13 +841,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testHidingDetectedSuggestionSuppressesCurrentImportWithoutFalsePositiveRule() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -879,7 +887,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         let report = try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
         try context.save()
 
-        XCTAssertNil(appModel.subscription(withID: detected.id, in: context))
+        XCTAssertNil(try appModel.subscription(withID: detected.id, in: context))
         XCTAssertNil(transaction.subscriptionID)
         XCTAssertEqual(report.summary(for: importRecord.id).needsReviewCount, 0)
         XCTAssertEqual(report.summary(for: importRecord.id).suppressedCount, 1)
@@ -888,13 +896,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testCancellingDetectedSubscriptionSurvivesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -957,13 +965,13 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testRemovingDetectedFormerSubscriptionSuppressesDetectionRebuild() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -1012,7 +1020,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         )
         XCTAssertTrue(rule.isFalsePositive)
         XCTAssertTrue(rule.isUserConfirmed)
-        XCTAssertNil(appModel.subscription(withID: detectedID, in: context))
+        XCTAssertNil(try appModel.subscription(withID: detectedID, in: context))
         let transactionsAfterRemoval = try context.fetch(FetchDescriptor<NormalizedTransaction>())
             .filter { $0.merchantNormalized == "ChatGPT" }
         XCTAssertTrue(transactionsAfterRemoval.allSatisfy { $0.subscriptionID == nil })
@@ -1162,12 +1170,12 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
     }
 
     func testRecurringSaaSClusterPromotesToConfirmedInsteadOfLingeringInReview() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
         let importRecord = ImportRecord(
             fileName: "chatgpt.csv",
-            sourceType: "csv",
+            fileFormat: .csv,
             status: .analyzed,
             mappingSignature: "test"
         )
@@ -1216,3 +1224,4 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
     }
 }
+// swiftlint:enable type_body_length

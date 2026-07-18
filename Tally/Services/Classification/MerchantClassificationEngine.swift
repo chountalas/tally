@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
 
 protocol MerchantClassificationIntelligence: Sendable {
     func classifyMerchant(
@@ -29,13 +26,6 @@ enum MerchantClassificationFallbackReason: Sendable, Equatable {
     case confidentHeuristics
     case providerFailed
     case partialProviderFailure
-}
-
-struct MerchantClassificationRequest: Sendable {
-    let rawMerchant: String
-    let memo: String?
-    let category: String?
-    let amount: Decimal
 }
 
 struct MerchantClassificationBatchResult: Sendable {
@@ -143,10 +133,6 @@ struct MerchantClassificationEngine: Sendable {
 
     func strategy(forUniqueMerchantCount count: Int) -> MerchantClassificationStrategy {
         count > providerBatchThreshold ? .providerBatch : .individual
-    }
-
-    func importStrategy(forUniqueMerchantCount count: Int) -> MerchantClassificationStrategy {
-        return strategy(forUniqueMerchantCount: count)
     }
 
     func availabilitySummary(

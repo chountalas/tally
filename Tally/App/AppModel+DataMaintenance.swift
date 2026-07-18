@@ -8,16 +8,16 @@ extension AppModel {
             return
         }
 
-        let existing = (try? context.fetchCount(FetchDescriptor<NormalizedTransaction>())) ?? 0
-        guard existing == 0 else {
-            infoMessage = "Sample data is only loaded into an empty library."
-            return
-        }
-
         isLoadingSampleData = true
         defer { isLoadingSampleData = false }
 
         do {
+            let existing = try context.fetchCount(FetchDescriptor<NormalizedTransaction>())
+            guard existing == 0 else {
+                infoMessage = "Sample data is only loaded into an empty library."
+                return
+            }
+
             let draft = try CSVTransactionImporter().makeDraft(
                 fileName: "Sample Subscription Data.csv",
                 csvText: Self.sampleDataCSV
@@ -126,17 +126,7 @@ private extension AppModel {
     func refreshSeeds(
         from transactions: [NormalizedTransaction]
     ) -> [NormalizedTransactionSeed] {
-        transactions.map { transaction in
-            NormalizedTransactionSeed(
-                transactionDate: transaction.transactionDate,
-                transactionAmount: transaction.transactionAmount,
-                merchantRaw: transaction.merchantRaw,
-                category: transaction.category,
-                accountName: transaction.accountName,
-                memo: transaction.memo,
-                currency: transaction.currency
-            )
-        }
+        transactions.map(\.classificationSeed)
     }
 
     func applyRefreshedClassifications(
@@ -153,9 +143,8 @@ private extension AppModel {
             transaction.classificationConfidence = classification.confidence
             transaction.merchantKind = classification.merchantKind
             transaction.merchantSubscriptionAffinity = classification.subscriptionAffinity
-            transaction.category = refreshedTransactionCategory(
-                sourceCategory: transaction.category,
-                classification: classification
+            transaction.category = classification.resolvedTransactionCategory(
+                sourceCategory: transaction.category
             )
             if index.isMultiple(of: 250) {
                 await Task.yield()
@@ -174,33 +163,6 @@ private extension AppModel {
             subscriptionAffinity: max(transaction.merchantSubscriptionAffinity, 0.2),
             confidence: max(transaction.classificationConfidence, 0.2)
         )
-    }
-
-    func refreshedTransactionCategory(
-        sourceCategory: String?,
-        classification: MerchantClassificationResult
-    ) -> String? {
-        let sourceCategory = sourceCategory?.nilIfBlank
-        let classifiedCategory = classification.serviceCategory.nilIfBlank
-
-        guard let classifiedCategory else {
-            return sourceCategory
-        }
-        guard let sourceCategory else {
-            return classifiedCategory
-        }
-        if sourceCategory == "Uncategorized" {
-            return classifiedCategory
-        }
-
-        let shouldTrustClassification =
-            classification.confidence >= 0.8 &&
-            (
-                classification.subscriptionAffinity >= 0.65 ||
-                classification.merchantKind.isUsuallyNonSubscription == false
-            )
-
-        return shouldTrustClassification ? classifiedCategory : sourceCategory
     }
 
     func completeRefresh(

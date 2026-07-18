@@ -9,7 +9,7 @@ extension SubscriptionIntelligenceService {
     ) async -> IntelligenceResponse {
         switch route {
         case .savingsReview:
-            return savingsResponse(query: query, tooling: tooling)
+            return savingsResponse(tooling: tooling)
         case .upcomingRenewals:
             return renewalsResponse(query: query, tooling: tooling)
         case .priceChangeExplanation:
@@ -21,7 +21,6 @@ extension SubscriptionIntelligenceService {
 
     @MainActor
     func savingsResponse(
-        query: IntelligenceQuery,
         tooling: SubscriptionIntelligenceTooling
     ) -> IntelligenceResponse {
         let subscriptions = tooling.allSubscriptions()
@@ -138,9 +137,8 @@ extension SubscriptionIntelligenceService {
             actions.append(
                 IntelligenceActionSuggestion(
                     id: "subscription:\(first.id.uuidString)",
-                    kind: .openSubscription,
                     title: "Open \(first.displayName)",
-                    payload: ["subscriptionID": first.id.uuidString],
+                    action: .openSubscription(first.id),
                     requiresConfirmation: false
                 )
             )
@@ -175,10 +173,10 @@ extension SubscriptionIntelligenceService {
         actions.append(
             tooling.draftReviewUpdate(
                 subscriptionID: subscription.id,
-                fields: [
-                    "status": SubscriptionStatus.needsReview.rawValue,
-                    "notes": "Copilot flagged a recent price increase for review."
-                ]
+                draft: ReviewUpdateDraft(
+                    status: .needsReview,
+                    notes: "Copilot flagged a recent price increase for review."
+                )
             )
         )
     }
@@ -186,9 +184,8 @@ extension SubscriptionIntelligenceService {
     func openAuditAction() -> IntelligenceActionSuggestion {
         IntelligenceActionSuggestion(
             id: "tab:audit",
-            kind: .openTab,
             title: "Open audit",
-            payload: ["route": IntelligenceNavigationRoute.audit.rawValue],
+            action: .openTab(.audit),
             requiresConfirmation: false
         )
     }
@@ -204,9 +201,8 @@ extension SubscriptionIntelligenceService {
             actions: [
                 IntelligenceActionSuggestion(
                     id: "tab:calendar",
-                    kind: .openTab,
                     title: "Open calendar reminders",
-                    payload: ["route": IntelligenceNavigationRoute.calendar.rawValue],
+                    action: .openTab(.calendar),
                     requiresConfirmation: false
                 )
             ],
@@ -243,9 +239,8 @@ extension SubscriptionIntelligenceService {
             actions.append(
                 IntelligenceActionSuggestion(
                     id: "subscription:\(firstRenewal.id.uuidString)",
-                    kind: .openSubscription,
                     title: "Open \(firstRenewal.displayName)",
-                    payload: ["subscriptionID": firstRenewal.id.uuidString],
+                    action: .openSubscription(firstRenewal.id),
                     requiresConfirmation: false
                 )
             )
@@ -253,9 +248,8 @@ extension SubscriptionIntelligenceService {
         actions.append(
             IntelligenceActionSuggestion(
                 id: "tab:calendar",
-                kind: .openTab,
                 title: "Open calendar",
-                payload: ["route": IntelligenceNavigationRoute.calendar.rawValue],
+                action: .openTab(.calendar),
                 requiresConfirmation: false
             )
         )

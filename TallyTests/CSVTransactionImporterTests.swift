@@ -380,7 +380,7 @@ final class CSVTransactionImporterTests: XCTestCase {
     @MainActor
     func testBulkImportCompletesForLargeMerchantSet() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
 

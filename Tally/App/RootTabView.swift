@@ -408,18 +408,6 @@ enum SidebarTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var supportingText: String {
-        switch self {
-        case .dashboard: "Spend, renewals, decisions"
-        case .subscriptions: "Keep, review, archived"
-        case .audit: "Patterns, savings, cleanup"
-        case .calendar: "What renews next"
-        case .transactions: "Every imported charge"
-        case .imports: "Statements in progress"
-        case .settings: "AI, reminders, data"
-        }
-    }
-
     var icon: String {
         switch self {
         case .dashboard: "house"
@@ -429,18 +417,6 @@ enum SidebarTab: String, CaseIterable, Identifiable, Hashable {
         case .transactions: "arrow.left.arrow.right"
         case .imports: "square.and.arrow.down"
         case .settings: "gearshape"
-        }
-    }
-
-    var iconFilled: String {
-        switch self {
-        case .dashboard: "house.fill"
-        case .subscriptions: "creditcard.fill"
-        case .audit: "lightbulb.fill"
-        case .calendar: "calendar"
-        case .transactions: "arrow.left.arrow.right"
-        case .imports: "square.and.arrow.down.fill"
-        case .settings: "gearshape.fill"
         }
     }
 

@@ -340,37 +340,17 @@ extension SubscriptionCopilotSheet {
     func apply(action: IntelligenceActionSuggestion) {
         defer { pendingAction = nil }
 
-        switch action.kind {
-        case .openSubscription:
-            guard let rawID = action.payload["subscriptionID"],
-                  let subscriptionID = UUID(uuidString: rawID) else {
-                actionMessage = "The suggested subscription could not be opened."
-                return
-            }
+        switch action.action {
+        case let .openSubscription(subscriptionID):
             appModel.openSubscription(subscriptionID)
             dismiss()
-        case .openTab:
-            guard let routeRawValue = action.payload["route"],
-                  let route = IntelligenceNavigationRoute(rawValue: routeRawValue) else {
-                actionMessage = "The suggested screen could not be opened."
-                return
-            }
+        case let .openTab(route):
             appModel.openRoute(route)
             dismiss()
-        case .createAliasDraft:
-            guard let rawMerchant = action.payload["rawMerchant"]?.nilIfBlank,
-                  let canonicalName = action.payload["canonicalName"]?.nilIfBlank else {
-                actionMessage = "The alias suggestion was incomplete."
-                return
-            }
+        case let .createAliasDraft(rawMerchant, canonicalName):
             applyAlias(rawMerchant: rawMerchant, canonicalName: canonicalName)
-        case .draftReviewUpdate:
-            guard let rawID = action.payload["subscriptionID"],
-                  let subscriptionID = UUID(uuidString: rawID) else {
-                actionMessage = "The review update was incomplete."
-                return
-            }
-            applyReviewUpdate(subscriptionID: subscriptionID, fields: action.payload)
+        case let .draftReviewUpdate(subscriptionID, draft):
+            applyReviewUpdate(subscriptionID: subscriptionID, draft: draft)
         }
     }
 
@@ -388,12 +368,12 @@ extension SubscriptionCopilotSheet {
         }
     }
 
-    func applyReviewUpdate(subscriptionID: UUID, fields: [String: String]) {
+    func applyReviewUpdate(subscriptionID: UUID, draft: ReviewUpdateDraft) {
         Task {
             do {
                 actionMessage = try await appModel.applyReviewUpdate(
                     subscriptionID: subscriptionID,
-                    fields: fields,
+                    draft: draft,
                     in: modelContext
                 )
             } catch {
@@ -433,42 +413,4 @@ extension SubscriptionCopilotSheet {
             prompt: "Fix this merchant / create alias"
         )
     ]
-}
-
-struct FlexibleChipLayout<Item, Content>: View where Item: Hashable, Content: View {
-    let items: [Item]
-    let itemTitle: (Item) -> String
-    @ViewBuilder let content: (Item) -> Content
-
-    var body: some View {
-        let rows = buildRows()
-
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            ForEach(rows, id: \.self) { row in
-                HStack(spacing: Theme.Spacing.sm) {
-                    ForEach(row, id: \.self) { item in
-                        content(item)
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildRows() -> [[Item]] {
-        var rows: [[Item]] = [[]]
-        var currentCharacterCount = 0
-
-        for item in items {
-            let itemLength = itemTitle(item).count
-            if currentCharacterCount + itemLength > 34 {
-                rows.append([item])
-                currentCharacterCount = itemLength
-            } else {
-                rows[rows.count - 1].append(item)
-                currentCharacterCount += itemLength
-            }
-        }
-
-        return rows.filter { $0.isEmpty == false }
-    }
 }

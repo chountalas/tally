@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class SubscriptionEvidenceEngineTests: XCTestCase {
     func testPendingSourceIdentityReconcilesToPostedTransaction() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let service = SourceTransactionUpsertService()
         let postedDate = ISO8601DateFormatter().date(from: "2026-05-14T00:00:00Z") ?? .now
@@ -88,7 +88,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testPendingSourceIdentityFuzzyReconcilesPostedReplacementWithNewFeedID() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let service = SourceTransactionUpsertService()
         let pendingDate = ISO8601DateFormatter().date(from: "2026-05-14T00:00:00Z") ?? .now
@@ -171,7 +171,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testExternalTransactionIDMatchesAreScopedByAccount() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let service = SourceTransactionUpsertService()
         let postedDate = ISO8601DateFormatter().date(from: "2026-05-14T00:00:00Z") ?? .now
@@ -237,7 +237,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
 
     func testDuplicateManualImportUpsertsSourceIdentitiesWithoutDuplicatingTransactions() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let csv = """
@@ -265,7 +265,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
 
     func testIdenticalRowsInSingleManualImportStaySeparate() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let csv = """
@@ -289,7 +289,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
 
     func testManualImportReconcilesRowsAfterInsertedCsvRowShiftsPositions() async throws {
         let importer = CSVTransactionImporter()
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let appModel = AppModel.testing()
         let originalCSV = """
@@ -323,7 +323,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testFalsePositiveMerchantCorrectionCreatesNegativeMatchRuleAndRejectsMatches() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         context.insert(
             MerchantCorrection(
@@ -434,6 +434,32 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         XCTAssertTrue(SubscriptionDetectionService().ruleMatches(rule, transaction: transaction))
     }
 
+    func testMalformedMatchRuleConstraintJSONFailsClosed() {
+        let rule = SubscriptionMatchRule(
+            canonicalName: "Netflix",
+            allowedRawMerchantsJSON: "not-json",
+            amountMinimum: Decimal(string: "14.00"),
+            amountMaximum: Decimal(string: "17.00"),
+            currencyCode: "USD",
+            confidence: 1,
+            createdFrom: .reviewRule
+        )
+        let transaction = NormalizedTransaction(
+            transactionDate: .now,
+            transactionAmount: Decimal(string: "-15.49") ?? -15.49,
+            source: .manualImport,
+            merchantRaw: "NETFLIX",
+            merchantNormalized: "Netflix",
+            currency: "USD",
+            accountName: "Visa",
+            category: "Streaming",
+            merchantKind: .subscriptionService,
+            merchantSubscriptionAffinity: 1
+        )
+
+        XCTAssertFalse(SubscriptionDetectionService().ruleMatches(rule, transaction: transaction))
+    }
+
     func testMissingTransactionCurrencyMatchesDefaultUSDRule() {
         let rule = SubscriptionMatchRule(
             subscriptionID: UUID(),
@@ -463,7 +489,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testNeedsReviewEvidenceStoresLocalAIContribution() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let transaction = NormalizedTransaction(
             transactionDate: Calendar.current.date(byAdding: .day, value: -3, to: .now) ?? .now,
@@ -501,7 +527,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testMatchRuleLinksNewChargeBeforeClusteringAndRecordsEvidence() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let formatter = ISO8601DateFormatter()
         let subscription = Subscription(
@@ -567,7 +593,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testMissedOccurrenceKeepsConfirmedSubscriptionAndLowersConfidence() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let formatter = ISO8601DateFormatter()
         let subscription = Subscription(
@@ -622,7 +648,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testOccurrenceWindowIncludesEntireFinalToleranceDay() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let formatter = ISO8601DateFormatter()
         let subscription = Subscription(
@@ -668,7 +694,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     }
 
     func testPriceJumpRecordsPriceChangedOccurrence() async throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let formatter = ISO8601DateFormatter()
         let subscription = Subscription(
@@ -734,10 +760,6 @@ struct InvalidEvidenceGenerator: SubscriptionIntelligenceGenerating {
         draft: IntelligenceResponse
     ) async throws -> IntelligenceCopyPayload {
         IntelligenceCopyPayload(headline: draft.headline, summary: draft.summary, followUps: draft.followUps)
-    }
-
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        ""
     }
 
     func classifyMerchant(
@@ -808,10 +830,6 @@ struct EvidenceRecordingGenerator: SubscriptionIntelligenceGenerating {
         draft: IntelligenceResponse
     ) async throws -> IntelligenceCopyPayload {
         IntelligenceCopyPayload(headline: draft.headline, summary: draft.summary, followUps: draft.followUps)
-    }
-
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        ""
     }
 
     func classifyMerchant(

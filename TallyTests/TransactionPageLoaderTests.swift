@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class TransactionPageLoaderTests: XCTestCase {
     func testLoadLimitsResultsAndReportsFullCountNewestFirst() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let calendar = Calendar(identifier: .gregorian)
         let start = try XCTUnwrap(calendar.date(from: DateComponents(year: 2025, month: 1, day: 1)))
@@ -33,7 +33,7 @@ final class TransactionPageLoaderTests: XCTestCase {
     }
 
     func testLoadSearchesMerchantCategoryAndMemoBeforeApplyingLimit() throws {
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
         let start = Date(timeIntervalSince1970: 1_700_000_000)
 

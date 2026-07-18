@@ -169,12 +169,12 @@ struct GemmaModelManager: @unchecked Sendable {
 
     func prepareManagedModelIfNeeded() throws -> URL? {
         if let readyURL = managedModelIfReady() {
-            gemmaModelLogger.notice("Managed Gemma model already validated and ready file=\(readyURL.lastPathComponent, privacy: .public)")
+            gemmaModelLogger.notice("Managed Gemma model already validated and ready")
             return readyURL
         }
 
         if pathEntryExists(at: managedModelURL) {
-            gemmaModelLogger.notice("Removing stale managed Gemma model entry file=\(managedModelURL.lastPathComponent, privacy: .public) before repair or adoption")
+            gemmaModelLogger.notice("Removing stale managed Gemma model entry before repair or adoption")
             try removeManagedModelEntryIfPresent()
         }
 
@@ -183,7 +183,7 @@ struct GemmaModelManager: @unchecked Sendable {
             return nil
         }
 
-        gemmaModelLogger.notice("Preparing managed Gemma model from adoptable source file=\(adoptableSourceURL.lastPathComponent, privacy: .public)")
+        gemmaModelLogger.notice("Preparing managed Gemma model from adoptable source")
         return try adoptExistingModel(from: adoptableSourceURL)
     }
 
@@ -195,7 +195,7 @@ struct GemmaModelManager: @unchecked Sendable {
         try fileManager.createSymbolicLink(at: managedModelURL, withDestinationURL: sourceURL)
         try validateModel(at: managedModelURL)
         gemmaModelLogger.notice(
-            "Adopted Gemma model source_file=\(sourceURL.lastPathComponent, privacy: .public) managed_file=\(managedModelURL.lastPathComponent, privacy: .public)"
+            "Adopted Gemma model into managed storage"
         )
         return managedModelURL
     }
@@ -211,17 +211,17 @@ struct GemmaModelManager: @unchecked Sendable {
         } catch {
             try? removeManagedModelEntryIfPresent()
             gemmaModelLogger.error(
-                "Downloaded Gemma model failed post-install validation file=\(managedModelURL.lastPathComponent, privacy: .public) error_type=\(String(describing: type(of: error)), privacy: .public)"
+                "Downloaded Gemma model failed post-install validation error_type=\(String(describing: type(of: error)), privacy: .public)"
             )
             throw error
         }
-        gemmaModelLogger.notice("Installed downloaded Gemma model file=\(managedModelURL.lastPathComponent, privacy: .public)")
+        gemmaModelLogger.notice("Installed downloaded Gemma model")
         return managedModelURL
     }
 
     func removeManagedModel() throws {
         try removeManagedModelEntryIfPresent()
-        gemmaModelLogger.notice("Removed managed Gemma model entry file=\(managedModelURL.lastPathComponent, privacy: .public)")
+        gemmaModelLogger.notice("Removed managed Gemma model entry")
     }
 
     func firstAdoptableSourceURL() -> URL? {
@@ -270,7 +270,7 @@ struct GemmaModelManager: @unchecked Sendable {
 
         if case let .invalid(validationError) = validationState(for: managedModelURL) {
             gemmaModelLogger.error(
-                "Managed Gemma model is invalid file=\(managedModelURL.lastPathComponent, privacy: .public) reason=\(String(describing: validationError), privacy: .public)"
+                "Managed Gemma model is invalid reason=\(String(describing: validationError), privacy: .private)"
             )
             return GemmaModelStatusSnapshot(
                 kind: .failed,
@@ -389,18 +389,18 @@ struct GemmaModelManager: @unchecked Sendable {
             try validateModelBody(at: url, validatedFileSize: &validatedFileSize)
             let durationMilliseconds = Date().timeIntervalSince(start) * 1_000
             gemmaModelLogger.notice(
-                "Validated Gemma model file=\(url.lastPathComponent, privacy: .public) size=\(validatedFileSize, privacy: .public)B latency_ms=\(durationMilliseconds, privacy: .public)"
+                "Validated Gemma model size=\(validatedFileSize, privacy: .public)B latency_ms=\(durationMilliseconds, privacy: .public)"
             )
         } catch let error as GemmaModelValidationError {
             let durationMilliseconds = Date().timeIntervalSince(start) * 1_000
             gemmaModelLogger.error(
-                "Gemma model validation failed file=\(url.lastPathComponent, privacy: .public) reason=\(String(describing: error), privacy: .public) latency_ms=\(durationMilliseconds, privacy: .public)"
+                "Gemma model validation failed latency_ms=\(durationMilliseconds, privacy: .public)"
             )
             throw error
         } catch {
             let durationMilliseconds = Date().timeIntervalSince(start) * 1_000
             gemmaModelLogger.error(
-                "Gemma model validation failed file=\(url.lastPathComponent, privacy: .public) error_type=\(String(describing: type(of: error)), privacy: .public) latency_ms=\(durationMilliseconds, privacy: .public)"
+                "Gemma model validation failed latency_ms=\(durationMilliseconds, privacy: .public)"
             )
             throw error
         }

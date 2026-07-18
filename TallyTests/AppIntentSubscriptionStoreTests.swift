@@ -9,7 +9,7 @@ final class AppIntentSubscriptionStoreTests: XCTestCase {
             case transient
         }
 
-        let container = try ModelContainerFactory.makeSharedContainer(inMemoryOnly: true)
+        let container = try ModelContainerFactory.makeInMemoryContainer()
         var attempts = 0
         AppIntentSubscriptionStore.configureForTesting {
             attempts += 1
