@@ -15,8 +15,7 @@ struct AuditEngineTests {
         )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: [subscription],
-            transactions: []
+            allActive: [subscription]
         )
         #expect(score.cancelWorthiness < 30)
         #expect(score.action == .keep)
@@ -41,8 +40,7 @@ struct AuditEngineTests {
         )
         let score = AuditEngine.score(
             subscription: hulu,
-            allActive: [netflix, hulu],
-            transactions: []
+            allActive: [netflix, hulu]
         )
         #expect(score.cancelWorthiness >= 25)
     }
@@ -58,8 +56,7 @@ struct AuditEngineTests {
         )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: [subscription],
-            transactions: []
+            allActive: [subscription]
         )
         #expect(score.cancelWorthiness >= 20)
     }

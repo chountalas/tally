@@ -132,15 +132,6 @@ struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
         )
     }
 
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        try await generateRawText(
-            telemetryLabel: "freeform_text",
-            systemPrompt: instructions,
-            userPrompt: prompt,
-            maxTokens: 220
-        )
-    }
-
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,

@@ -45,82 +45,12 @@ struct MerchantLearningPreview: Equatable, Sendable {
     let rawMerchants: [String]
     let affectedTransactionCount: Int
     let affectedImportCount: Int
-
-    var rawMerchantCount: Int {
-        rawMerchants.count
-    }
-
-    var title: String {
-        switch mode {
-        case .reinforce:
-            return "Teach this merchant identity"
-        case .rename:
-            return "Rename and teach this merchant"
-        case .suppress:
-            return "Suppress this merchant pattern"
-        }
-    }
-
-    var summary: String {
-        let chargeLabel = affectedTransactionCount == 1 ? "charge" : "charges"
-        let variantLabel = rawMerchantCount == 1 ? "merchant variant" : "merchant variants"
-        let importLabel = affectedImportCount == 1 ? "import" : "imports"
-
-        switch mode {
-        case .reinforce:
-            return """
-            Teach \(rawMerchantCount) \(variantLabel) across \(affectedTransactionCount) \(chargeLabel) \
-            from \(affectedImportCount) \(importLabel).
-            """
-        case .rename:
-            return """
-            Move history from \(sourceCanonicalName) to \(targetCanonicalName) across \
-            \(affectedTransactionCount) \(chargeLabel) from \(affectedImportCount) \(importLabel).
-            """
-        case .suppress:
-            return """
-            Suppress future matches for \(rawMerchantCount) \(variantLabel) across \
-            \(affectedTransactionCount) \(chargeLabel) from \(affectedImportCount) \(importLabel).
-            """
-        }
-    }
-
-    var rawMerchantSummary: String {
-        guard rawMerchants.isEmpty == false else {
-            return "No linked merchant variants yet."
-        }
-
-        let visible = rawMerchants.prefix(3)
-        let remainderCount = rawMerchants.count - visible.count
-        let base = visible.joined(separator: ", ")
-        guard remainderCount > 0 else {
-            return base
-        }
-        return "\(base), +\(remainderCount) more"
-    }
-
-    var dashboardSummary: String {
-        let variantLabel = rawMerchantCount == 1 ? "variant" : "variants"
-        let chargeLabel = affectedTransactionCount == 1 ? "charge" : "charges"
-        return "\(rawMerchantCount) \(variantLabel) across \(affectedTransactionCount) \(chargeLabel)."
-    }
 }
 
 enum ReviewAutomationAction: String, Equatable, Sendable {
     case confirm
     case suppress
     case manual
-
-    var title: String {
-        switch self {
-        case .confirm:
-            return "Confirm"
-        case .suppress:
-            return "Suppress"
-        case .manual:
-            return "Manual"
-        }
-    }
 }
 
 struct ReviewAutomationCandidate: Identifiable, Equatable, Sendable {
@@ -169,23 +99,6 @@ struct ReviewAutomationResult: Equatable, Sendable {
 
     var appliedCount: Int {
         confirmedCount + suppressedCount
-    }
-
-    var summary: String {
-        var fragments: [String] = []
-        if confirmedCount > 0 {
-            fragments.append("confirmed \(confirmedCount)")
-        }
-        if suppressedCount > 0 {
-            fragments.append("suppressed \(suppressedCount)")
-        }
-        if fragments.isEmpty {
-            fragments.append("applied 0")
-        }
-        if skippedCount > 0 {
-            fragments.append("skipped \(skippedCount)")
-        }
-        return fragments.joined(separator: ", ")
     }
 }
 
@@ -2033,7 +1946,6 @@ private extension AppModel {
         let rawMerchants = Set(linkedTransactions.map(\.merchantRaw))
         let learnedCanonicalName = learnedCanonicalName(
             for: subscription,
-            linkedTransactions: linkedTransactions,
             isFalsePositive: isFalsePositive,
             in: context
         )
@@ -2120,7 +2032,6 @@ private extension AppModel {
 
     func learnedCanonicalName(
         for subscription: Subscription,
-        linkedTransactions: [NormalizedTransaction],
         isFalsePositive: Bool,
         in context: ModelContext
     ) -> String {

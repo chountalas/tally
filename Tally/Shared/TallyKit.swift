@@ -422,36 +422,13 @@ extension Subscription {
 
     var tallyIsYearly: Bool { cadence == .annual }
 
-    var tallyIsActive: Bool { status == .active }
-
     var tallyPriceWentUp: Bool { (priceChangePercent ?? 0) > 0.05 }
-
-    /// Whole-day distance to the next predicted charge (nil if unknown).
-    var tallyDaysUntilRenewal: Int? { predictedNextChargeDate?.tallyDaysFromNow }
-
-    var tallyRenewsSoon: Bool {
-        guard let days = tallyDaysUntilRenewal else { return false }
-        return days >= 0 && days <= 7
-    }
-
-    /// Raw price label, e.g. "$22.99 / month" or "$139 / year".
-    var tallyPriceLabel: String {
-        "\(priceAmount.tallyMoney(code: priceCurrency)) / \(cadence.tallyBillingUnit)"
-    }
 
     var tallyCategory: String {
         let trimmed = (serviceCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Other" : trimmed
     }
 
-    /// Months held — from `tenureMonths` if present, else derived from `firstChargeDate`.
-    var tallyTenureMonths: Int? {
-        if let t = tenureMonths, t > 0 { return t }
-        guard let start = firstChargeDate else { return nil }
-        let end = status == .active ? Date.now : (lastChargeDate ?? .now)
-        let comps = Calendar.current.dateComponents([.month], from: start, to: end)
-        return max(0, comps.month ?? 0)
-    }
 }
 
 extension SubscriptionCadence {

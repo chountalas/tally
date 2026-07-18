@@ -14,11 +14,9 @@ struct TransactionFieldParser {
     private static let currencySymbols = ["$", "€", "£", "¥", "₹", "₩", "¢"]
     private static let currencyCodes = Set(Locale.commonISOCurrencyCodes.map { $0.uppercased() })
 
-    private let dateComponentOrder: DateComponentOrder
     private let dateFormatters: [(format: String, formatter: DateFormatter)]
 
     init(dateComponentOrder: DateComponentOrder = .monthFirst, timeZone: TimeZone = .current) {
-        self.dateComponentOrder = dateComponentOrder
         self.dateFormatters = Self.dateFormats(order: dateComponentOrder).map { format in
             (format, Self.makeDateFormatter(format: format, timeZone: timeZone))
         }
@@ -68,13 +66,6 @@ struct TransactionFieldParser {
             }
         }
         return formats
-    }
-
-    func parseDate(_ rawValue: String) throws -> Date {
-        if let parsed = tryParseDate(rawValue) {
-            return parsed
-        }
-        throw CSVImportError.invalidDate(rawValue)
     }
 
     func tryParseDate(_ rawValue: String) -> Date? {
@@ -173,13 +164,6 @@ struct TransactionFieldParser {
             return false
         }
         return first > 12 && first <= 31
-    }
-
-    func parseAmount(_ rawValue: String) throws -> Decimal {
-        if let parsed = tryParseAmount(rawValue) {
-            return parsed
-        }
-        throw CSVImportError.invalidAmount(rawValue)
     }
 
     func tryParseAmount(_ rawValue: String) -> Decimal? {

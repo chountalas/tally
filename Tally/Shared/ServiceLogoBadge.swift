@@ -160,10 +160,6 @@ enum ServiceLogoDatabase {
             .map(\.1)
     }
 
-    static func assetExists(named name: String) -> Bool {
-        resolver.assetExists(named: name)
-    }
-
     private static func platformAssetExists(named name: String) -> Bool {
         #if os(iOS)
         UIImage(named: name) != nil

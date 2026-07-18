@@ -1,11 +1,6 @@
 import Foundation
 import SwiftData
 
-protocol TransactionSourceAdapter {
-    var source: TransactionSource { get }
-    func prepareTransactions() async throws -> [SourceTransactionDraft]
-}
-
 struct SourceTransactionDraft: Equatable, Sendable {
     var seed: NormalizedTransactionSeed
     var source: TransactionSource
@@ -65,7 +60,6 @@ struct SourceTransactionUpsertSummary: Sendable {
     var insertedCount: Int = 0
     var updatedCount: Int = 0
     var unchangedCount: Int = 0
-    var tombstonedCount: Int = 0
     var fuzzyDuplicateCount: Int = 0
 
     var reconciledCount: Int {

@@ -736,10 +736,6 @@ struct InvalidEvidenceGenerator: SubscriptionIntelligenceGenerating {
         IntelligenceCopyPayload(headline: draft.headline, summary: draft.summary, followUps: draft.followUps)
     }
 
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        ""
-    }
-
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,
@@ -808,10 +804,6 @@ struct EvidenceRecordingGenerator: SubscriptionIntelligenceGenerating {
         draft: IntelligenceResponse
     ) async throws -> IntelligenceCopyPayload {
         IntelligenceCopyPayload(headline: draft.headline, summary: draft.summary, followUps: draft.followUps)
-    }
-
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        ""
     }
 
     func classifyMerchant(

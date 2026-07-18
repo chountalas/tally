@@ -203,13 +203,9 @@ extension DashboardMetrics {
 
         for (_, group) in categoryGroups where group.count > 1 {
             let category = group.first?.serviceCategory ?? "Uncategorized"
-            let names = group.map(\.displayName).sorted().joined(separator: ", ")
-            let monthlyExposure = group.reduce(Decimal.zero) { $0 + $1.normalizedMonthlyAmount }
-            let exposure = monthlyExposure.currencyString()
             items.append(
                 SavingsOpportunity(
                     title: "Overlap in \(category)",
-                    detail: "\(names) are all active in the same category. Review \(exposure) per month.",
                     priority: 0
                 )
             )
@@ -221,15 +217,13 @@ extension DashboardMetrics {
                 continue
             }
 
-            guard let percentChange = priceIncreasePercent(in: linkedTransactions) else {
+            guard hasPriceIncrease(in: linkedTransactions) else {
                 continue
             }
 
-            let formattedPercent = percentChange.percentString
             items.append(
                 SavingsOpportunity(
                     title: "Price increase: \(subscription.displayName)",
-                    detail: "Latest charge is \(formattedPercent) above the earlier average.",
                     priority: 1
                 )
             )
@@ -286,8 +280,6 @@ extension DashboardMetrics {
                 subscriptionID: subscription.id,
                 subscriptionName: subscription.displayName,
                 renewalDate: renewalDate,
-                price: subscription.priceAmount,
-                currencyCode: subscription.priceCurrency,
                 action: action,
                 detail: renewalDecisionDetail(
                     renewalDate: renewalDate,

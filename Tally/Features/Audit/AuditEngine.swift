@@ -2,19 +2,16 @@ import Foundation
 
 struct AuditScore: Identifiable {
     let subscriptionID: UUID
-    let subscriptionName: String
     let cancelWorthiness: Int
     let action: AuditAction
     let reasons: [String]
-    let monthlyAmount: Decimal
     var id: UUID { subscriptionID }
 }
 
 enum AuditEngine {
     static func score(
         subscription: Subscription,
-        allActive: [Subscription],
-        transactions: [NormalizedTransaction]
+        allActive: [Subscription]
     ) -> AuditScore {
         var points = 0
         var reasons: [String] = []
@@ -67,11 +64,9 @@ enum AuditEngine {
         let clampedPoints = min(100, max(0, points))
         return AuditScore(
             subscriptionID: subscription.id,
-            subscriptionName: subscription.displayName,
             cancelWorthiness: clampedPoints,
             action: action(for: clampedPoints),
-            reasons: reasons.isEmpty ? ["No risk signals detected."] : reasons,
-            monthlyAmount: subscription.normalizedMonthlyAmount
+            reasons: reasons.isEmpty ? ["No risk signals detected."] : reasons
         )
     }
 

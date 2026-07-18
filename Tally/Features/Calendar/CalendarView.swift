@@ -20,7 +20,6 @@ private struct CalendarAgendaEntry: Identifiable {
 /// with month navigation and an agenda list below. Matches the Tally design.
 struct CalendarView: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Subscription.predictedNextChargeDate) private var subscriptions: [Subscription]
 

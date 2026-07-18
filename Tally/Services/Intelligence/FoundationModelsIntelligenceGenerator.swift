@@ -94,16 +94,6 @@ struct FoundationModelsIntelligenceGenerator: SubscriptionIntelligenceGenerating
         )
     }
 
-    func generateText(instructions: String, prompt: String) async throws -> String {
-        let session = LanguageModelSession(
-            model: SystemLanguageModel(useCase: .general),
-            instructions: instructions
-        )
-
-        let response = try await session.respond(to: prompt, options: deterministicOptions)
-        return response.content
-    }
-
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,

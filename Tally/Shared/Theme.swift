@@ -138,11 +138,9 @@ enum Theme {
         static let sm: CGFloat = 12
         static let md: CGFloat = 16
         static let lg: CGFloat = 24
-        static let xl: CGFloat = 28
 
         static let card: CGFloat = 24        // --r-card (soft)
         static let small: CGFloat = 16       // --r-sm (soft)
-        static let tile: CGFloat = 13        // monogram tile (soft)
     }
     // swiftlint:enable identifier_name
 
@@ -152,7 +150,6 @@ enum Theme {
         static let feedback: Double = 0.16
         static let quick: Double = 0.20
         static let standard: Double = 0.40   // design --dur (.42), kept ≤ 0.40 cap
-        static let entrance: Double = 0.55
         static let progress: Double = 0.80   // bar grow / fill
 
         /// Tally easing — cubic-bezier(.22, 1, .36, 1).
@@ -163,16 +160,9 @@ enum Theme {
         static var feedbackSmooth: SwiftUI.Animation { tally(feedback) }
         static var quickSmooth: SwiftUI.Animation { tally(quick) }
         static var smooth: SwiftUI.Animation { tally(standard) }
-        static var entranceSmooth: SwiftUI.Animation { tally(entrance) }
         static var progressSmooth: SwiftUI.Animation { tally(progress) }
 
-        /// Spring for interactive feedback only — critically damped, no overshoot.
-        static var interactiveSpring: SwiftUI.Animation { .spring(response: 0.30, dampingFraction: 1.0) }
         static var quickSpring: SwiftUI.Animation { .spring(response: 0.22, dampingFraction: 1.0) }
-        static var spring: SwiftUI.Animation { interactiveSpring }
-
-        /// Slow ambient breath — reserved for background mesh drift only.
-        static var ambient: SwiftUI.Animation { .easeInOut(duration: 6.5) }
 
         static func whenAllowed(
             _ animation: SwiftUI.Animation,
@@ -191,16 +181,11 @@ enum Theme {
         static let bgCard = Color(lightHex: 0xFFFFFF, darkHex: 0x25201D)       // --surface
         static let bgElevated = Color(lightHex: 0xF6F0E9, darkHex: 0x171311)   // --sidebar
         static let bgInset = Color(lightHex: 0xF8F3EC, darkHex: 0x201B18)      // --surface-2
-        static let bgPressed = Color(lightHex: 0xEFE7DB, darkHex: 0x2C2622)
-
-        static let surface = bgCard
-        static let surfaceInset = bgInset
 
         // Text
         static let textPrimary = Color(lightHex: 0x221C16, darkHex: 0xF3ECE3)
         static let textSecondary = Color(lightHex: 0x7A6F63, darkHex: 0xA89C8F)
         static let textTertiary = Color(lightHex: 0xA89B8B, darkHex: 0x6F6357)
-        static let ink = textPrimary
 
         // Hairlines (warm translucent — matches the design's rgba borders)
         static let border = Color.warmAlpha(
@@ -217,8 +202,6 @@ enum Theme {
         static let accent = Color.oklch(light: (0.67, 0.16, 32), dark: (0.75, 0.14, 35))
         static let accent2 = Color.oklch(light: (0.71, 0.15, 38), dark: (0.78, 0.13, 42))
         static let accentSoft = Color.oklch(light: (0.93, 0.05, 36), dark: (0.36, 0.07, 34))
-        static let accentDeep = Color.oklch(light: (0.60, 0.16, 30), dark: (0.66, 0.15, 36))
-        static let accentHalo = accentSoft
         static let onAccent = Color(lightHex: 0xFFFFFF, darkHex: 0x1A120C)
 
         // Signal colors
@@ -228,10 +211,6 @@ enum Theme {
 
         // Category tones (used for ambient backdrops / story accents)
         static let quietBlue = Color.oklch(light: (0.55, 0.12, 250), dark: (0.78, 0.10, 250))
-        static let plum = Color.oklch(light: (0.55, 0.13, 320), dark: (0.80, 0.11, 320))
-        static let clay = Color.oklch(light: (0.62, 0.12, 50), dark: (0.80, 0.11, 55))
-        static let rose = Color.oklch(light: (0.60, 0.15, 5), dark: (0.82, 0.12, 8))
-        static let moss = Color.oklch(light: (0.58, 0.11, 145), dark: (0.80, 0.10, 145))
 
         // Warm ambient drop shadow (matches the design's soft shadows)
         static func warmShadow(opacity: Double) -> Color {
@@ -256,8 +235,6 @@ enum Theme {
         }
 
         // Hero / display (rounded)
-        static let masthead = rounded(72, .heavy)
-        static let displayLarge = rounded(40, .heavy)
         static let displayMedium = rounded(31, .heavy)
 
         // Headlines (sans)
@@ -272,9 +249,6 @@ enum Theme {
 
         // Specialized
         static let price = rounded(17, .heavy)
-        static let metric = rounded(28, .heavy)
-        static let ledger = sans(12, .semibold)
-        static let stamp = sans(11, .bold)
     }
 }
 

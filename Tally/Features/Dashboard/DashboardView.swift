@@ -6,7 +6,6 @@ import SwiftUI
 /// gentle overlap nudge, and the one task that matters: add or update.
 struct DashboardView: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Subscription.displayName) private var subscriptions: [Subscription]
     @Query(

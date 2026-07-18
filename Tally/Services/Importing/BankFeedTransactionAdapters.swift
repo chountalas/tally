@@ -1,6 +1,6 @@
 import Foundation
 
-struct OFXTransactionSourceAdapter: TransactionSourceAdapter {
+struct OFXTransactionSourceAdapter {
     let source: TransactionSource
     let text: String
 
@@ -76,7 +76,7 @@ struct OFXTransactionSourceAdapter: TransactionSourceAdapter {
     }
 }
 
-struct SimpleFINTransactionSourceAdapter: TransactionSourceAdapter {
+struct SimpleFINTransactionSourceAdapter {
     let source: TransactionSource = .simpleFIN
     let data: Data
 

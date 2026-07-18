@@ -111,8 +111,7 @@ extension SubscriptionIntelligenceService {
         )
         let score = AuditEngine.score(
             subscription: subscription,
-            allActive: currentActiveSubscriptions,
-            transactions: transactions
+            allActive: currentActiveSubscriptions
         )
 
         return PriceChangeAnalysis(

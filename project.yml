@@ -100,7 +100,6 @@ targets:
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: SwiftData.framework
-      - sdk: Charts.framework
       - sdk: UniformTypeIdentifiers.framework
       - sdk: EventKit.framework
       - sdk: UserNotifications.framework

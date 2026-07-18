@@ -73,7 +73,6 @@ struct DashboardContentSnapshot {
     let reviewQueueTotalCount: Int
     let reviewQueueSubscriptions: [Subscription]
     let upcomingRenewals: [Subscription]
-    let probableRenewals: [Subscription]
     let activePreviewSubscriptions: [Subscription]
     let reviewPreviews: [UUID: MerchantLearningPreview]
 }
@@ -198,7 +197,6 @@ final class DashboardMetricsProvider {
             reviewQueueTotalCount: reviewQueueTotalCount,
             reviewQueueSubscriptions: reviewQueueSubscriptions,
             upcomingRenewals: Array(metrics.upcomingRenewals.prefix(6)),
-            probableRenewals: Array(metrics.probableRenewals.prefix(4)),
             activePreviewSubscriptions: Array(activeSubscriptions.prefix(8)),
             reviewPreviews: Dictionary(
                 uniqueKeysWithValues: reviewQueueSubscriptions.map { subscription in

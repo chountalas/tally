@@ -91,7 +91,6 @@ protocol SubscriptionIntelligenceTooling {
     func allTransactions() -> [NormalizedTransaction]
     func allAliases() -> [MerchantAlias]
     func allClassifications() -> [MerchantClassification]
-    func libraryOverview() -> LibraryOverviewSnapshot
     func upcomingRenewals(days: Int) -> [Subscription]
     func subscriptionDetail(id: UUID) -> Subscription?
     func merchantHistory(name: String) -> [NormalizedTransaction]
@@ -130,19 +129,6 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
 
     func allClassifications() -> [MerchantClassification] {
         classifications
-    }
-
-    func libraryOverview() -> LibraryOverviewSnapshot {
-        let metrics = DashboardMetrics(
-            subscriptions: subscriptions,
-            transactions: transactions
-        )
-        return LibraryOverviewSnapshot(
-            monthlyRunRate: metrics.monthlyRunRate,
-            annualizedSpend: metrics.annualizedSpend,
-            activeCount: metrics.activeCount,
-            needsReviewCount: metrics.needsReviewCount
-        )
     }
 
     func upcomingRenewals(days: Int) -> [Subscription] {
@@ -225,7 +211,6 @@ protocol SubscriptionIntelligenceGenerating: Sendable {
         facts: String,
         draft: IntelligenceResponse
     ) async throws -> IntelligenceCopyPayload
-    func generateText(instructions: String, prompt: String) async throws -> String
     func classifyMerchant(
         rawMerchant: String,
         memo: String?,
