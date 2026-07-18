@@ -27,8 +27,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install build tools
+        run: brew install swiftlint xcodegen
 
       - name: Record toolchain
         run: |
