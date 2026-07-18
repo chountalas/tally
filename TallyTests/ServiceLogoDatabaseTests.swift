@@ -9,6 +9,19 @@ struct ServiceLogoDatabaseTests {
         )
     }
 
+    @Test func prefersSpecificAliasOverShorterPrefixAlias() {
+        #expect(
+            ServiceLogoDatabase.assetName(
+                displayName: "Netflix Test",
+                canonicalName: nil
+            ) == "brand-netflix"
+        )
+        #expect(
+            ServiceLogoDatabase.searchOptions(matching: "Netflix Test").first?.assetName
+                == "brand-netflix"
+        )
+    }
+
     @Test func matchesKnownServiceByCanonicalNameWhenDisplayNameChanges() {
         #expect(
             ServiceLogoDatabase.assetName(
