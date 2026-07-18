@@ -360,13 +360,12 @@ final class AppModel {
             subscriptions: subscriptions,
             transactions: transactions,
             revision: resolvedRevision
-        ) { [self] subscription, allTransactions in
+        ) { [self] subscription, _ in
             merchantLearningPreview(
                 for: subscription,
                 proposedDisplayName: subscription.displayName,
                 applyAliasToFutureImports: false,
-                isFalsePositive: false,
-                transactions: allTransactions
+                isFalsePositive: false
             )
         }
     }

@@ -375,7 +375,6 @@ extension SubscriptionDetectionService {
 
         state.clusterReports.append(
             SubscriptionClusterReport(
-                canonicalName: rule.canonicalName,
                 displayName: rule.canonicalName,
                 status: .suppressed,
                 source: .primary,
@@ -419,7 +418,6 @@ extension SubscriptionDetectionService {
             refreshSubscriptionFromRuleMatches(
                 subscription,
                 matches: matches,
-                rule: rule,
                 reviewRule: reviewRule
             )
         }
@@ -464,7 +462,6 @@ extension SubscriptionDetectionService {
 
         state.clusterReports.append(
             SubscriptionClusterReport(
-                canonicalName: subscription.canonicalName,
                 displayName: subscription.displayName,
                 status: .detected,
                 source: .primary,
@@ -478,7 +475,6 @@ extension SubscriptionDetectionService {
     func refreshSubscriptionFromRuleMatches(
         _ subscription: Subscription,
         matches: [NormalizedTransaction],
-        rule: SubscriptionMatchRule,
         reviewRule: SubscriptionReviewRule?
     ) {
         let sorted = matches.sorted { $0.transactionDate < $1.transactionDate }
@@ -978,7 +974,6 @@ private extension SubscriptionDetectionService {
             }
             let matchedTransaction = matchIndex.map { unmatchedTransactions.remove(at: $0) }
             let status = occurrenceStatus(
-                expectedDate: expectedDate,
                 windowEnd: windowEnd,
                 matchedTransaction: matchedTransaction,
                 subscription: subscription,
@@ -1111,7 +1106,6 @@ private extension SubscriptionDetectionService {
     }
 
     func occurrenceStatus(
-        expectedDate: Date,
         windowEnd: Date,
         matchedTransaction: NormalizedTransaction?,
         subscription: Subscription,

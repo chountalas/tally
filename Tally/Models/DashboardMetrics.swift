@@ -4,9 +4,7 @@ struct DashboardMetrics {
     let monthlyRunRate: Decimal
     let annualizedSpend: Decimal
     let activeCount: Int
-    let needsReviewCount: Int
     let upcomingRenewals: [Subscription]
-    let probableRenewals: [Subscription]
     let monthlySpend: [MonthlySpendPoint]
     let yearlySpend: [YearlySpendPoint]
     let opportunities: [SavingsOpportunity]
@@ -62,18 +60,11 @@ struct DashboardMetrics {
         monthlyRunRate = activeSubscriptions.reduce(Decimal.zero) { $0 + $1.normalizedMonthlyAmount }
         annualizedSpend = monthlyRunRate * 12
         activeCount = activeSubscriptions.count
-        needsReviewCount = subscriptions.filter { $0.status == .needsReview }.count
         let renewalCutoff =
             Calendar.current.date(byAdding: .day, value: 90, to: referenceDate) ?? .distantFuture
         upcomingRenewals = Self.upcomingRenewals(
             from: activeSubscriptions,
             renewalCutoff: renewalCutoff,
-            referenceDate: referenceDate
-        )
-        probableRenewals = Self.probableRenewals(
-            from: subscriptions,
-            renewalCutoff: renewalCutoff,
-            transactionsBySubscription: transactionsBySubscription,
             referenceDate: referenceDate
         )
         monthlySpend = DashboardMetrics.buildMonthlySpend(from: subscriptionDebitTransactions)

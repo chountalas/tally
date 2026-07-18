@@ -510,11 +510,7 @@ struct DashboardMetricsRegressionTests {
         ) { subscription, _ in
             MerchantLearningPreview(
                 mode: .rename,
-                sourceCanonicalName: subscription.canonicalName,
-                targetCanonicalName: subscription.displayName,
-                rawMerchants: [subscription.displayName],
-                affectedTransactionCount: 0,
-                affectedImportCount: 0
+                targetCanonicalName: subscription.displayName
             )
         }
         let revisedSnapshot = provider.contentSnapshot(
@@ -524,11 +520,7 @@ struct DashboardMetricsRegressionTests {
         ) { subscription, _ in
             MerchantLearningPreview(
                 mode: .rename,
-                sourceCanonicalName: subscription.canonicalName,
-                targetCanonicalName: subscription.displayName,
-                rawMerchants: [subscription.displayName],
-                affectedTransactionCount: 0,
-                affectedImportCount: 0
+                targetCanonicalName: subscription.displayName
             )
         }
 

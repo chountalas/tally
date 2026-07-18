@@ -40,11 +40,7 @@ struct MerchantLearningPreview: Equatable, Sendable {
     }
 
     let mode: Mode
-    let sourceCanonicalName: String
     let targetCanonicalName: String
-    let rawMerchants: [String]
-    let affectedTransactionCount: Int
-    let affectedImportCount: Int
 }
 
 enum ReviewAutomationAction: String, Equatable, Sendable {
@@ -57,11 +53,6 @@ struct ReviewAutomationCandidate: Identifiable, Equatable, Sendable {
     let subscriptionID: UUID
     let displayName: String
     let action: ReviewAutomationAction
-    let reason: String
-    let confidenceScore: Double
-    let linkedTransactionCount: Int
-    let monthlyAmount: Decimal
-    let currencyCode: String
 
     var id: UUID { subscriptionID }
 }
@@ -1051,9 +1042,7 @@ extension AppModel {
                     linkedTransactions: linkedTransactions,
                     dominantMerchantKind: dominantKind,
                     hasMerchantConflict: hasMerchantConflict
-                ),
-                linkedTransactionCount: linkedTransactions.count,
-                dominantMerchantKind: dominantKind
+                )
             )
 
             switch candidate.action {
@@ -1170,34 +1159,8 @@ extension AppModel {
         for subscription: Subscription,
         proposedDisplayName: String,
         applyAliasToFutureImports: Bool,
-        isFalsePositive: Bool,
-        transactions: [NormalizedTransaction]
+        isFalsePositive: Bool
     ) -> MerchantLearningPreview {
-        let linkedTransactions = linkedTransactions(
-            for: subscription,
-            in: transactions
-        )
-        let rawMerchants = Set(linkedTransactions.map(\.merchantRaw))
-        let affectedTransactions = transactions.filter { rawMerchants.contains($0.merchantRaw) }
-        return merchantLearningPreview(
-            for: subscription,
-            proposedDisplayName: proposedDisplayName,
-            applyAliasToFutureImports: applyAliasToFutureImports,
-            isFalsePositive: isFalsePositive,
-            linkedTransactions: linkedTransactions,
-            affectedTransactions: affectedTransactions
-        )
-    }
-
-    func merchantLearningPreview(
-        for subscription: Subscription,
-        proposedDisplayName: String,
-        applyAliasToFutureImports: Bool,
-        isFalsePositive: Bool,
-        linkedTransactions: [NormalizedTransaction],
-        affectedTransactions: [NormalizedTransaction]
-    ) -> MerchantLearningPreview {
-        let rawMerchants = Set(linkedTransactions.map(\.merchantRaw))
         let targetCanonicalName = resolvedTargetCanonicalName(
             currentCanonicalName: subscription.canonicalName,
             proposedDisplayName: proposedDisplayName,
@@ -1214,11 +1177,7 @@ extension AppModel {
 
         return MerchantLearningPreview(
             mode: mode,
-            sourceCanonicalName: subscription.canonicalName,
-            targetCanonicalName: targetCanonicalName,
-            rawMerchants: Array(rawMerchants).sorted(),
-            affectedTransactionCount: affectedTransactions.count,
-            affectedImportCount: Set(affectedTransactions.compactMap(\.importRecordID)).count
+            targetCanonicalName: targetCanonicalName
         )
     }
 
@@ -1244,14 +1203,11 @@ extension AppModel {
 
         let linkedTransactions = try fetchLinkedTransactions(for: subscription, in: context)
         let rawMerchants = Set(linkedTransactions.map(\.merchantRaw))
-        let affectedTransactions = try fetchTransactions(matchingRawMerchants: rawMerchants, in: context)
         let preview = merchantLearningPreview(
             for: subscription,
             proposedDisplayName: displayName,
             applyAliasToFutureImports: applyAliasToFutureImports,
-            isFalsePositive: isFalsePositive,
-            linkedTransactions: linkedTransactions,
-            affectedTransactions: affectedTransactions
+            isFalsePositive: isFalsePositive
         )
 
         try validateCanonicalNameAvailability(
@@ -1876,57 +1832,13 @@ private extension AppModel {
 
     func automationCandidate(
         for subscription: Subscription,
-        action: ReviewAutomationAction,
-        linkedTransactionCount: Int,
-        dominantMerchantKind: MerchantKind
+        action: ReviewAutomationAction
     ) -> ReviewAutomationCandidate {
-        let reason: String
-        switch action {
-        case .confirm:
-            reason = "High confidence, repeated charge pattern, known cadence."
-        case .suppress:
-            reason = "Low confidence and merchant looks like \(dominantMerchantKind.title.lowercased())."
-        case .manual:
-            reason = manualAutomationReason(
-                for: subscription,
-                linkedTransactionCount: linkedTransactionCount,
-                dominantMerchantKind: dominantMerchantKind
-            )
-        }
-
         return ReviewAutomationCandidate(
             subscriptionID: subscription.id,
             displayName: subscription.displayName,
-            action: action,
-            reason: reason,
-            confidenceScore: subscription.confidenceScore,
-            linkedTransactionCount: linkedTransactionCount,
-            monthlyAmount: subscription.normalizedMonthlyAmount,
-            currencyCode: subscription.priceCurrency
+            action: action
         )
-    }
-
-    func manualAutomationReason(
-        for subscription: Subscription,
-        linkedTransactionCount: Int,
-        dominantMerchantKind: MerchantKind
-    ) -> String {
-        if linkedTransactionCount == 0 {
-            return "No linked charges to teach from yet."
-        }
-        if subscription.cadence == .unknown {
-            return "Cadence is still unknown."
-        }
-        if subscription.priceAmount <= 0 {
-            return "Price needs correction."
-        }
-        if subscription.confidenceScore < 0.82 && subscription.confidenceScore > 0.32 {
-            return "Confidence is borderline."
-        }
-        if dominantMerchantKind.isUsuallyNonSubscription {
-            return "Merchant type needs a human check."
-        }
-        return "Needs a human check before applying a lasting rule."
     }
 
     func applyAutomatedReviewDecision(

@@ -315,7 +315,6 @@ extension SubscriptionDetectionService {
             )
             state.clusterReports.append(
                 SubscriptionClusterReport(
-                    canonicalName: suppression.canonicalName,
                     displayName: suppression.displayName,
                     status: .suppressed,
                     source: suppression.detectionSource,
@@ -377,7 +376,6 @@ extension SubscriptionDetectionService {
             )
             state.clusterReports.append(
                 SubscriptionClusterReport(
-                    canonicalName: summary.canonicalName,
                     displayName: summary.displayName,
                     status: .needsReview,
                     source: .recentPurchase,

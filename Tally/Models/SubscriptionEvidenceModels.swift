@@ -297,10 +297,6 @@ final class ServiceProfile {
         self.catalogVersion = catalogVersion
     }
 
-    var merchantKind: MerchantKind {
-        get { MerchantKind(rawValue: merchantKindRawValue) ?? .unknown }
-        set { merchantKindRawValue = newValue.rawValue }
-    }
 }
 
 @Model
@@ -362,10 +358,6 @@ final class SubscriptionScheduleExpectation {
         set { anchorPolicyRawValue = newValue.rawValue }
     }
 
-    var source: SubscriptionMatchRuleSource {
-        get { SubscriptionMatchRuleSource(rawValue: sourceRawValue) ?? .detectedCandidate }
-        set { sourceRawValue = newValue.rawValue }
-    }
 }
 
 @Model
@@ -649,10 +641,6 @@ final class DetectionRun {
         self.errorMessage = errorMessage
     }
 
-    var trigger: DetectionRunTrigger {
-        get { DetectionRunTrigger(rawValue: triggerRawValue) ?? .rebuild }
-        set { triggerRawValue = newValue.rawValue }
-    }
 }
 
 enum SubscriptionEvidenceJSON {

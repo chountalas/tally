@@ -168,8 +168,6 @@ struct BillingCycleSnapshot: Equatable {
         case overdue
     }
 
-    let periodStart: Date
-    let periodEnd: Date
     let elapsedDays: Int
     let remainingDays: Int
     let overdueDays: Int
@@ -274,8 +272,6 @@ extension Subscription {
         }
 
         return BillingCycleSnapshot(
-            periodStart: resolvedPeriodStart,
-            periodEnd: resolvedPeriodEnd,
             elapsedDays: elapsedDays,
             remainingDays: remainingDays,
             overdueDays: overdueDays,

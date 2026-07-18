@@ -109,32 +109,6 @@ extension DashboardMetrics {
         return dates
     }
 
-    static func probableRenewals(
-        from subscriptions: [Subscription],
-        renewalCutoff: Date,
-        transactionsBySubscription: [UUID: [NormalizedTransaction]],
-        referenceDate: Date = .now
-    ) -> [Subscription] {
-        subscriptions
-            .filter { subscription in
-                guard subscription.status == .needsReview,
-                      let nextChargeDate = currentRenewalDate(
-                        for: subscription,
-                        referenceDate: referenceDate
-                      ),
-                      nextChargeDate < renewalCutoff else {
-                    return false
-                }
-
-                let linkedCount = transactionsBySubscription[subscription.id]?.count ?? 0
-                return linkedCount == 1
-            }
-            .sorted {
-                (currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
-                    (currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
-            }
-    }
-
     static func overlapGroups(from subscriptions: [Subscription]) -> [OverlapGroup] {
         let categoryGroups = Dictionary(grouping: subscriptions) {
             $0.serviceCategory?.lowercased() ?? "uncategorized"

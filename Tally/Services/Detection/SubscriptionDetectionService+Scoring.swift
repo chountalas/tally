@@ -659,10 +659,6 @@ private extension SubscriptionDetectionService {
         evidence: SubscriptionCandidateEvidence
     ) -> SubscriptionSummary {
         let lastChargeDate = orderedTransactions.last?.transactionDate
-        let predictedNextChargeDate = predictNextCharge(
-            from: lastChargeDate,
-            cadence: snapshot.cadence
-        )
         let status: SubscriptionStatus
         let inferredLifecycleStatus = inferStatus(lastChargeDate: lastChargeDate, cadence: snapshot.cadence)
         let confirmationThreshold: Double = switch snapshot.dominantMerchantKind {
@@ -727,12 +723,7 @@ private extension SubscriptionDetectionService {
             status: status,
             priceAmount: Decimal(snapshot.averagePrice),
             currency: orderedTransactions.last?.currency ?? "USD",
-            normalizedMonthlyAmount: normalizeMonthly(
-                price: Decimal(snapshot.averagePrice),
-                cadence: snapshot.cadence
-            ),
             lastChargeDate: lastChargeDate,
-            predictedNextChargeDate: predictedNextChargeDate,
             confidence: confidence,
             category: orderedTransactions.last?.category?.nilIfBlank
                 ?? snapshot.dominantMerchantKind.defaultServiceCategory,
@@ -776,11 +767,6 @@ private extension SubscriptionDetectionService {
         reason: String
     ) -> SubscriptionSummary {
         let amount = abs(transaction.transactionAmount)
-        let nextChargeDate = predictNextCharge(
-            from: transaction.transactionDate,
-            cadence: cadence
-        )
-
         return SubscriptionSummary(
             canonicalName: canonicalName,
             displayName: displayName,
@@ -788,9 +774,7 @@ private extension SubscriptionDetectionService {
             status: .needsReview,
             priceAmount: amount,
             currency: transaction.currency ?? "USD",
-            normalizedMonthlyAmount: normalizeMonthly(price: amount, cadence: cadence),
             lastChargeDate: transaction.transactionDate,
-            predictedNextChargeDate: nextChargeDate,
             confidence: confidence,
             category: transaction.category?.nilIfBlank
                 ?? transaction.merchantKind.defaultServiceCategory,
@@ -807,9 +791,7 @@ struct SubscriptionSummary {
     let status: SubscriptionStatus
     let priceAmount: Decimal
     let currency: String
-    let normalizedMonthlyAmount: Decimal
     let lastChargeDate: Date?
-    let predictedNextChargeDate: Date?
     let confidence: Double
     let category: String?
     let reason: String?

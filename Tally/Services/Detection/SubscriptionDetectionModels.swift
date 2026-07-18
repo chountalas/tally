@@ -8,7 +8,6 @@ enum SubscriptionDetectionClusterStatus {
 }
 
 struct SubscriptionClusterReport {
-    let canonicalName: String
     let displayName: String
     let status: SubscriptionDetectionClusterStatus
     let source: SubscriptionDetectionSource

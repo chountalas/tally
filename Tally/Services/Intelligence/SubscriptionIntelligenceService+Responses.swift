@@ -9,7 +9,7 @@ extension SubscriptionIntelligenceService {
     ) async -> IntelligenceResponse {
         switch route {
         case .savingsReview:
-            return savingsResponse(query: query, tooling: tooling)
+            return savingsResponse(tooling: tooling)
         case .upcomingRenewals:
             return renewalsResponse(query: query, tooling: tooling)
         case .priceChangeExplanation:
@@ -21,7 +21,6 @@ extension SubscriptionIntelligenceService {
 
     @MainActor
     func savingsResponse(
-        query: IntelligenceQuery,
         tooling: SubscriptionIntelligenceTooling
     ) -> IntelligenceResponse {
         let subscriptions = tooling.allSubscriptions()

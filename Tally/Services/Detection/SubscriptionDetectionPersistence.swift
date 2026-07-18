@@ -33,7 +33,6 @@ extension SubscriptionDetectionService {
 
         state.clusterReports.append(
             SubscriptionClusterReport(
-                canonicalName: request.canonicalName,
                 displayName: request.displayName,
                 status: .suppressed,
                 source: request.source,
