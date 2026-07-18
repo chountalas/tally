@@ -385,7 +385,7 @@ extension AppModel {
         _ input: ManualSubscriptionInput,
         in context: ModelContext
     ) throws -> Subscription {
-        guard let subscription = subscription(withID: id, in: context) else {
+        guard let subscription = try subscription(withID: id, in: context) else {
             throw ManualSubscriptionEditError.missingSubscription
         }
 
@@ -476,7 +476,7 @@ extension AppModel {
         id: UUID,
         in context: ModelContext
     ) throws {
-        guard let subscription = subscription(withID: id, in: context) else {
+        guard let subscription = try subscription(withID: id, in: context) else {
             throw ManualSubscriptionEditError.missingSubscription
         }
 
@@ -485,7 +485,7 @@ extension AppModel {
         let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
             .compactMap { $0?.nilIfBlank }
 
-        try? RenewalNotificationService()
+        try RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
 
         do {
@@ -520,7 +520,7 @@ extension AppModel {
         id: UUID,
         in context: ModelContext
     ) throws {
-        guard let subscription = subscription(withID: id, in: context) else {
+        guard let subscription = try subscription(withID: id, in: context) else {
             throw ManualSubscriptionEditError.missingSubscription
         }
 
@@ -530,7 +530,7 @@ extension AppModel {
         let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
             .compactMap { $0?.nilIfBlank }
 
-        try? RenewalNotificationService()
+        try RenewalNotificationService()
             .clearScheduledNotifications(for: [subscription], context: context)
 
         do {
@@ -583,7 +583,7 @@ extension AppModel {
     func confirmSuggestedSubscription(_ id: UUID, in context: ModelContext) {
         Task {
             do {
-                guard let subscription = subscription(withID: id, in: context) else { return }
+                guard let subscription = try subscription(withID: id, in: context) else { return }
                 _ = try await applyMerchantLearning(
                     subscriptionID: id,
                     displayName: subscription.displayName,
@@ -602,7 +602,7 @@ extension AppModel {
                 // Merchant-learning replay persists and refreshes the library and may
                 // invalidate the original reference via the rebuild, so re-fetch and
                 // pin the kept state if the subscription survived.
-                if let kept = self.subscription(withID: id, in: context) {
+                if let kept = try self.subscription(withID: id, in: context) {
                     kept.libraryState = .confirmed
                     kept.isUserConfirmed = true
                     // Pin the inferred status last, after the merchant-learning
@@ -626,7 +626,7 @@ extension AppModel {
     func ignoreSuggestedSubscription(_ id: UUID, in context: ModelContext) {
         Task {
             do {
-                guard let subscription = subscription(withID: id, in: context) else { return }
+                guard let subscription = try subscription(withID: id, in: context) else { return }
                 _ = try await applyMerchantLearning(
                     subscriptionID: id,
                     displayName: subscription.displayName,
@@ -646,7 +646,7 @@ extension AppModel {
                 // subscription as stale (already persisting + refreshing). Re-fetch:
                 // only pin .ignored if it survived the rebuild — never mutate a
                 // deleted object.
-                if let surviving = self.subscription(withID: id, in: context) {
+                if let surviving = try self.subscription(withID: id, in: context) {
                     surviving.libraryState = .ignored
                     try context.save()
                     advanceLibraryRevision()
@@ -662,7 +662,7 @@ extension AppModel {
     /// without teaching Tally that the merchant is never a subscription.
     func hideSuggestedSubscription(_ id: UUID, in context: ModelContext) {
         do {
-            guard let subscription = subscription(withID: id, in: context) else { return }
+            guard let subscription = try subscription(withID: id, in: context) else { return }
             subscription.libraryState = .ignored
             var affectedImportRecordIDs = Set<UUID>()
             let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
@@ -963,7 +963,7 @@ extension AppModel {
         fields: [String: String],
         in context: ModelContext
     ) async throws -> String {
-        guard let subscription = subscription(withID: subscriptionID, in: context) else {
+        guard let subscription = try subscription(withID: subscriptionID, in: context) else {
             throw ReviewUpdateError.missingSubscription
         }
 
@@ -1136,7 +1136,7 @@ extension AppModel {
                 continue
             }
 
-            guard let subscription = subscription(withID: candidate.subscriptionID, in: context),
+            guard let subscription = try subscription(withID: candidate.subscriptionID, in: context),
                   subscription.status == .needsReview else {
                 skippedCount += 1
                 continue
@@ -1239,7 +1239,7 @@ extension AppModel {
         applyAliasToFutureImports: Bool,
         in context: ModelContext
     ) async throws -> MerchantLearningPreview {
-        guard let subscription = subscription(withID: subscriptionID, in: context) else {
+        guard let subscription = try subscription(withID: subscriptionID, in: context) else {
             throw ReviewUpdateError.missingSubscription
         }
 
@@ -1323,27 +1323,27 @@ extension AppModel {
         return preview
     }
 
-    func subscription(withID id: UUID, in context: ModelContext) -> Subscription? {
+    func subscription(withID id: UUID, in context: ModelContext) throws -> Subscription? {
         let descriptor = FetchDescriptor<Subscription>(
             predicate: #Predicate { item in
                 item.id == id
             }
         )
 
-        return try? context.fetch(descriptor).first
+        return try context.fetch(descriptor).first
     }
 
     func subscription(
         canonicalName: String,
         in context: ModelContext
-    ) -> Subscription? {
+    ) throws -> Subscription? {
         let descriptor = FetchDescriptor<Subscription>(
             predicate: #Predicate { item in
                 item.canonicalName == canonicalName
             }
         )
 
-        return try? context.fetch(descriptor).first
+        return try context.fetch(descriptor).first
     }
 
     func fetchOrCreateReviewRule(
@@ -1376,8 +1376,11 @@ extension AppModel {
             }
         )
         guard let rule = try context.fetch(descriptor).first else {
-            return subscriptionID.flatMap { subscription(withID: $0, in: context) }
-                ?? subscription(canonicalName: canonicalName, in: context)
+            if let subscriptionID,
+               let subscription = try subscription(withID: subscriptionID, in: context) {
+                return subscription
+            }
+            return try subscription(canonicalName: canonicalName, in: context)
         }
 
         if rule.isUserConfirmed || rule.isFalsePositive {
@@ -1393,8 +1396,13 @@ extension AppModel {
             return nil
         }
 
-        let existingSubscription = subscriptionID.flatMap { subscription(withID: $0, in: context) }
-            ?? subscription(canonicalName: canonicalName, in: context)
+        let existingSubscription: Subscription?
+        if let subscriptionID,
+           let subscription = try subscription(withID: subscriptionID, in: context) {
+            existingSubscription = subscription
+        } else {
+            existingSubscription = try subscription(canonicalName: canonicalName, in: context)
+        }
 
         if let manualSubscription = detector.manualSubscription(from: rule, existing: existingSubscription) {
             if existingSubscription == nil {
@@ -1930,7 +1938,7 @@ private extension AppModel {
         let originalCanonicalName = subscription.canonicalName
         let linkedTransactions = try fetchLinkedTransactions(for: subscription, in: context)
         let rawMerchants = Set(linkedTransactions.map(\.merchantRaw))
-        let learnedCanonicalName = learnedCanonicalName(
+        let learnedCanonicalName = try learnedCanonicalName(
             for: subscription,
             isFalsePositive: isFalsePositive,
             in: context
@@ -2020,13 +2028,13 @@ private extension AppModel {
         for subscription: Subscription,
         isFalsePositive: Bool,
         in context: ModelContext
-    ) -> String {
+    ) throws -> String {
         let fallback = stableSubscriptionName(from: subscription.canonicalName)
         guard isFalsePositive == false else {
             return fallback
         }
 
-        if let existing = self.subscription(canonicalName: fallback, in: context),
+        if let existing = try self.subscription(canonicalName: fallback, in: context),
            existing.id != subscription.id {
             return subscription.canonicalName
         }

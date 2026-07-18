@@ -445,12 +445,16 @@ struct SettingsView: View {
     }
 
     private func refreshLibraryCounts() {
-        libraryCounts = LibraryCounts(
-            imports: (try? modelContext.fetchCount(FetchDescriptor<ImportRecord>())) ?? 0,
-            subscriptions: (try? modelContext.fetchCount(FetchDescriptor<Subscription>())) ?? 0,
-            transactions: (try? modelContext.fetchCount(FetchDescriptor<NormalizedTransaction>())) ?? 0,
-            reviewRules: (try? modelContext.fetchCount(FetchDescriptor<SubscriptionReviewRule>())) ?? 0
-        )
+        do {
+            libraryCounts = LibraryCounts(
+                imports: try modelContext.fetchCount(FetchDescriptor<ImportRecord>()),
+                subscriptions: try modelContext.fetchCount(FetchDescriptor<Subscription>()),
+                transactions: try modelContext.fetchCount(FetchDescriptor<NormalizedTransaction>()),
+                reviewRules: try modelContext.fetchCount(FetchDescriptor<SubscriptionReviewRule>())
+            )
+        } catch {
+            dataOperationMessage = "Tally couldn't read the library totals. \(error.localizedDescription)"
+        }
     }
 
     private var calendarPermissionTitle: String {

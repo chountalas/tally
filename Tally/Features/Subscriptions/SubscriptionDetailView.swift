@@ -19,6 +19,7 @@ struct SubscriptionDetailView: View {
     @State private var isConfirmingCancellation = false
     @State private var displayedChargeRows: [ChargeRowData] = []
     @State private var chargeRowsAreProjected = false
+    @State private var chargeLoadErrorMessage: String?
 
     init(subscription: Subscription) {
         self.subscription = subscription
@@ -67,7 +68,14 @@ struct SubscriptionDetailView: View {
                         .foregroundStyle(Theme.Colors.textTertiary)
                         .padding(.bottom, 14)
                 }
-                chargeList
+                if let chargeLoadErrorMessage {
+                    Text(chargeLoadErrorMessage)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .padding(.vertical, 8)
+                } else {
+                    chargeList
+                }
                 actions.padding(.top, 22)
             }
             .padding(Theme.Spacing.page)
@@ -76,9 +84,16 @@ struct SubscriptionDetailView: View {
         }
         .scrollIndicators(.hidden)
         .task(id: chargeRefreshID) {
-            let loadedCharges = loadDisplayedCharges()
-            displayedChargeRows = loadedCharges.rows
-            chargeRowsAreProjected = loadedCharges.isProjected
+            do {
+                let loadedCharges = try loadDisplayedCharges()
+                displayedChargeRows = loadedCharges.rows
+                chargeRowsAreProjected = loadedCharges.isProjected
+                chargeLoadErrorMessage = nil
+            } catch {
+                displayedChargeRows = []
+                chargeRowsAreProjected = false
+                chargeLoadErrorMessage = "Tally couldn't load this subscription's charges."
+            }
         }
         .confirmationDialog(
             "Mark \(sub.tallyName) as cancelled?",
@@ -312,15 +327,15 @@ struct SubscriptionDetailView: View {
 
     /// Prefer the subscription's actual imported charges; only synthesize a
     /// cadence-based history when there are no linked transactions at all.
-    private func loadDisplayedCharges() -> (rows: [ChargeRowData], isProjected: Bool) {
-        let actual = loadActualCharges()
+    private func loadDisplayedCharges() throws -> (rows: [ChargeRowData], isProjected: Bool) {
+        let actual = try loadActualCharges()
         return actual.isEmpty ? (recentCharges(), true) : (actual, false)
     }
 
     /// Real `NormalizedTransaction` rows for this subscription, most-recent first,
     /// shown with their own dates / amounts / currencies.
-    private func loadActualCharges(count: Int = 6) -> [ChargeRowData] {
-        linkedTransactions().prefix(count).map { transaction in
+    private func loadActualCharges(count: Int = 6) throws -> [ChargeRowData] {
+        try linkedTransactions().prefix(count).map { transaction in
             let label = transaction.transactionDate.formatted(.dateTime.month(.abbreviated).day().year())
             let amount = abs(transaction.transactionAmount)
             return ChargeRowData(
@@ -336,13 +351,14 @@ struct SubscriptionDetailView: View {
     /// Transactions linked to this subscription, most-recent first. Falls back to a
     /// canonical-name match (mirrors `AppModel.fetchLinkedTransactions`) so charges
     /// still surface for items linked by merchant rather than id.
-    private func linkedTransactions() -> [NormalizedTransaction] {
+    private func linkedTransactions() throws -> [NormalizedTransaction] {
         let subscriptionID = sub.id
         let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
             predicate: #Predicate { $0.subscriptionID == subscriptionID },
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
-        if let linked = try? modelContext.fetch(linkedDescriptor), linked.isEmpty == false {
+        let linked = try modelContext.fetch(linkedDescriptor)
+        if linked.isEmpty == false {
             return linked
         }
         let canonicalName = sub.canonicalName
@@ -350,7 +366,7 @@ struct SubscriptionDetailView: View {
             predicate: #Predicate { $0.merchantNormalized == canonicalName },
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
-        return (try? modelContext.fetch(canonicalDescriptor)) ?? []
+        return try modelContext.fetch(canonicalDescriptor)
     }
 
     private func recentCharges(count: Int = 6) -> [ChargeRowData] {
@@ -443,26 +459,20 @@ struct SubscriptionDetailView: View {
     /// keeping each subscription's saved reminder lead time. The service
     /// updates `lastNotificationScheduledAt` and saves the context itself.
     private func scheduleRenewalReminder() {
-        try? modelContext.save()
         let context = modelContext
         let name = sub.tallyName
         Task { @MainActor in
-            let service = RenewalNotificationService()
-            let granted = (try? await service.requestAccess()) ?? false
-            guard granted else {
-                // Denied (or undetermined) authorization silently does nothing
-                // otherwise, so tell the user why no reminder was set.
-                appModel.importErrorMessage =
-                    "Tally can't set a reminder without notification permission. " +
-                    "Turn on notifications for Tally in System Settings, then try again."
-                return
-            }
-            // The service clears every pending renewal notification and rebuilds
-            // the set from the subscriptions it's handed, so pass the full set —
-            // passing only this one would wipe the reminders other subscriptions
-            // already have.
-            let all = (try? context.fetch(FetchDescriptor<Subscription>())) ?? []
             do {
+                try context.save()
+                let service = RenewalNotificationService()
+                let granted = try await service.requestAccess()
+                guard granted else {
+                    appModel.importErrorMessage =
+                        "Tally can't set a reminder without notification permission. " +
+                        "Turn on notifications for Tally in System Settings, then try again."
+                    return
+                }
+                let all = try context.fetch(FetchDescriptor<Subscription>())
                 _ = try await service.schedule(subscriptions: all, context: context)
                 appModel.infoMessage = "You'll get a reminder before \(name) renews."
             } catch {

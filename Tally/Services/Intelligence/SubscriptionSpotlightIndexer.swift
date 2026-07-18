@@ -1,5 +1,6 @@
 import CoreSpotlight
 import Foundation
+import OSLog
 import SwiftData
 import UniformTypeIdentifiers
 
@@ -12,29 +13,31 @@ struct SubscriptionSpotlightIndexer {
 
     @MainActor
     func reindexIfNeeded(in context: ModelContext) async {
-        let descriptor = FetchDescriptor<Subscription>(
-            sortBy: [SortDescriptor(\.displayName)]
-        )
-        let subscriptions = (try? context.fetch(descriptor)) ?? []
-        let referenceDate = Date()
-        let signature = signature(for: subscriptions, referenceDate: referenceDate)
+        do {
+            let descriptor = FetchDescriptor<Subscription>(
+                sortBy: [SortDescriptor(\.displayName)]
+            )
+            let subscriptions = try context.fetch(descriptor)
+            let referenceDate = Date()
+            let signature = signature(for: subscriptions, referenceDate: referenceDate)
 
-        guard signature != Self.lastIndexedSignature else {
-            return
+            guard signature != Self.lastIndexedSignature else {
+                return
+            }
+
+            try await reindex(subscriptions: subscriptions, referenceDate: referenceDate)
+            Self.lastIndexedSignature = signature
+        } catch {
+            spotlightLogger.error(
+                "spotlight_reindex_failed error_type=\(String(describing: type(of: error)), privacy: .public)"
+            )
         }
-
-        await reindex(subscriptions: subscriptions, referenceDate: referenceDate)
-        Self.lastIndexedSignature = signature
     }
 
     @MainActor
-    func reindex(subscriptions: [Subscription], referenceDate: Date = .now) async {
-        do {
-            try await deleteDomainItems()
-            try await indexItems(searchableItems(for: subscriptions, referenceDate: referenceDate))
-        } catch {
-            // Spotlight indexing is best-effort and should not interrupt app flows.
-        }
+    func reindex(subscriptions: [Subscription], referenceDate: Date = .now) async throws {
+        try await deleteDomainItems()
+        try await indexItems(searchableItems(for: subscriptions, referenceDate: referenceDate))
     }
 
     @MainActor
@@ -166,3 +169,8 @@ struct SubscriptionSpotlightIndexer {
         .joined(separator: "|")
     }
 }
+
+private let spotlightLogger = Logger(
+    subsystem: "Tally",
+    category: "Spotlight"
+)

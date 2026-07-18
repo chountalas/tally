@@ -8,16 +8,16 @@ extension AppModel {
             return
         }
 
-        let existing = (try? context.fetchCount(FetchDescriptor<NormalizedTransaction>())) ?? 0
-        guard existing == 0 else {
-            infoMessage = "Sample data is only loaded into an empty library."
-            return
-        }
-
         isLoadingSampleData = true
         defer { isLoadingSampleData = false }
 
         do {
+            let existing = try context.fetchCount(FetchDescriptor<NormalizedTransaction>())
+            guard existing == 0 else {
+                infoMessage = "Sample data is only loaded into an empty library."
+                return
+            }
+
             let draft = try CSVTransactionImporter().makeDraft(
                 fileName: "Sample Subscription Data.csv",
                 csvText: Self.sampleDataCSV

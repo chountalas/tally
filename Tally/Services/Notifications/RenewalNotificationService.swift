@@ -26,15 +26,8 @@ final class RenewalNotificationService {
             referenceDate: referenceDate
         )
         let activeSubscriptionIDs = Set(activeSubscriptions.map(\.id))
-        await clearTrackerNotifications()
-
-        var scheduledCount = 0
-
-        for subscription in subscriptions
-        where activeSubscriptionIDs.contains(subscription.id) == false ||
-            subscription.predictedNextChargeDate == nil {
-            subscription.lastNotificationScheduledAt = nil
-        }
+        var scheduledSubscriptions: [Subscription] = []
+        var requests: [UNNotificationRequest] = []
 
         for subscription in activeSubscriptions {
             guard let renewalDate = DashboardMetrics.currentRenewalDate(
@@ -71,24 +64,41 @@ final class RenewalNotificationService {
                 trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             )
 
-            try await notificationCenter.add(request)
-            subscription.lastNotificationScheduledAt = .now
-            scheduledCount += 1
+            requests.append(request)
+            scheduledSubscriptions.append(subscription)
         }
 
+        // Add the complete replacement set before removing stale reminders. If
+        // delivery fails, existing reminders remain intact and the error reaches
+        // the caller instead of leaving the user with an empty schedule.
+        for request in requests {
+            try await notificationCenter.add(request)
+        }
+
+        let desiredIdentifiers = Set(requests.map(\.identifier))
+        let staleIdentifiers = await pendingTrackerNotificationIdentifiers()
+            .filter { desiredIdentifiers.contains($0) == false }
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: staleIdentifiers)
+
+        let scheduledSubscriptionIDs = Set(scheduledSubscriptions.map(\.id))
+        for subscription in subscriptions {
+            subscription.lastNotificationScheduledAt = scheduledSubscriptionIDs.contains(subscription.id) ? .now : nil
+        }
         try context.save()
-        return scheduledCount
+        return requests.count
     }
 
     func clearScheduledNotifications(for subscriptions: [Subscription], context: ModelContext) throws {
         let identifiers = subscriptions.map(notificationIdentifier(for:))
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
 
         for subscription in subscriptions {
             subscription.lastNotificationScheduledAt = nil
         }
 
+        // Persist the local source of truth before removing the external side
+        // effect. A failed save must not report a successful cleanup.
         try context.save()
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
     private func notificationIdentifier(for subscription: Subscription) -> String {
@@ -106,11 +116,6 @@ final class RenewalNotificationService {
         default:
             return false
         }
-    }
-
-    private func clearTrackerNotifications() async {
-        let identifiers = await pendingTrackerNotificationIdentifiers()
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
     private func pendingTrackerNotificationIdentifiers() async -> [String] {

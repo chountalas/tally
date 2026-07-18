@@ -166,7 +166,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         try appModel.removeSubscription(id: subscription.id, in: context)
 
         XCTAssertEqual(cleanedIDs, [subscription.id])
-        XCTAssertNil(appModel.subscription(withID: subscription.id, in: context))
+        XCTAssertNil(try appModel.subscription(withID: subscription.id, in: context))
     }
 
     func testHideSuggestedSubscriptionUnlinksWrongAccountCharges() throws {
@@ -497,7 +497,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(cleanupAttempts, 2)
         XCTAssertEqual(activeSubscription.status, .former)
         XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
-        XCTAssertNil(appModel.subscription(withID: formerSubscription.id, in: context))
+        XCTAssertNil(try appModel.subscription(withID: formerSubscription.id, in: context))
         XCTAssertEqual(recordedPendingCalendarEventIDs, ["event-to-clear", "old-event-to-clear"])
     }
 
@@ -898,7 +898,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         let report = try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
         try context.save()
 
-        XCTAssertNil(appModel.subscription(withID: detected.id, in: context))
+        XCTAssertNil(try appModel.subscription(withID: detected.id, in: context))
         XCTAssertNil(transaction.subscriptionID)
         XCTAssertEqual(report.summary(for: importRecord.id).needsReviewCount, 0)
         XCTAssertEqual(report.summary(for: importRecord.id).suppressedCount, 1)
@@ -1031,7 +1031,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         )
         XCTAssertTrue(rule.isFalsePositive)
         XCTAssertTrue(rule.isUserConfirmed)
-        XCTAssertNil(appModel.subscription(withID: detectedID, in: context))
+        XCTAssertNil(try appModel.subscription(withID: detectedID, in: context))
         let transactionsAfterRemoval = try context.fetch(FetchDescriptor<NormalizedTransaction>())
             .filter { $0.merchantNormalized == "ChatGPT" }
         XCTAssertTrue(transactionsAfterRemoval.allSatisfy { $0.subscriptionID == nil })
