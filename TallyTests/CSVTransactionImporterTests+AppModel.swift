@@ -89,7 +89,10 @@ extension CSVTransactionImporterTests {
         XCTAssertNil(appModel.importDraft)
         XCTAssertNil(appModel.currentImportRecord)
         XCTAssertTrue(try context.fetch(FetchDescriptor<ImportRecord>()).isEmpty)
-        XCTAssertTrue(appModel.importErrorMessage?.localizedCaseInsensitiveContains("not supported") == true)
+        XCTAssertEqual(
+            appModel.importErrorMessage,
+            ImportPreparationError.unsupportedFileType("txt").localizedDescription
+        )
     }
 
     @MainActor
