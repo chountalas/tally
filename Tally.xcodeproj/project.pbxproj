@@ -279,6 +279,7 @@
 		B0D965EF410B05F29B8C72EC /* SubscriptionCopilotSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionCopilotSheet.swift; sourceTree = "<group>"; };
 		B609BDC9BC99606F2F801420 /* SubscriptionEvidenceEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionEvidenceEngineTests.swift; sourceTree = "<group>"; };
 		B974B34B01AE82771971EDE7 /* MerchantCorrection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantCorrection.swift; sourceTree = "<group>"; };
+		BAB39A5D42775BB6041C878C /* config.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = config.h; sourceTree = "<group>"; };
 		BCC6518C63E19F5ACA4DB3FE /* BrandLogos-SOURCES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "BrandLogos-SOURCES.md"; sourceTree = "<group>"; };
 		BD07A89C9EF367D0B3BF4C56 /* TallyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TallyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF65096F1006CB28AE669AAB /* SwiftData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftData.framework; path = System/Library/Frameworks/SwiftData.framework; sourceTree = SDKROOT; };
@@ -373,6 +374,7 @@
 			isa = PBXGroup;
 			children = (
 				074E545CABA4B5D7BA371C10 /* Tally-Bridging-Header.h */,
+				7C73F87964824027A7C4E035 /* LibXLSConfig */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -555,6 +557,14 @@
 				2E33DE5E3DDBE28110EC94FB /* Tally.xcconfig */,
 			);
 			path = Config;
+			sourceTree = "<group>";
+		};
+		7C73F87964824027A7C4E035 /* LibXLSConfig */ = {
+			isa = PBXGroup;
+			children = (
+				BAB39A5D42775BB6041C878C /* config.h */,
+			);
+			path = LibXLSConfig;
 			sourceTree = "<group>";
 		};
 		7ED7708FE19273BD930775B5 /* Notifications */ = {
@@ -1087,6 +1097,7 @@
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
+					"$(SRCROOT)/Tally/Support/LibXLSConfig",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
 				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
@@ -1211,6 +1222,7 @@
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
+					"$(SRCROOT)/Tally/Support/LibXLSConfig",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
 				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
