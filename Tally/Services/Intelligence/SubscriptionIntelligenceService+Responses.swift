@@ -173,10 +173,10 @@ extension SubscriptionIntelligenceService {
         actions.append(
             tooling.draftReviewUpdate(
                 subscriptionID: subscription.id,
-                fields: [
-                    "status": SubscriptionStatus.needsReview.rawValue,
-                    "notes": "Copilot flagged a recent price increase for review."
-                ]
+                draft: ReviewUpdateDraft(
+                    status: .needsReview,
+                    notes: "Copilot flagged a recent price increase for review."
+                )
             )
         )
     }

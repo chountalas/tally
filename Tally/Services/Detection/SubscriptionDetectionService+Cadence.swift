@@ -210,25 +210,6 @@ extension SubscriptionDetectionService {
         return cadence.advance(lastChargeDate)
     }
 
-    func normalizeMonthly(price: Decimal, cadence: SubscriptionCadence) -> Decimal {
-        switch cadence {
-        case .monthly:
-            return price
-        case .annual:
-            return price / 12
-        case .quarterly:
-            return price / 3
-        case .semiannual:
-            return price / 6
-        case .biweekly:
-            return price * Decimal(26) / 12
-        case .weekly:
-            return price * Decimal(52) / 12
-        case .unknown:
-            return price
-        }
-    }
-
     func graceWindow(for cadence: SubscriptionCadence) -> Int {
         cadence.renewalGraceWindowDays
     }

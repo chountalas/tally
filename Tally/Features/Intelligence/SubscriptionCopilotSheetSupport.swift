@@ -349,8 +349,8 @@ extension SubscriptionCopilotSheet {
             dismiss()
         case let .createAliasDraft(rawMerchant, canonicalName):
             applyAlias(rawMerchant: rawMerchant, canonicalName: canonicalName)
-        case let .draftReviewUpdate(subscriptionID, fields):
-            applyReviewUpdate(subscriptionID: subscriptionID, fields: fields)
+        case let .draftReviewUpdate(subscriptionID, draft):
+            applyReviewUpdate(subscriptionID: subscriptionID, draft: draft)
         }
     }
 
@@ -368,12 +368,12 @@ extension SubscriptionCopilotSheet {
         }
     }
 
-    func applyReviewUpdate(subscriptionID: UUID, fields: [String: String]) {
+    func applyReviewUpdate(subscriptionID: UUID, draft: ReviewUpdateDraft) {
         Task {
             do {
                 actionMessage = try await appModel.applyReviewUpdate(
                     subscriptionID: subscriptionID,
-                    fields: fields,
+                    draft: draft,
                     in: modelContext
                 )
             } catch {

@@ -656,11 +656,11 @@ enum SubscriptionEvidenceJSON {
         encode(factors)
     }
 
-    static func decodeStrings(_ json: String) -> [String] {
+    static func decodeStrings(_ json: String) -> [String]? {
         guard let data = json.data(using: .utf8) else {
-            return []
+            return nil
         }
-        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+        return try? JSONDecoder().decode([String].self, from: data)
     }
 
     static func encode<T: Encodable>(_ value: T) -> String {

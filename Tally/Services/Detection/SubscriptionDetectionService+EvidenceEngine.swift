@@ -494,7 +494,7 @@ extension SubscriptionDetectionService {
             subscription.priceAmount = amount
         }
         subscription.priceCurrency = reviewRule?.overridePriceCurrency ?? latest.currency ?? subscription.priceCurrency
-        subscription.normalizedMonthlyAmount = normalizeMonthly(price: subscription.priceAmount, cadence: cadence)
+        subscription.normalizedMonthlyAmount = cadence.normalizedMonthlyAmount(for: subscription.priceAmount)
         subscription.lastChargeDate = lastChargeDate
         subscription.predictedNextChargeDate = predictNextCharge(from: lastChargeDate, cadence: cadence)
         subscription.firstChargeDate = sorted.first?.transactionDate ?? subscription.firstChargeDate
@@ -521,7 +521,7 @@ extension SubscriptionDetectionService {
             cadence: cadence,
             priceAmount: amount,
             priceCurrency: reviewRule?.overridePriceCurrency?.nilIfBlank ?? rule.currencyCode ?? sorted.last?.currency ?? "USD",
-            normalizedMonthlyAmount: normalizeMonthly(price: amount, cadence: cadence),
+            normalizedMonthlyAmount: cadence.normalizedMonthlyAmount(for: amount),
             lastChargeDate: lastChargeDate,
             predictedNextChargeDate: predictNextCharge(from: lastChargeDate, cadence: cadence),
             confidenceScore: rule.confidence,
@@ -575,9 +575,11 @@ extension SubscriptionDetectionService {
         ]
             .joined(separator: " ")
             .lowercased()
-        let allowedRawMerchants = SubscriptionEvidenceJSON.decodeStrings(rule.allowedRawMerchantsJSON)
-        let requiredTokens = SubscriptionEvidenceJSON.decodeStrings(rule.requiredTokensJSON)
-        let excludedTokens = SubscriptionEvidenceJSON.decodeStrings(rule.excludedTokensJSON)
+        guard let allowedRawMerchants = SubscriptionEvidenceJSON.decodeStrings(rule.allowedRawMerchantsJSON),
+              let requiredTokens = SubscriptionEvidenceJSON.decodeStrings(rule.requiredTokensJSON),
+              let excludedTokens = SubscriptionEvidenceJSON.decodeStrings(rule.excludedTokensJSON) else {
+            return false
+        }
 
         if excludedTokens.contains(where: { text.localizedStandardContains($0) }) {
             return false

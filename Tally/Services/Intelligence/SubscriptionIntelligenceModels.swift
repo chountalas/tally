@@ -55,10 +55,29 @@ enum IntelligenceNavigationRoute: String, Codable, Hashable, Sendable {
     case transactions
 }
 
+struct ReviewUpdateDraft: Codable, Hashable, Sendable {
+    let status: SubscriptionStatus?
+    let displayName: String?
+    let category: String?
+    let notes: String?
+
+    init(
+        status: SubscriptionStatus? = nil,
+        displayName: String? = nil,
+        category: String? = nil,
+        notes: String? = nil
+    ) {
+        self.status = status
+        self.displayName = displayName
+        self.category = category
+        self.notes = notes
+    }
+}
+
 enum IntelligenceAction: Codable, Hashable, Sendable {
     case openSubscription(UUID)
     case createAliasDraft(rawMerchant: String, canonicalName: String)
-    case draftReviewUpdate(subscriptionID: UUID, fields: [String: String])
+    case draftReviewUpdate(subscriptionID: UUID, draft: ReviewUpdateDraft)
     case openTab(IntelligenceNavigationRoute)
 
     var kind: IntelligenceActionKind {
@@ -141,7 +160,7 @@ protocol SubscriptionIntelligenceTooling {
     func draftAlias(rawMerchant: String, canonicalName: String) -> IntelligenceActionSuggestion
     func draftReviewUpdate(
         subscriptionID: UUID,
-        fields: [String: String]
+        draft: ReviewUpdateDraft
     ) -> IntelligenceActionSuggestion
 }
 
@@ -229,14 +248,14 @@ struct LocalSubscriptionIntelligenceTooling: SubscriptionIntelligenceTooling {
 
     func draftReviewUpdate(
         subscriptionID: UUID,
-        fields: [String: String]
+        draft: ReviewUpdateDraft
     ) -> IntelligenceActionSuggestion {
         return IntelligenceActionSuggestion(
             id: "review:\(subscriptionID.uuidString)",
             title: "Apply review update",
             action: .draftReviewUpdate(
                 subscriptionID: subscriptionID,
-                fields: fields
+                draft: draft
             ),
             requiresConfirmation: true
         )

@@ -196,13 +196,13 @@ extension SubscriptionIntelligenceService {
             ),
             tooling.draftReviewUpdate(
                 subscriptionID: subscription.id,
-                fields: [
-                    "status": SubscriptionStatus.needsReview.rawValue,
-                    "notes": """
+                draft: ReviewUpdateDraft(
+                    status: .needsReview,
+                    notes: """
                     Copilot flagged a \(change.percentString) price change against the
                     earlier baseline.
                     """
-                ]
+                )
             )
         ]
     }

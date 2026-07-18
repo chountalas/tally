@@ -434,6 +434,32 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         XCTAssertTrue(SubscriptionDetectionService().ruleMatches(rule, transaction: transaction))
     }
 
+    func testMalformedMatchRuleConstraintJSONFailsClosed() {
+        let rule = SubscriptionMatchRule(
+            canonicalName: "Netflix",
+            allowedRawMerchantsJSON: "not-json",
+            amountMinimum: Decimal(string: "14.00"),
+            amountMaximum: Decimal(string: "17.00"),
+            currencyCode: "USD",
+            confidence: 1,
+            createdFrom: .reviewRule
+        )
+        let transaction = NormalizedTransaction(
+            transactionDate: .now,
+            transactionAmount: Decimal(string: "-15.49") ?? -15.49,
+            source: .manualImport,
+            merchantRaw: "NETFLIX",
+            merchantNormalized: "Netflix",
+            currency: "USD",
+            accountName: "Visa",
+            category: "Streaming",
+            merchantKind: .subscriptionService,
+            merchantSubscriptionAffinity: 1
+        )
+
+        XCTAssertFalse(SubscriptionDetectionService().ruleMatches(rule, transaction: transaction))
+    }
+
     func testMissingTransactionCurrencyMatchesDefaultUSDRule() {
         let rule = SubscriptionMatchRule(
             subscriptionID: UUID(),

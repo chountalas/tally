@@ -298,10 +298,7 @@ extension AppModel {
             from: input.lastChargeDate,
             cadence: input.cadence
         )
-        let normalizedMonthlyAmount = detector.normalizeMonthly(
-            price: input.priceAmount,
-            cadence: input.cadence
-        )
+        let normalizedMonthlyAmount = input.cadence.normalizedMonthlyAmount(for: input.priceAmount)
 
         let subscription = existing ?? Subscription(
             canonicalName: canonicalName,
@@ -392,10 +389,7 @@ extension AppModel {
             from: input.lastChargeDate,
             cadence: input.cadence
         )
-        let normalizedMonthlyAmount = detector.normalizeMonthly(
-            price: input.priceAmount,
-            cadence: input.cadence
-        )
+        let normalizedMonthlyAmount = input.cadence.normalizedMonthlyAmount(for: input.priceAmount)
 
         let isManualRecord = subscription.creationPath == .manual
             || subscription.libraryState == .manual
@@ -950,7 +944,7 @@ extension AppModel {
 
     func applyReviewUpdate(
         subscriptionID: UUID,
-        fields: [String: String],
+        draft: ReviewUpdateDraft,
         in context: ModelContext
     ) async throws -> String {
         guard let subscription = try subscription(withID: subscriptionID, in: context) else {
@@ -962,16 +956,16 @@ extension AppModel {
             in: context
         )
 
-        if let statusRawValue = fields["status"] {
-            rule.overrideStatus = SubscriptionStatus(rawValue: statusRawValue)
+        if let status = draft.status {
+            rule.overrideStatus = status
         }
-        if let displayName = fields["displayName"]?.nilIfBlank {
+        if let displayName = draft.displayName?.nilIfBlank {
             rule.overrideDisplayName = displayName
         }
-        if let category = fields["category"]?.nilIfBlank {
+        if let category = draft.category?.nilIfBlank {
             rule.overrideCategory = category
         }
-        if let notes = fields["notes"]?.nilIfBlank {
+        if let notes = draft.notes?.nilIfBlank {
             rule.notes = notes
         }
         rule.updatedAt = .now
@@ -1381,10 +1375,7 @@ extension AppModel {
         subscription.priceAmount = resolvedPrice
         subscription.priceCurrency = resolvedPriceCurrency
         subscription.lastChargeDate = resolvedLastChargeDate
-        subscription.normalizedMonthlyAmount = detector.normalizeMonthly(
-            price: resolvedPrice,
-            cadence: resolvedCadence
-        )
+        subscription.normalizedMonthlyAmount = resolvedCadence.normalizedMonthlyAmount(for: resolvedPrice)
         subscription.predictedNextChargeDate = detector.predictNextCharge(
             from: resolvedLastChargeDate,
             cadence: resolvedCadence
@@ -1898,9 +1889,8 @@ private extension AppModel {
             from: resolvedLastChargeDate,
             cadence: resolvedCadence
         )
-        subscription.normalizedMonthlyAmount = detector.normalizeMonthly(
-            price: subscription.priceAmount,
-            cadence: resolvedCadence
+        subscription.normalizedMonthlyAmount = resolvedCadence.normalizedMonthlyAmount(
+            for: subscription.priceAmount
         )
         subscription.isUserConfirmed = true
         subscription.serviceCategory = resolvedCategory
