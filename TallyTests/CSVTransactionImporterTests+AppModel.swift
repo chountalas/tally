@@ -129,7 +129,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.33
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, storedMapping)
         XCTAssertEqual(resolved.confidence, 1.0)
@@ -173,7 +173,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.68
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping.dateColumn, storedMapping.dateColumn)
         XCTAssertEqual(resolved.suggestedMapping.amountColumn, storedMapping.amountColumn)
@@ -227,7 +227,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.72
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
         XCTAssertEqual(resolved.confidence, 0.72)
@@ -271,7 +271,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.61
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
         XCTAssertEqual(resolved.confidence, 0.61)
@@ -306,7 +306,7 @@ extension CSVTransactionImporterTests {
             warnings: ["Skipped 2 leading preamble rows before the detected header row."]
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, storedMapping)
         XCTAssertEqual(resolved.warnings, draft.warnings)
@@ -350,7 +350,7 @@ extension CSVTransactionImporterTests {
             confidence: 0.66
         )
 
-        let resolved = appModel.draftApplyingStoredTemplate(draft, context: context)
+        let resolved = try appModel.draftApplyingStoredTemplate(draft, context: context)
 
         XCTAssertEqual(resolved.suggestedMapping, guessedMapping)
         XCTAssertEqual(resolved.confidence, 0.66)

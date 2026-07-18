@@ -81,7 +81,7 @@ final class LibraryResetServiceTests: XCTestCase {
 
         var recordedPendingIDs: [String] = []
         let service = LibraryResetService(
-            calendarEventCleaner: { _, _ in
+            calendarEventCleaner: { _ in
                 throw RenewalCalendarError.accessDenied
             },
             pendingCalendarEventRecorder: { identifiers in

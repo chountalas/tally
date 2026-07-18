@@ -114,10 +114,9 @@ struct AIProviderSelectionTests {
             gemmaModelManager: manager
         )
 
-        // Gemma must not be adopted in background automation. The generator may
-        // legitimately fall back to Apple Intelligence on OS 26+, so only assert
-        // that Gemma itself was not used.
-        #expect(intelligence.evidenceProviderKind != .gemmaLocal)
+        // Background detection must stay deterministic and must not trigger a
+        // different provider's model startup when the selected model is absent.
+        #expect(intelligence.evidenceProviderKind == nil)
         #expect(fileManager.fileExists(atPath: manager.managedModelURL.path) == false)
         #expect(manager.statusSnapshot().health == .adoptable)
     }

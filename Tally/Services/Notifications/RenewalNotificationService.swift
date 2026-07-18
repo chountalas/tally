@@ -25,7 +25,6 @@ final class RenewalNotificationService {
             from: subscriptions,
             referenceDate: referenceDate
         )
-        let activeSubscriptionIDs = Set(activeSubscriptions.map(\.id))
         var scheduledSubscriptions: [Subscription] = []
         var requests: [UNNotificationRequest] = []
 
@@ -68,36 +67,36 @@ final class RenewalNotificationService {
             scheduledSubscriptions.append(subscription)
         }
 
-        // Add the complete replacement set before removing stale reminders. If
-        // delivery fails, existing reminders remain intact and the error reaches
-        // the caller instead of leaving the user with an empty schedule.
-        for request in requests {
-            try await notificationCenter.add(request)
+        let scheduledSubscriptionIDs = Set(scheduledSubscriptions.map(\.id))
+        let previousScheduleDates = Dictionary(
+            uniqueKeysWithValues: subscriptions.map { ($0.id, $0.lastNotificationScheduledAt) }
+        )
+        for subscription in subscriptions {
+            subscription.lastNotificationScheduledAt = scheduledSubscriptionIDs.contains(subscription.id) ? .now : nil
+        }
+        try context.save()
+
+        do {
+            for request in requests {
+                try await notificationCenter.add(request)
+            }
+        } catch {
+            for subscription in subscriptions {
+                subscription.lastNotificationScheduledAt = previousScheduleDates[subscription.id] ?? nil
+            }
+            try context.save()
+            throw error
         }
 
         let desiredIdentifiers = Set(requests.map(\.identifier))
         let staleIdentifiers = await pendingTrackerNotificationIdentifiers()
             .filter { desiredIdentifiers.contains($0) == false }
         notificationCenter.removePendingNotificationRequests(withIdentifiers: staleIdentifiers)
-
-        let scheduledSubscriptionIDs = Set(scheduledSubscriptions.map(\.id))
-        for subscription in subscriptions {
-            subscription.lastNotificationScheduledAt = scheduledSubscriptionIDs.contains(subscription.id) ? .now : nil
-        }
-        try context.save()
         return requests.count
     }
 
-    func clearScheduledNotifications(for subscriptions: [Subscription], context: ModelContext) throws {
-        let identifiers = subscriptions.map(notificationIdentifier(for:))
-
-        for subscription in subscriptions {
-            subscription.lastNotificationScheduledAt = nil
-        }
-
-        // Persist the local source of truth before removing the external side
-        // effect. A failed save must not report a successful cleanup.
-        try context.save()
+    func clearScheduledNotifications(forSubscriptionIDs subscriptionIDs: [UUID]) {
+        let identifiers = subscriptionIDs.map { "renewal.\($0.uuidString)" }
         notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 

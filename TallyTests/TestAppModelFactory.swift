@@ -9,7 +9,7 @@ extension AppModel {
         gemmaModelManager: GemmaModelManager? = nil,
         libraryResetService: LibraryResetService = LibraryResetService(),
         dashboardMetricsProvider: DashboardMetricsProvider? = nil,
-        calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { _, _ in },
+        calendarEventCleaner: @escaping ([String]) throws -> Void = { _ in },
         calendarEventCleanupFailureRecorder: @escaping ([String]) -> Void = { _ in },
         csvImporter: CSVTransactionImporter = CSVTransactionImporter(),
         xlsxImporter: XLSXTransactionImporter = XLSXTransactionImporter(),

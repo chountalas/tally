@@ -274,7 +274,8 @@ extension SubscriptionIntelligenceService {
         return AIProviderRegistry.defaultGenerator(
             preferences: preferences,
             gemmaModelManager: gemmaModelManager,
-            allowsModelAdoption: usage != .backgroundAutomation
+            allowsModelAdoption: usage != .backgroundAutomation,
+            allowsProviderFallback: usage != .backgroundAutomation
         )
     }
 

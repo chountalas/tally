@@ -485,17 +485,11 @@ extension AppModel {
         let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
             .compactMap { $0?.nilIfBlank }
 
-        try RenewalNotificationService()
-            .clearScheduledNotifications(for: [subscription], context: context)
-
-        do {
-            try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
-        } catch {
-            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
-        }
-
         subscription.status = .former
         subscription.isUserConfirmed = true
+        subscription.lastNotificationScheduledAt = nil
+        subscription.calendarEventIdentifier = nil
+        subscription.lastCalendarSyncAt = nil
 
         if !isManualRecord {
             let rule = try fetchOrCreateReviewRule(
@@ -510,6 +504,13 @@ extension AppModel {
 
         if context.hasChanges {
             try context.save()
+        }
+
+        RenewalNotificationService().clearScheduledNotifications(forSubscriptionIDs: [id])
+        do {
+            try clearSyncedCalendarEventsIfNeeded(identifiers: syncedCalendarEventIdentifiers)
+        } catch {
+            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
         }
 
         advanceLibraryRevision()
@@ -529,15 +530,6 @@ extension AppModel {
         let canonicalName = subscription.canonicalName
         let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
             .compactMap { $0?.nilIfBlank }
-
-        try RenewalNotificationService()
-            .clearScheduledNotifications(for: [subscription], context: context)
-
-        do {
-            try clearSyncedCalendarEventsIfNeeded(for: [subscription], in: context)
-        } catch {
-            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
-        }
 
         if !isManualRecord {
             let rule = try fetchOrCreateReviewRule(
@@ -569,6 +561,13 @@ extension AppModel {
 
         if context.hasChanges {
             try context.save()
+        }
+
+        RenewalNotificationService().clearScheduledNotifications(forSubscriptionIDs: [id])
+        do {
+            try clearSyncedCalendarEventsIfNeeded(identifiers: syncedCalendarEventIdentifiers)
+        } catch {
+            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
         }
 
         advanceLibraryRevision()

@@ -132,6 +132,20 @@ final class RenewalCalendarService {
         try context.save()
     }
 
+    func clearSyncedEvents(withIdentifiers identifiers: [String]) throws {
+        guard hasFullCalendarAccess else {
+            throw RenewalCalendarError.accessDenied
+        }
+
+        removePendingSyncedEvents()
+        for identifier in identifiers {
+            guard let event = eventStore.event(withIdentifier: identifier) else {
+                continue
+            }
+            try eventStore.remove(event, span: .thisEvent)
+        }
+    }
+
     private var hasFullCalendarAccess: Bool {
         authorizationStatus() == .fullAccess
     }

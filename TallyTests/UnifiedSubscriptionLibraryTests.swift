@@ -98,18 +98,12 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         XCTAssertEqual(legacy.replacementSubscriptionID, replacement.id)
     }
 
-    func testCancelSubscriptionClearsSyncedCalendarEventBeforeMarkingFormer() throws {
+    func testCancelSubscriptionClearsSyncedCalendarEventAfterMarkingFormer() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
-        var cleanedIDs: [UUID] = []
-        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
-            cleanedIDs = subscriptions.map(\.id)
-            XCTAssertEqual(subscriptions.first?.status, .active)
-            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
-            subscriptions.forEach {
-                $0.calendarEventIdentifier = nil
-                $0.lastCalendarSyncAt = nil
-            }
+        var cleanedEventIDs: [String] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { identifiers in
+            cleanedEventIDs = identifiers
         })
 
         let subscription = try appModel.createManualSubscription(
@@ -129,23 +123,18 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         try appModel.cancelSubscription(id: subscription.id, in: context)
 
-        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertEqual(cleanedEventIDs, ["event-to-clear"])
         XCTAssertNil(subscription.calendarEventIdentifier)
         XCTAssertNil(subscription.lastCalendarSyncAt)
         XCTAssertEqual(subscription.status, .former)
     }
 
-    func testRemoveSubscriptionClearsSyncedCalendarEventBeforeDeleting() throws {
+    func testRemoveSubscriptionClearsSyncedCalendarEventAfterDeleting() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
-        var cleanedIDs: [UUID] = []
-        let appModel = AppModel.testing(calendarEventCleaner: { subscriptions, _ in
-            cleanedIDs = subscriptions.map(\.id)
-            XCTAssertEqual(subscriptions.first?.calendarEventIdentifier, "event-to-clear")
-            subscriptions.forEach {
-                $0.calendarEventIdentifier = nil
-                $0.lastCalendarSyncAt = nil
-            }
+        var cleanedEventIDs: [String] = []
+        let appModel = AppModel.testing(calendarEventCleaner: { identifiers in
+            cleanedEventIDs = identifiers
         })
 
         let subscription = try appModel.createManualSubscription(
@@ -165,7 +154,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         try appModel.removeSubscription(id: subscription.id, in: context)
 
-        XCTAssertEqual(cleanedIDs, [subscription.id])
+        XCTAssertEqual(cleanedEventIDs, ["event-to-clear"])
         XCTAssertNil(try appModel.subscription(withID: subscription.id, in: context))
     }
 
@@ -455,7 +444,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         var cleanupAttempts = 0
         var recordedPendingCalendarEventIDs: [String] = []
         let appModel = AppModel.testing(
-            calendarEventCleaner: { _, _ in
+            calendarEventCleaner: { _ in
                 cleanupAttempts += 1
                 throw RenewalCalendarError.accessDenied
             },
@@ -496,7 +485,7 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
 
         XCTAssertEqual(cleanupAttempts, 2)
         XCTAssertEqual(activeSubscription.status, .former)
-        XCTAssertEqual(activeSubscription.calendarEventIdentifier, "event-to-clear")
+        XCTAssertNil(activeSubscription.calendarEventIdentifier)
         XCTAssertNil(try appModel.subscription(withID: formerSubscription.id, in: context))
         XCTAssertEqual(recordedPendingCalendarEventIDs, ["event-to-clear", "old-event-to-clear"])
     }

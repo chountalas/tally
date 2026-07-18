@@ -264,7 +264,7 @@ final class AppModel {
     @ObservationIgnored let gemmaModelManager: GemmaModelManager
     @ObservationIgnored let aiProviderStateResolver: AIProviderStateResolver
     @ObservationIgnored let dashboardMetricsProvider: DashboardMetricsProvider
-    @ObservationIgnored let calendarEventCleaner: ([Subscription], ModelContext) throws -> Void
+    @ObservationIgnored let calendarEventCleaner: ([String]) throws -> Void
     @ObservationIgnored let calendarEventCleanupFailureRecorder: ([String]) -> Void
 
     @ObservationIgnored
@@ -298,8 +298,8 @@ final class AppModel {
         gemmaModelManager: GemmaModelManager = GemmaModelManager(),
         libraryResetService: LibraryResetService = LibraryResetService(),
         dashboardMetricsProvider: DashboardMetricsProvider? = nil,
-        calendarEventCleaner: @escaping ([Subscription], ModelContext) throws -> Void = { subscriptions, context in
-            try RenewalCalendarService().clearSyncedEvents(for: subscriptions, context: context)
+        calendarEventCleaner: @escaping ([String]) throws -> Void = { identifiers in
+            try RenewalCalendarService().clearSyncedEvents(withIdentifiers: identifiers)
         },
         calendarEventCleanupFailureRecorder: @escaping ([String]) -> Void = { identifiers in
             PendingCalendarEventCleanupStore.record(identifiers)
@@ -333,13 +333,9 @@ final class AppModel {
         intelligenceProviderStatus = providerState.providerStatus
     }
 
-    func clearSyncedCalendarEventsIfNeeded(
-        for subscriptions: [Subscription],
-        in context: ModelContext
-    ) throws {
-        let syncedSubscriptions = subscriptions.filter { $0.calendarEventIdentifier != nil }
-        guard syncedSubscriptions.isEmpty == false else { return }
-        try calendarEventCleaner(syncedSubscriptions, context)
+    func clearSyncedCalendarEventsIfNeeded(identifiers: [String]) throws {
+        guard identifiers.isEmpty == false else { return }
+        try calendarEventCleaner(identifiers)
     }
 
     func dashboardMetricsSnapshot(
@@ -398,7 +394,15 @@ final class AppModel {
 
         let preparationToken = UUID()
         importPreparationToken = preparationToken
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            currentImportRecord = nil
+            isPreparingImport = false
+            importErrorMessage = "Tally couldn't start the import. \(error.localizedDescription)"
+            return
+        }
 
         if let source = bankFeedTransactionSource(for: url) {
             Task { [url, importRecordID = importRecord.id] in
@@ -494,7 +498,13 @@ final class AppModel {
 
         if let currentImportRecord, shouldDiscardImportRecord(currentImportRecord) {
             context.delete(currentImportRecord)
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                importErrorMessage = "Tally couldn't dismiss the import. \(error.localizedDescription)"
+                return
+            }
         }
 
         currentImportRecord = nil
@@ -648,10 +658,15 @@ private extension AppModel {
             importRecord.status = .failed
             importRecord.mappingSignature = "\(source.rawValue)_adapter"
             importRecord.errorMessage = message
-            try? context.save()
-
-            currentImportRecord = nil
-            importErrorMessage = message
+            do {
+                try context.save()
+                currentImportRecord = nil
+                importErrorMessage = message
+            } catch {
+                context.rollback()
+                currentImportRecord = nil
+                importErrorMessage = "Tally couldn't save the failed import state. \(error.localizedDescription)"
+            }
         }
     }
 
@@ -702,10 +717,17 @@ private extension AppModel {
         } catch {
             importRecord.status = .failed
             importRecord.errorMessage = error.localizedDescription
-            try? context.save()
-
+            let originalMessage = error.localizedDescription
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                importErrorMessage = "\(originalMessage) Tally also couldn't save the failed import state."
+                currentImportRecord = nil
+                return
+            }
             currentImportRecord = nil
-            importErrorMessage = error.localizedDescription
+            importErrorMessage = originalMessage
         }
     }
 
@@ -869,10 +891,17 @@ private extension AppModel {
         failedRecord.status = .failed
         failedRecord.mappingSignature = mapping.signature
         failedRecord.errorMessage = error.localizedDescription
-        try? context.save()
-
+        let originalMessage = error.localizedDescription
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            currentImportRecord = nil
+            importErrorMessage = "\(originalMessage) Tally also couldn't save the failed import state."
+            return
+        }
         currentImportRecord = nil
-        importErrorMessage = error.localizedDescription
+        importErrorMessage = originalMessage
     }
 
     func applyImportSummary(
