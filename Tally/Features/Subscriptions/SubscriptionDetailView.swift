@@ -9,9 +9,6 @@ private struct ChargeRowData: Identifiable, Equatable {
     let isOld: Bool
 }
 
-/// Subscription detail — opened from any list/card. Big price, next charge,
-/// how long you've had it, a price-increase callout, recent charges, and the
-/// friendly actions. Matches the Tally design.
 struct SubscriptionDetailView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext

@@ -41,8 +41,8 @@ struct AIProviderSelectionTests {
             gemmaModelManager: Self.emptyGemmaModelManager()
         )
 
-        #expect(engine.importStrategy(forUniqueMerchantCount: 3) == .individual)
-        #expect(engine.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
+        #expect(engine.strategy(forUniqueMerchantCount: 3) == .individual)
+        #expect(engine.strategy(forUniqueMerchantCount: 300) == .providerBatch)
     }
 
     @Test func detectionServiceEnablesBackgroundAIWhenGemmaIsReady() async throws {
@@ -134,11 +134,11 @@ struct AIProviderSelectionTests {
             gemmaModelManager: Self.emptyGemmaModelManager()
         )
 
-        #expect(appModel.classifier.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
+        #expect(appModel.classifier.strategy(forUniqueMerchantCount: 300) == .providerBatch)
 
         appModel.selectIntelligenceProvider(.appleIntelligence)
 
-        #expect(appModel.classifier.importStrategy(forUniqueMerchantCount: 300) == .providerBatch)
+        #expect(appModel.classifier.strategy(forUniqueMerchantCount: 300) == .providerBatch)
     }
 
     @Test func adoptsCompatibleExistingModelIntoManagedPath() throws {

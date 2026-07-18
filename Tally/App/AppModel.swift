@@ -3,9 +3,6 @@ import Observation
 import OSLog
 import SwiftData
 
-/// Tally "Add or update" flow. One sheet host swaps between the friendly chooser
-/// and the real add/edit form, so the chooser → form hand-off is a single
-/// `.sheet(item:)` identity change rather than a dismiss-then-present race.
 enum AddOrEditSheet: Identifiable, Hashable {
     case chooser
     case create

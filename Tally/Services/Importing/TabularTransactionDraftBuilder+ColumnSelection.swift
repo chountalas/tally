@@ -11,7 +11,7 @@ extension TabularTransactionDraftBuilder {
             rows: rows,
             parser: parser
         )
-        let textPlans = textColumnPlans(for: mappingContext)
+        let textPlans = TabularTextColumnPlans(baseExclusions: mappingContext.baseExclusions)
         let merchantColumn = bestTextColumn(
             in: headers,
             rows: rows,
@@ -135,10 +135,6 @@ extension TabularTransactionDraftBuilder {
             ],
             parser: parser.tryParseAmount
         )
-    }
-
-    private func textColumnPlans(for context: TabularMappingContext) -> TabularTextColumnPlans {
-        TabularTextColumnPlans(baseExclusions: context.baseExclusions)
     }
 
     private func debitSignConvention(

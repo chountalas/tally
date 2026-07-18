@@ -920,7 +920,7 @@ private extension SubscriptionDetectionService {
         let expectation = SubscriptionScheduleExpectation(
             subscriptionID: subscription.id,
             cadence: subscription.cadence,
-            interval: interval(for: subscription.cadence),
+            interval: 1,
             anchorPolicy: anchorPolicy(for: subscription, linkedTransactions: linkedTransactions),
             dateToleranceBeforeDays: dateTolerance(for: subscription.cadence),
             dateToleranceAfterDays: dateTolerance(for: subscription.cadence),
@@ -938,7 +938,7 @@ private extension SubscriptionDetectionService {
         linkedTransactions: [NormalizedTransaction]
     ) {
         expectation.cadence = subscription.cadence
-        expectation.interval = interval(for: subscription.cadence)
+        expectation.interval = 1
         expectation.anchorPolicy = anchorPolicy(for: subscription, linkedTransactions: linkedTransactions)
         expectation.anchorDay = anchorDay(for: subscription, linkedTransactions: linkedTransactions)
         expectation.anchorWeekday = anchorWeekday(for: subscription, linkedTransactions: linkedTransactions)
@@ -1186,10 +1186,6 @@ private extension SubscriptionDetectionService {
         )
         context.insert(evidence)
         return evidence
-    }
-
-    func interval(for cadence: SubscriptionCadence) -> Int {
-        1
     }
 
     func dateTolerance(for cadence: SubscriptionCadence) -> Int {

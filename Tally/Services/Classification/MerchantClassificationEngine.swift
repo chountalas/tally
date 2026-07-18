@@ -142,10 +142,6 @@ struct MerchantClassificationEngine: Sendable {
         count > providerBatchThreshold ? .providerBatch : .individual
     }
 
-    func importStrategy(forUniqueMerchantCount count: Int) -> MerchantClassificationStrategy {
-        return strategy(forUniqueMerchantCount: count)
-    }
-
     func availabilitySummary(
         for strategy: MerchantClassificationStrategy,
         uniqueMerchantCount: Int,

@@ -316,9 +316,6 @@ extension View {
 }
 
 // MARK: - Live dot (footer "Saved on this Mac")
-//
-// Static green core + soft halo. Deliberately not a repeating pulse — keeps the
-// chrome calm, consistent with the project's anti-perpetual-motion calibration.
 
 struct LiveDot: View {
     var color: Color = Theme.Colors.positive

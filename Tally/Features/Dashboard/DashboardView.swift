@@ -1,9 +1,6 @@
 import SwiftData
 import SwiftUI
 
-/// Home — the Tally hero screen. A plain-English sentence, a big friendly
-/// count-up of monthly spend, upcoming renewals, a 6-month spend chart, a
-/// gentle overlap nudge, and the one task that matters: add or update.
 struct DashboardView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

@@ -33,7 +33,7 @@ extension AppModel {
         let startedAt = Date()
         let seedByMerchant = representativeSeeds(from: seeds)
         let uniqueMerchantCount = seedByMerchant.count
-        let requestedStrategy = classifier.importStrategy(forUniqueMerchantCount: uniqueMerchantCount)
+        let requestedStrategy = classifier.strategy(forUniqueMerchantCount: uniqueMerchantCount)
         let caches = try fetchClassificationCaches(in: context)
 
         var results: [String: MerchantClassificationResult] = [:]

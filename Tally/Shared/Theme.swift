@@ -92,13 +92,6 @@ extension Color {
     }
 }
 
-// MARK: - Theme — "Tally"
-//
-// Warm, friendly, light-and-airy subscription tracker (with an equally-polished
-// dark mode). Soft direction: rounded surfaces, a coral ember accent, cozy
-// density, lively-but-calm motion. Replaces the former "Obsidian Ledger" theme;
-// token NAMES are preserved so shared components reskin in place.
-//
 enum Theme {
 
     // MARK: - Layout
@@ -109,7 +102,7 @@ enum Theme {
         static let preferencesMaxWidth: CGFloat = 860
     }
 
-    // MARK: - Spacing — "Breathe", cozy
+    // MARK: - Spacing
 
     // swiftlint:disable identifier_name
     enum Spacing {
@@ -122,7 +115,6 @@ enum Theme {
         static let section: CGFloat = 30
         static let breathe: CGFloat = 40
 
-        /// Tally-specific tokens (cozy density).
         static let page: CGFloat = 24        // outer content padding
         static let gap: CGFloat = 18         // gap between stacked sections
         static let rowV: CGFloat = 11        // list row vertical padding
@@ -130,7 +122,7 @@ enum Theme {
     }
     // swiftlint:enable identifier_name
 
-    // MARK: - Corner Radius — Soft
+    // MARK: - Corner Radius
 
     // swiftlint:disable identifier_name
     enum Radius {
@@ -144,7 +136,7 @@ enum Theme {
     }
     // swiftlint:enable identifier_name
 
-    // MARK: - Animation — confident ease-out, calm springs
+    // MARK: - Animation
 
     enum Animation {
         static let feedback: Double = 0.16
@@ -152,7 +144,6 @@ enum Theme {
         static let standard: Double = 0.40   // design --dur (.42), kept ≤ 0.40 cap
         static let progress: Double = 0.80   // bar grow / fill
 
-        /// Tally easing — cubic-bezier(.22, 1, .36, 1).
         static func tally(_ duration: Double) -> SwiftUI.Animation {
             .timingCurve(0.22, 1, 0.36, 1, duration: duration)
         }
@@ -172,7 +163,7 @@ enum Theme {
         }
     }
 
-    // MARK: - Colors — Soft / coral, warm light + dark
+    // MARK: - Colors
 
     // swiftlint:disable identifier_name
     enum Colors {
@@ -219,17 +210,12 @@ enum Theme {
     }
     // swiftlint:enable identifier_name
 
-    // MARK: - Typography — SF Pro (sans) + SF Rounded (hero / numerals)
-    //
-    // Friendly, rounded numerals (≈ Nunito) for hero values; humanist sans
-    // (≈ Hanken Grotesk → SF Pro) for everything else.
+    // MARK: - Typography
 
     enum Typography {
-        /// Rounded numerals / hero — friendly geometric feel.
         static func rounded(_ size: CGFloat, _ weight: Font.Weight = .heavy) -> Font {
             .system(size: size, weight: weight, design: .rounded)
         }
-        /// Humanist sans body text.
         static func sans(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
             .system(size: size, weight: weight)
         }
