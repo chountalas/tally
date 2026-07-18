@@ -51,6 +51,48 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
+    func testUnsupportedImportClearsPreviousPreparationState() throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let context = container.mainContext
+        let appModel = AppModel.testing()
+        let mapping = ColumnMappingConfig(
+            dateColumn: "Date",
+            descriptionColumn: "Merchant",
+            amountColumn: "Amount",
+            merchantColumn: "Merchant",
+            categoryColumn: nil,
+            accountColumn: nil,
+            currencyColumn: nil,
+            debitSignConvention: .negative
+        )
+        let pendingImportRecord = ImportRecord(
+            fileName: "previous.csv",
+            fileFormat: .csv,
+            status: .needsMapping,
+            mappingSignature: mapping.signature
+        )
+        context.insert(pendingImportRecord)
+        try context.save()
+
+        appModel.importDraft = makePendingDraft(mapping: mapping)
+        appModel.currentImportRecord = pendingImportRecord
+        appModel.isPreparingImport = true
+        let previousToken = appModel.importPreparationToken
+        let unsupportedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unsupported")
+            .appendingPathExtension("txt")
+
+        appModel.prepareImport(from: unsupportedURL, into: context)
+
+        XCTAssertNotEqual(appModel.importPreparationToken, previousToken)
+        XCTAssertFalse(appModel.isPreparingImport)
+        XCTAssertNil(appModel.importDraft)
+        XCTAssertNil(appModel.currentImportRecord)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ImportRecord>()).isEmpty)
+        XCTAssertTrue(appModel.importErrorMessage?.localizedCaseInsensitiveContains("not supported") == true)
+    }
+
+    @MainActor
     func testClearImportedLibraryRemovesPersistedImportDataAndDraftState() async throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext

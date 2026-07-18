@@ -376,7 +376,27 @@ final class AppModel {
 
     func prepareImport(from url: URL, into context: ModelContext) {
         guard let fileFormat = ImportFileFormat(fileName: url.lastPathComponent) else {
-            importErrorMessage = ImportPreparationError.unsupportedFileType(url.pathExtension).localizedDescription
+            let unsupportedMessage = ImportPreparationError
+                .unsupportedFileType(url.pathExtension)
+                .localizedDescription
+            let pendingImportRecord = currentImportRecord
+            importPreparationToken = UUID()
+            isPreparingImport = false
+            importDraft = nil
+            currentImportRecord = nil
+
+            if let pendingImportRecord, shouldDiscardImportRecord(pendingImportRecord) {
+                context.delete(pendingImportRecord)
+                do {
+                    try context.save()
+                } catch {
+                    context.rollback()
+                    importErrorMessage = "\(unsupportedMessage) Tally also couldn't clear the previous import state."
+                    return
+                }
+            }
+
+            importErrorMessage = unsupportedMessage
             return
         }
         let importRecord = ImportRecord(
