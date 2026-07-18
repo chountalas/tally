@@ -473,20 +473,4 @@ extension SubscriptionCadence {
         }
     }
 
-    func tallyAdvanced(_ date: Date, by periods: Int, using calendar: Calendar = .current) -> Date? {
-        switch self {
-        case .weekly:
-            return calendar.date(byAdding: .day, value: 7 * periods, to: date)
-        case .biweekly:
-            return calendar.date(byAdding: .day, value: 14 * periods, to: date)
-        case .monthly, .unknown:
-            return calendar.date(byAdding: .month, value: periods, to: date)
-        case .quarterly:
-            return calendar.date(byAdding: .month, value: 3 * periods, to: date)
-        case .semiannual:
-            return calendar.date(byAdding: .month, value: 6 * periods, to: date)
-        case .annual:
-            return calendar.date(byAdding: .year, value: periods, to: date)
-        }
-    }
 }

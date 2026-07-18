@@ -97,7 +97,7 @@ extension DashboardMetrics {
                 dates.append(current)
             }
 
-            guard let next = subscription.cadence.tallyAdvanced(current, by: 1, using: calendar)
+            guard let next = subscription.cadence.advanced(current, by: 1, using: calendar)
                 .map(calendar.startOfDay(for:)),
                   next > current else {
                 break

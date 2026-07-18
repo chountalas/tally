@@ -33,7 +33,6 @@
 		2C30935A4962092B34D2D174 /* TabularTransactionDraftBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1371820F57994D9EFDE57D /* TabularTransactionDraftBuilder.swift */; };
 		2CC6700D150E029F66AAFD0B /* OFXImportWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD5CAFB0C587AE7D3117E8E /* OFXImportWiringTests.swift */; };
 		2DD62A331C3A2D6A7A30403B /* PaymentProcessorUnmasker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8E3A09FBEAA2D1DFB4D56D /* PaymentProcessorUnmasker.swift */; };
-		2EEE15F42E49D09450A8A50C /* DashboardMetricsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC534AFDFF9CC4D48BE2012F /* DashboardMetricsSupport.swift */; };
 		30094DBDF448979AD6608D54 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5688CDA037AD47C9564706 /* CalendarView.swift */; };
 		33FC09757BC69E17B8BC5319 /* ole.c in Sources */ = {isa = PBXBuildFile; fileRef = 9611AB6C3562DBAD8537DE39 /* ole.c */; };
 		3403F0581CA1A312E42B3E82 /* CSVTransactionImporterTests+DetectionEdgeCases.swift in Sources */ = {isa = PBXBuildFile; fileRef = F226880B8F23A3197234D606 /* CSVTransactionImporterTests+DetectionEdgeCases.swift */; };
@@ -68,6 +67,7 @@
 		6D4350AB93F516CDEE3F54C5 /* CSVTransactionImporterTests+ReviewRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197C32C23C150597CF15E1E1 /* CSVTransactionImporterTests+ReviewRules.swift */; };
 		6F641E03A0B73350B13F6AD9 /* locale.c in Sources */ = {isa = PBXBuildFile; fileRef = D59690DE2C8327A7425E4742 /* locale.c */; };
 		7092C65AB7CB8C2B29F0EDB0 /* TransactionPageLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B7D02DCD4B36579AE23C081 /* TransactionPageLoaderTests.swift */; };
+		70B43B8416995BF081B5E620 /* DashboardMetricsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79A8DCF19FCA718446AC080E /* DashboardMetricsSupport.swift */; };
 		71CE45EA0C87AAA67AEE0D44 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3426D81538DA6E21BEAE60F /* InsightsView.swift */; };
 		730782AE92CA58D5651AC656 /* SubscriptionDetectionEvaluationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D7A67D1C3BE41BAADA41D0 /* SubscriptionDetectionEvaluationHelpers.swift */; };
 		74CF43F1ECDCC4FEC216B4CB /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14ECC4416F0E132E01C6A4D1 /* DashboardView.swift */; };
@@ -235,6 +235,7 @@
 		6E27AA7E784A78C7732CAB46 /* PaymentProcessorUnmaskerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProcessorUnmaskerTests.swift; sourceTree = "<group>"; };
 		6F2F5C5DDB14360A0998BB18 /* SubscriptionDetectionService+Scoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionDetectionService+Scoring.swift"; sourceTree = "<group>"; };
 		73260203B76492208D8F62BA /* SubscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionDetailView.swift; sourceTree = "<group>"; };
+		79A8DCF19FCA718446AC080E /* DashboardMetricsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMetricsSupport.swift; sourceTree = "<group>"; };
 		7B7D02DCD4B36579AE23C081 /* TransactionPageLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionPageLoaderTests.swift; sourceTree = "<group>"; };
 		7FB6334988976B2E00F57F06 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7FD5DCF9F7A2661B54010C4E /* DashboardAddSubscriptionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAddSubscriptionSheet.swift; sourceTree = "<group>"; };
@@ -288,7 +289,6 @@
 		CA11BA063EB3A856010D5B57 /* SubscriptionDetectionService+ManualRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionDetectionService+ManualRules.swift"; sourceTree = "<group>"; };
 		CA849838446688EE72F591A4 /* AppDataExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataExporterTests.swift; sourceTree = "<group>"; };
 		CBA7FCDEBD6442B8B667DA11 /* ModelContainerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelContainerFactory.swift; sourceTree = "<group>"; };
-		CC534AFDFF9CC4D48BE2012F /* DashboardMetricsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMetricsSupport.swift; sourceTree = "<group>"; };
 		CD21DF9103667859E0ACFF6A /* LibraryResetServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResetServiceTests.swift; sourceTree = "<group>"; };
 		CD8E3A09FBEAA2D1DFB4D56D /* PaymentProcessorUnmasker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProcessorUnmasker.swift; sourceTree = "<group>"; };
 		CF97BE86F67029D340D962A2 /* UnifiedSubscriptionLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedSubscriptionLibraryTests.swift; sourceTree = "<group>"; };
@@ -510,7 +510,6 @@
 			children = (
 				ED7188B9FB02ABD2A899F765 /* AddUpdateSheet.swift */,
 				7FD5DCF9F7A2661B54010C4E /* DashboardAddSubscriptionSheet.swift */,
-				CC534AFDFF9CC4D48BE2012F /* DashboardMetricsSupport.swift */,
 				14ECC4416F0E132E01C6A4D1 /* DashboardView.swift */,
 			);
 			path = Dashboard;
@@ -713,6 +712,7 @@
 			children = (
 				60784CD17B49A845A7823CB6 /* ColumnMappingTemplate.swift */,
 				37F31CE46DD194ADAEA16721 /* DashboardMetrics.swift */,
+				79A8DCF19FCA718446AC080E /* DashboardMetricsSupport.swift */,
 				48D5FB54DE262CB44A4FC1B2 /* ImportRecord.swift */,
 				1989B9A86675B6C6F1A0BD64 /* MerchantAlias.swift */,
 				03A9C475AD7525720C00F909 /* MerchantClassification.swift */,
@@ -914,7 +914,7 @@
 				EB1E09643685DF1EB74A42E9 /* ColumnMappingTemplate.swift in Sources */,
 				8101775CEE24C4025978769D /* DashboardAddSubscriptionSheet.swift in Sources */,
 				929311A6AB7547207B2F1F3E /* DashboardMetrics.swift in Sources */,
-				2EEE15F42E49D09450A8A50C /* DashboardMetricsSupport.swift in Sources */,
+				70B43B8416995BF081B5E620 /* DashboardMetricsSupport.swift in Sources */,
 				74CF43F1ECDCC4FEC216B4CB /* DashboardView.swift in Sources */,
 				E7F4EC2746740E90579DAC66 /* Formatting.swift in Sources */,
 				E18EAC20D4216C7F66B1D836 /* FoundationModelsIntelligenceGenerator.swift in Sources */,

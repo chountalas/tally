@@ -96,7 +96,28 @@ enum SubscriptionCadence: String, Codable, CaseIterable, Identifiable {
 
     func advance(_ date: Date, using calendar: Calendar = .current) -> Date? {
         guard self != .unknown else { return nil }
-        return tallyAdvanced(date, by: 1, using: calendar)
+        return advanced(date, by: 1, using: calendar)
+    }
+
+    func advanced(
+        _ date: Date,
+        by periods: Int,
+        using calendar: Calendar = .current
+    ) -> Date? {
+        switch self {
+        case .weekly:
+            return calendar.date(byAdding: .day, value: 7 * periods, to: date)
+        case .biweekly:
+            return calendar.date(byAdding: .day, value: 14 * periods, to: date)
+        case .monthly, .unknown:
+            return calendar.date(byAdding: .month, value: periods, to: date)
+        case .quarterly:
+            return calendar.date(byAdding: .month, value: 3 * periods, to: date)
+        case .semiannual:
+            return calendar.date(byAdding: .month, value: 6 * periods, to: date)
+        case .annual:
+            return calendar.date(byAdding: .year, value: periods, to: date)
+        }
     }
 }
 
@@ -280,6 +301,13 @@ struct MerchantClassificationResult: Codable, Hashable, Sendable {
     var merchantKind: MerchantKind
     var subscriptionAffinity: Double
     var confidence: Double
+}
+
+struct MerchantClassificationRequest: Sendable {
+    let rawMerchant: String
+    let memo: String?
+    let category: String?
+    let amount: Decimal
 }
 
 extension MerchantClassificationResult {

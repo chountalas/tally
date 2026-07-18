@@ -28,13 +28,6 @@ enum MerchantClassificationFallbackReason: Sendable, Equatable {
     case partialProviderFailure
 }
 
-struct MerchantClassificationRequest: Sendable {
-    let rawMerchant: String
-    let memo: String?
-    let category: String?
-    let amount: Decimal
-}
-
 struct MerchantClassificationBatchResult: Sendable {
     let results: [String: MerchantClassificationResult]
     let strategyUsed: MerchantClassificationStrategy

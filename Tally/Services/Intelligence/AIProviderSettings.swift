@@ -7,6 +7,22 @@ private let aiProviderLogger = Logger(
     category: "AIProvider"
 )
 
+@available(iOS 26.0, macOS 26.0, *)
+private extension SystemLanguageModel.Availability.UnavailableReason {
+    var description: String {
+        switch self {
+        case .deviceNotEligible:
+            return "device not eligible"
+        case .appleIntelligenceNotEnabled:
+            return "Apple Intelligence is not enabled"
+        case .modelNotReady:
+            return "model assets are not ready"
+        @unknown default:
+            return "unknown availability reason"
+        }
+    }
+}
+
 enum AIProviderKind: String, CaseIterable, Codable, Identifiable, Sendable {
     case gemmaLocal = "gemma_local"
     case appleIntelligence = "apple_intelligence"

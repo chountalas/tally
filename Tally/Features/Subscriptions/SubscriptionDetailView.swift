@@ -356,12 +356,12 @@ struct SubscriptionDetailView: View {
     private func recentCharges(count: Int = 6) -> [ChargeRowData] {
         let cal = Calendar.current
         let anchor: Date = isOngoing
-            ? (sub.cadence.tallyAdvanced(currentRenewalDate ?? .now, by: -1, using: cal) ?? .now)
+            ? (sub.cadence.advanced(currentRenewalDate ?? .now, by: -1, using: cal) ?? .now)
             : (sub.lastChargeDate ?? .now)
         let pct = sub.priceChangePercent ?? 0
         let oldAmount = pct > 0 ? sub.priceAmount * Decimal(1.0 / (1.0 + pct)) : sub.priceAmount
         return (0..<count).map { i in
-            let date = sub.cadence.tallyAdvanced(anchor, by: -i, using: cal) ?? anchor
+            let date = sub.cadence.advanced(anchor, by: -i, using: cal) ?? anchor
             let isOld = pct > 0.05 && i >= 3
             let label = date.formatted(.dateTime.month(.abbreviated).day().year())
             return ChargeRowData(
