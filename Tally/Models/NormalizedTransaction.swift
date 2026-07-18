@@ -79,4 +79,16 @@ final class NormalizedTransaction {
         get { MerchantKind(rawValue: merchantKindRawValue) ?? .unknown }
         set { merchantKindRawValue = newValue.rawValue }
     }
+
+    var classificationSeed: NormalizedTransactionSeed {
+        NormalizedTransactionSeed(
+            transactionDate: transactionDate,
+            transactionAmount: transactionAmount,
+            merchantRaw: merchantRaw,
+            category: category,
+            accountName: accountName,
+            memo: memo,
+            currency: currency
+        )
+    }
 }

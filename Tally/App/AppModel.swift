@@ -718,9 +718,8 @@ private extension AppModel {
             return SourceTransactionMaterialization(
                 draft: draft,
                 merchantNormalized: classification.canonicalName,
-                category: resolvedTransactionCategory(
-                    sourceCategory: draft.seed.category,
-                    classification: classification
+                category: classification.resolvedTransactionCategory(
+                    sourceCategory: draft.seed.category
                 ),
                 merchantKind: classification.merchantKind,
                 merchantSubscriptionAffinity: classification.subscriptionAffinity,
@@ -770,9 +769,8 @@ private extension AppModel {
                     sourceMetadata: ["adapter": "tabular_import"]
                 ),
                 merchantNormalized: classification.canonicalName,
-                category: resolvedTransactionCategory(
-                    sourceCategory: seed.category,
-                    classification: classification
+                category: classification.resolvedTransactionCategory(
+                    sourceCategory: seed.category
                 ),
                 merchantKind: classification.merchantKind,
                 merchantSubscriptionAffinity: classification.subscriptionAffinity,
@@ -809,40 +807,6 @@ private extension AppModel {
             subscriptionAffinity: 0.2,
             confidence: 0.2
         )
-    }
-
-    func resolvedTransactionCategory(
-        sourceCategory: String?,
-        classification: MerchantClassificationResult,
-        preferClassification: Bool = false
-    ) -> String? {
-        let sourceCategory = sourceCategory?.nilIfBlank
-        let classifiedCategory = classification.serviceCategory.nilIfBlank
-
-        guard let classifiedCategory else {
-            return sourceCategory
-        }
-
-        if preferClassification {
-            return classifiedCategory
-        }
-
-        guard let sourceCategory else {
-            return classifiedCategory
-        }
-
-        if sourceCategory == "Uncategorized" {
-            return classifiedCategory
-        }
-
-        let shouldTrustClassification =
-            classification.confidence >= 0.8 &&
-            (
-                classification.subscriptionAffinity >= 0.65 ||
-                classification.merchantKind.isUsuallyNonSubscription == false
-            )
-
-        return shouldTrustClassification ? classifiedCategory : sourceCategory
     }
 
     func completeImportSuccess(
@@ -911,11 +875,7 @@ private extension AppModel {
         from detectionReport: SubscriptionDetectionReport,
         to importRecord: ImportRecord
     ) {
-        let summary = detectionReport.summary(for: importRecord.id)
-        importRecord.detectedSubscriptionCount = summary.detectedCount
-        importRecord.needsReviewSubscriptionCount = summary.needsReviewCount
-        importRecord.suppressedRecurringCandidateCount = summary.suppressedCount
-        importRecord.recoveredRecurringCandidateCount = summary.recoveredCount
+        importRecord.apply(detectionReport.summary(for: importRecord.id))
     }
 
 }

@@ -24,6 +24,15 @@ struct SubscriptionDetectionImportSummary {
     let recoveredCount: Int
 }
 
+extension ImportRecord {
+    func apply(_ summary: SubscriptionDetectionImportSummary) {
+        detectedSubscriptionCount = summary.detectedCount
+        needsReviewSubscriptionCount = summary.needsReviewCount
+        suppressedRecurringCandidateCount = summary.suppressedCount
+        recoveredRecurringCandidateCount = summary.recoveredCount
+    }
+}
+
 struct SubscriptionDetectionReport {
     let clusters: [SubscriptionClusterReport]
 

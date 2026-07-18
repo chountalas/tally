@@ -422,7 +422,7 @@ extension AppModel {
         subscription.displayName = trimmedDisplayName
         subscription.status = input.status
         if !isManualRecord {
-            subscription.libraryState = libraryState(forEditedDetectedStatus: input.status)
+            subscription.libraryState = Subscription.libraryState(for: input.status)
         }
         subscription.cadence = input.cadence
         subscription.priceAmount = input.priceAmount
@@ -721,11 +721,7 @@ extension AppModel {
     ) throws {
         let importRecords = try context.fetch(FetchDescriptor<ImportRecord>())
         for importRecord in importRecords {
-            let summary = report.summary(for: importRecord.id)
-            importRecord.detectedSubscriptionCount = summary.detectedCount
-            importRecord.needsReviewSubscriptionCount = summary.needsReviewCount
-            importRecord.suppressedRecurringCandidateCount = summary.suppressedCount
-            importRecord.recoveredRecurringCandidateCount = summary.recoveredCount
+            importRecord.apply(report.summary(for: importRecord.id))
         }
     }
 
@@ -1685,17 +1681,7 @@ private extension AppModel {
                 try upsertClassification(rawMerchant: rawMerchant, result: classification, in: context)
             }
         } else {
-            let seeds = affectedTransactions.map { transaction in
-                NormalizedTransactionSeed(
-                    transactionDate: transaction.transactionDate,
-                    transactionAmount: transaction.transactionAmount,
-                    merchantRaw: transaction.merchantRaw,
-                    category: transaction.category,
-                    accountName: transaction.accountName,
-                    memo: transaction.memo,
-                    currency: transaction.currency
-                )
-            }
+            let seeds = affectedTransactions.map(\.classificationSeed)
             let loadResult = try await loadClassifications(
                 for: seeds,
                 context: context,
@@ -2121,14 +2107,4 @@ private extension AppModel {
         isFalsePositive ? "Uncategorized" : "Subscription"
     }
 
-    func libraryState(forEditedDetectedStatus status: SubscriptionStatus) -> SubscriptionLibraryState {
-        switch status {
-        case .active:
-            return .confirmed
-        case .former:
-            return .inactive
-        case .needsReview:
-            return .suggested
-        }
-    }
 }

@@ -138,7 +138,7 @@ final class Subscription {
         set { creationPathRawValue = newValue.rawValue }
     }
 
-    private static func libraryState(for status: SubscriptionStatus) -> SubscriptionLibraryState {
+    static func libraryState(for status: SubscriptionStatus) -> SubscriptionLibraryState {
         switch status {
         case .active:
             return .confirmed

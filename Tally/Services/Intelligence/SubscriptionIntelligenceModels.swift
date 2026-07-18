@@ -1,5 +1,27 @@
 import Foundation
 
+enum AIServiceCategoryValidator {
+    private static let invalidTokens = [
+        "confidence",
+        "score",
+        "between",
+        "likely",
+        "merchant",
+        "merchant type",
+        "brand",
+        "name",
+        "boolean",
+        "business type"
+    ]
+
+    static func isValid(_ category: String) -> Bool {
+        let normalizedCategory = category.lowercased()
+        return category.count <= 32 && invalidTokens.contains { token in
+            normalizedCategory.localizedStandardContains(token)
+        } == false
+    }
+}
+
 enum IntelligenceEvidenceKind: String, Codable, Hashable, Sendable {
     case subscription
     case transaction

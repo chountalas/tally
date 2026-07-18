@@ -412,7 +412,7 @@ extension SubscriptionIntelligenceService {
         guard canonicalName.isEmpty == false, serviceCategory.isEmpty == false else {
             return nil
         }
-        guard isValidServiceCategory(serviceCategory) else {
+        guard AIServiceCategoryValidator.isValid(serviceCategory) else {
             return nil
         }
 
@@ -430,26 +430,6 @@ extension SubscriptionIntelligenceService {
             subscriptionAffinity: min(max(result.subscriptionAffinity, 0), 1),
             confidence: min(max(result.confidence, 0), 1)
         )
-    }
-
-    func isValidServiceCategory(_ serviceCategory: String) -> Bool {
-        let lowercasedCategory = serviceCategory.lowercased()
-        let invalidCategoryTokens = [
-            "confidence",
-            "score",
-            "between",
-            "likely",
-            "merchant",
-            "merchant type",
-            "brand",
-            "name",
-            "boolean",
-            "business type"
-        ]
-        let invalidCategory = invalidCategoryTokens.contains { token in
-            lowercasedCategory.localizedStandardContains(token)
-        }
-        return invalidCategory == false && serviceCategory.count <= 32
     }
 
     func factsString(for response: IntelligenceResponse) -> String {

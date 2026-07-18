@@ -738,23 +738,8 @@ struct GemmaLocalIntelligenceGenerator: SubscriptionIntelligenceGenerating {
             return merchantKind.defaultServiceCategory
         }
 
-        let lowercasedCategory = trimmedCategory.lowercased()
-        let invalidTokens = [
-            "confidence",
-            "score",
-            "between",
-            "likely",
-            "merchant",
-            "merchant type",
-            "brand",
-            "name",
-            "boolean",
-            "business type"
-        ]
-        let isInvalid = invalidTokens.contains { token in
-            lowercasedCategory.localizedStandardContains(token)
-        } || trimmedCategory.count > 32
-
-        return isInvalid ? merchantKind.defaultServiceCategory : trimmedCategory
+        return AIServiceCategoryValidator.isValid(trimmedCategory)
+            ? trimmedCategory
+            : merchantKind.defaultServiceCategory
     }
 }

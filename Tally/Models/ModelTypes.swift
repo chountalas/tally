@@ -282,6 +282,26 @@ struct MerchantClassificationResult: Codable, Hashable, Sendable {
     var confidence: Double
 }
 
+extension MerchantClassificationResult {
+    func resolvedTransactionCategory(
+        sourceCategory: String?,
+        preferClassification: Bool = false
+    ) -> String? {
+        let sourceCategory = sourceCategory?.nilIfBlank
+        guard let classifiedCategory = serviceCategory.nilIfBlank else {
+            return sourceCategory
+        }
+        if preferClassification || sourceCategory == nil || sourceCategory == "Uncategorized" {
+            return classifiedCategory
+        }
+
+        let shouldTrustClassification = confidence >= 0.8 && (
+            subscriptionAffinity >= 0.65 || merchantKind.isUsuallyNonSubscription == false
+        )
+        return shouldTrustClassification ? classifiedCategory : sourceCategory
+    }
+}
+
 struct RecurringClusterEvaluationInput: Hashable, Sendable {
     var canonicalName: String
     var displayName: String
