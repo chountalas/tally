@@ -3,6 +3,8 @@ import XCTest
 @testable import Tally
 
 @MainActor
+// This cohesive integration suite intentionally exercises the unified library lifecycle end to end.
+// swiftlint:disable type_body_length
 final class UnifiedSubscriptionLibraryTests: XCTestCase {
     func testManualSubscriptionCreationPersistsFirstClassManualEntry() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
@@ -1222,3 +1224,4 @@ final class UnifiedSubscriptionLibraryTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
     }
 }
+// swiftlint:enable type_body_length

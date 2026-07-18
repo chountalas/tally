@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS tests and release build
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          submodules: recursive
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Record toolchain
+        run: |
+          xcodebuild -version
+          xcodegen --version
+          swiftlint version
+
+      - name: Validate scripts
+        run: bash -n scripts/*.sh
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+          git diff --exit-code -- Tally.xcodeproj/project.pbxproj
+
+      - name: Lint source and tests
+        run: swiftlint lint --config .swiftlint.yml Tally TallyTests --quiet
+
+      - name: Test
+        run: >-
+          xcodebuild test
+          -project Tally.xcodeproj
+          -scheme Tally
+          -destination 'platform=macOS'
+          -derivedDataPath .build/derived
+
+      - name: Build hardened arm64 Release
+        run: >-
+          xcodebuild build
+          -project Tally.xcodeproj
+          -scheme Tally
+          -configuration Release
+          -destination 'generic/platform=macOS'
+          -derivedDataPath .build/derived-release
+          ARCHS=arm64
+          ONLY_ACTIVE_ARCH=YES
+          ENABLE_HARDENED_RUNTIME=YES
+          CODE_SIGNING_ALLOWED=NO

@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # One-command signed + notarized release.
-# Usage:  ./scripts/release.sh
-#         VERSION=0.1.1 ./scripts/release.sh
+# Required environment variables:
+#   CODE_SIGN_IDENTITY
+#   NOTARY_PROFILE
+#   TALLY_RELEASE_BUNDLE_IDENTIFIER
+#   TALLY_RELEASE_DEVELOPMENT_TEAM
+# Optional environment variable:
+#   VERSION (defaults to MARKETING_VERSION in project.yml)
 set -euo pipefail
 
 APP_NAME="Tally"
@@ -12,10 +17,21 @@ APP_PATH="$ROOT_DIR/DerivedData/Build/Products/Release/$APP_NAME.app"
 DMG_PATH="$ROOT_DIR/dist/$APP_NAME-$VERSION-arm64.dmg"
 ZIP_PATH="$ROOT_DIR/dist/$APP_NAME-$VERSION-arm64.zip"
 STAGING_DIR="$ROOT_DIR/dist/staging"
-SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-Developer ID Application: Connor Hountalas (V54JNNN85Y)}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-luma-notary}"
-TALLY_RELEASE_BUNDLE_IDENTIFIER="${TALLY_RELEASE_BUNDLE_IDENTIFIER:-com.connorhountalas.Tally}"
-TALLY_RELEASE_DEVELOPMENT_TEAM="${TALLY_RELEASE_DEVELOPMENT_TEAM:-V54JNNN85Y}"
+
+require_env() {
+  local variable_name="$1"
+  if [[ -z "${!variable_name:-}" ]]; then
+    echo "Required environment variable is not set: $variable_name" >&2
+    exit 1
+  fi
+}
+
+require_env CODE_SIGN_IDENTITY
+require_env NOTARY_PROFILE
+require_env TALLY_RELEASE_BUNDLE_IDENTIFIER
+require_env TALLY_RELEASE_DEVELOPMENT_TEAM
+
+SIGN_IDENTITY="$CODE_SIGN_IDENTITY"
 
 if [[ -z "$VERSION" ]]; then
   echo "Could not determine MARKETING_VERSION from project.yml." >&2
