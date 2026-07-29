@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "workflow": "ci.yml",
+      "paths": ["**"],
+      "timeout_minutes": 60
+    }
+  ]
+}
