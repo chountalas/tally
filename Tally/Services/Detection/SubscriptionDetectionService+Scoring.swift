@@ -30,7 +30,7 @@ extension SubscriptionDetectionService {
         confidenceBoost: Double = 0
     ) async -> SubscriptionDetectionDisposition {
         let orderedTransactions = cluster.transactions.sorted { $0.transactionDate < $1.transactionDate }
-        guard let scoringInput = makeScoringInput(from: orderedTransactions) else {
+        guard let scoringInput = makeScoringInput(from: orderedTransactions, pattern: cluster.billingPattern) else {
             return .suppressed(
                 SubscriptionSuppression(
                     canonicalName: cluster.canonicalName,
@@ -47,7 +47,8 @@ extension SubscriptionDetectionService {
         let snapshot = makeScoringSnapshot(
             for: orderedTransactions,
             intervals: scoringInput.intervals,
-            cadence: scoringInput.cadence
+            cadence: scoringInput.cadence,
+            consistency: cluster.billingPattern?.consistency
         )
         guard shouldHardReject(transactions: orderedTransactions, snapshot: snapshot) == false else {
             return .suppressed(
@@ -167,7 +168,8 @@ extension SubscriptionDetectionService {
 
 private extension SubscriptionDetectionService {
     func makeScoringInput(
-        from orderedTransactions: [NormalizedTransaction]
+        from orderedTransactions: [NormalizedTransaction],
+        pattern: RecurringHistory?
     ) -> SubscriptionScoringInput? {
         guard orderedTransactions.count >= 2 else {
             return nil
@@ -180,6 +182,9 @@ private extension SubscriptionDetectionService {
 
         let intervals = zip(orderedTransactions, orderedTransactions.dropFirst()).map { lhs, rhs in
             Calendar.current.dateComponents([.day], from: lhs.transactionDate, to: rhs.transactionDate).day ?? 0
+        }
+        if let pattern {
+            return SubscriptionScoringInput(intervals: intervals, cadence: pattern.schedule.cadence)
         }
         let cadence = inferCadence(
             from: intervals,
@@ -195,23 +200,29 @@ private extension SubscriptionDetectionService {
             from: intervals,
             transactions: orderedTransactions
         )
-        guard sparseCadence != .unknown else {
-            return nil
+        if sparseCadence != .unknown {
+            return SubscriptionScoringInput(intervals: intervals, cadence: sparseCadence)
         }
 
-        return SubscriptionScoringInput(intervals: intervals, cadence: sparseCadence)
+        let recoveredCadence = inferCadenceAcrossMissingCharges(from: intervals, transactions: orderedTransactions)
+        guard recoveredCadence != .unknown else { return nil }
+        return SubscriptionScoringInput(intervals: intervals, cadence: recoveredCadence)
     }
 
     func makeScoringSnapshot(
         for orderedTransactions: [NormalizedTransaction],
         intervals: [Int],
-        cadence: SubscriptionCadence
+        cadence: SubscriptionCadence,
+        consistency: Double? = nil
     ) -> SubscriptionScoringSnapshot {
         let priceSamples = orderedTransactions.map { abs(($0.transactionAmount as NSDecimalNumber).doubleValue) }
         let averagePrice = priceSamples.reduce(0, +) / Double(priceSamples.count)
         let minPrice = priceSamples.min() ?? averagePrice
         let maxPrice = priceSamples.max() ?? averagePrice
-        let priceVariation = maxPrice > 0 ? (maxPrice - minPrice) / maxPrice : 0
+        let priceChanges = zip(priceSamples, priceSamples.dropFirst()).map { previous, current in
+            max(previous, current) > 0 ? abs(current - previous) / max(previous, current) : 0
+        }.sorted()
+        let priceVariation = priceChanges.isEmpty ? 0 : priceChanges[priceChanges.count / 2]
         let dominantKind = dominantMerchantKind(for: orderedTransactions)
         let memoDiversity = memoDiversityScore(for: orderedTransactions)
         let descriptorStrength = descriptorStrength(for: orderedTransactions)
@@ -236,7 +247,7 @@ private extension SubscriptionDetectionService {
             minPrice: minPrice,
             maxPrice: maxPrice,
             priceVariation: priceVariation,
-            intervalConsistency: recurrenceConsistency(for: intervals, cadence: cadence),
+            intervalConsistency: consistency ?? recurrenceConsistency(for: intervals, cadence: cadence),
             amountStability: amountStabilityScore(for: priceVariation),
             keywordSupport: keywordSupportScore(for: orderedTransactions),
             dominantMerchantKind: dominantKind,
@@ -286,9 +297,19 @@ private extension SubscriptionDetectionService {
         baseScore: Double,
         confidenceBoost: Double
     ) async -> (confidence: Double, reason: String) {
-        let draftReason = reasonSummary(for: snapshot)
+        let hasBillingGaps = snapshot.cadence.cycleDays.map { expected in
+            intervals.contains { $0 > expected + expected / 2 }
+        } ?? false
+        let draftReason = hasBillingGaps && snapshot.intervalConsistency >= 0.65
+            ? "Recurring \(snapshot.cadence.rawValue) pattern across gaps in the imported history."
+            : reasonSummary(for: snapshot)
         guard automaticRecurringClusterEvaluationEnabled,
-              shouldRunSecondPassAI(baseScore: baseScore, snapshot: snapshot) else {
+              shouldRunSecondPassAI(baseScore: baseScore, snapshot: snapshot),
+              candidateEvidence(for: snapshot).shouldAutoConfirm(
+                confidence: baseScore,
+                occurrenceCount: snapshot.transactionCount,
+                requiredOccurrences: minimumOccurrences(for: snapshot.cadence)
+              ) == false else {
             return (min(0.99, baseScore + confidenceBoost), draftReason)
         }
 
@@ -659,8 +680,6 @@ private extension SubscriptionDetectionService {
         evidence: SubscriptionCandidateEvidence
     ) -> SubscriptionSummary {
         let lastChargeDate = orderedTransactions.last?.transactionDate
-        let status: SubscriptionStatus
-        let inferredLifecycleStatus = inferStatus(lastChargeDate: lastChargeDate, cadence: snapshot.cadence)
         let confirmationThreshold: Double = switch snapshot.dominantMerchantKind {
         case .subscriptionService, .softwareOrSaaS, .mediaStreaming:
             0.72
@@ -686,42 +705,23 @@ private extension SubscriptionDetectionService {
              snapshot.dominantMerchantKind == .subscriptionService ||
              snapshot.dominantMerchantKind == .mediaStreaming)
 
-        if shouldInferLongCancelledStatus(
-            inferredLifecycleStatus: inferredLifecycleStatus,
-            snapshot: snapshot,
-            confidence: confidence,
-            evidence: evidence
-        ) {
-            status = .former
-        } else if forceNeedsReview {
-            status = .needsReview
-        } else if evidence.supportsTwoChargeMonthlyAutoConfirm, confidence >= 0.62 {
-            status = inferredLifecycleStatus
-        } else if evidence.supportsKnownServiceAutoConfirm, confidence >= 0.62 {
-            status = inferredLifecycleStatus
-        } else if orderedTransactions.count < requiredOccurrences && evidence.supportsSparseAutoConfirm == false {
-            status = .needsReview
-        } else if evidence.shouldAutoConfirm(
-            confidence: confidence,
-            occurrenceCount: orderedTransactions.count,
-            requiredOccurrences: requiredOccurrences
-        ) {
-            status = inferredLifecycleStatus
-        } else if hasStrongManagedLibrarySignals {
-            status = inferredLifecycleStatus
-        } else if confidence >= confirmationThreshold,
-                  snapshot.classificationConfidence >= classificationThreshold {
-            status = inferredLifecycleStatus
-        } else {
-            status = .needsReview
-        }
+        let canConfirm =
+            (evidence.supportsTwoChargeMonthlyAutoConfirm && confidence >= 0.62) ||
+            (evidence.supportsKnownServiceAutoConfirm && confidence >= 0.62) ||
+            evidence.shouldAutoConfirm(confidence: confidence, occurrenceCount: orderedTransactions.count,
+                                       requiredOccurrences: requiredOccurrences) ||
+            hasStrongManagedLibrarySignals ||
+            (confidence >= confirmationThreshold && snapshot.classificationConfidence >= classificationThreshold)
+        let hasEnoughHistory = orderedTransactions.count >= requiredOccurrences || evidence.supportsSparseAutoConfirm ||
+            evidence.supportsTwoChargeMonthlyAutoConfirm || evidence.supportsKnownServiceAutoConfirm
+        let status: SubscriptionStatus = !forceNeedsReview && canConfirm && hasEnoughHistory ? .active : .needsReview
 
         return SubscriptionSummary(
             canonicalName: cluster.canonicalName,
             displayName: cluster.displayName,
             cadence: snapshot.cadence,
             status: status,
-            priceAmount: Decimal(snapshot.averagePrice),
+            priceAmount: orderedTransactions.last.map { abs($0.transactionAmount) } ?? Decimal(snapshot.averagePrice),
             currency: orderedTransactions.last?.currency ?? "USD",
             lastChargeDate: lastChargeDate,
             confidence: confidence,
@@ -730,32 +730,6 @@ private extension SubscriptionDetectionService {
             reason: reason,
             detectionSource: detectionSource
         )
-    }
-
-    func shouldInferLongCancelledStatus(
-        inferredLifecycleStatus: SubscriptionStatus,
-        snapshot: SubscriptionScoringSnapshot,
-        confidence: Double,
-        evidence: SubscriptionCandidateEvidence
-    ) -> Bool {
-        guard inferredLifecycleStatus == .former,
-              snapshot.cadence != .unknown,
-              evidence.obviousNegative == false,
-              snapshot.negativePenalty < 0.6,
-              confidence >= 0.55 else {
-            return false
-        }
-
-        let hasRecurringProof =
-            evidence.strongCadence &&
-            snapshot.amountStability >= 0.45 &&
-            snapshot.transactionCount >= minimumOccurrences(for: snapshot.cadence)
-        let hasSubscriptionProof =
-            evidence.strongMerchant ||
-            snapshot.hasExplicitSubscriptionWording ||
-            snapshot.classificationConfidence >= 0.68
-
-        return hasRecurringProof && hasSubscriptionProof
     }
 
     func singleChargeSummary(
@@ -781,103 +755,5 @@ private extension SubscriptionDetectionService {
             reason: reason,
             detectionSource: .recentPurchase
         )
-    }
-}
-
-struct SubscriptionSummary {
-    let canonicalName: String
-    let displayName: String
-    let cadence: SubscriptionCadence
-    let status: SubscriptionStatus
-    let priceAmount: Decimal
-    let currency: String
-    let lastChargeDate: Date?
-    let confidence: Double
-    let category: String?
-    let reason: String?
-    let detectionSource: SubscriptionDetectionSource
-}
-
-private struct SubscriptionScoringInput {
-    let intervals: [Int]
-    let cadence: SubscriptionCadence
-}
-
-struct SubscriptionScoringSnapshot {
-    let cadence: SubscriptionCadence
-    let transactionCount: Int
-    let averagePrice: Double
-    let minPrice: Double
-    let maxPrice: Double
-    let priceVariation: Double
-    let intervalConsistency: Double
-    let amountStability: Double
-    let keywordSupport: Double
-    let dominantMerchantKind: MerchantKind
-    let merchantAffinity: Double
-    let classificationConfidence: Double
-    let memoDiversity: Double
-    let descriptorStrength: Double
-    let negativePenalty: Double
-    let excludedCategoryCount: Int
-    let financialMovementCount: Int
-    let recurringBillOrNonSubscriptionCount: Int
-    let commerceNoiseCount: Int
-    let knownSubscriptionSignalCount: Int
-    let hasExplicitSubscriptionWording: Bool
-    let hasStrongSubscriptionWording: Bool
-
-    var lowNegativeSignalScore: Double {
-        max(0, 1 - negativePenalty)
-    }
-}
-
-struct SubscriptionCandidateEvidence {
-    let strongCadence: Bool
-    let strongMerchant: Bool
-    let strongClassification: Bool
-    let supportsVariableBilling: Bool
-    let supportsSparseAutoConfirm: Bool
-    let supportsTwoChargeMonthlyAutoConfirm: Bool
-    let supportsKnownServiceAutoConfirm: Bool
-    let obviousNegative: Bool
-    let lowNegativeSignalScore: Double
-    let amountStability: Double
-
-    func shouldAutoConfirm(
-        confidence: Double,
-        occurrenceCount: Int,
-        requiredOccurrences: Int
-    ) -> Bool {
-        guard obviousNegative == false else {
-            return false
-        }
-
-        if supportsSparseAutoConfirm && confidence >= 0.72 {
-            return true
-        }
-
-        if supportsTwoChargeMonthlyAutoConfirm && confidence >= 0.62 {
-            return true
-        }
-
-        if supportsKnownServiceAutoConfirm && confidence >= 0.62 {
-            return true
-        }
-
-        guard occurrenceCount >= requiredOccurrences else {
-            return false
-        }
-
-        guard strongCadence, strongMerchant, lowNegativeSignalScore >= 0.7 else {
-            return false
-        }
-
-        let stableEnough = amountStability >= 0.45 || supportsVariableBilling
-        guard stableEnough else {
-            return false
-        }
-
-        return confidence >= 0.68 && (strongClassification || supportsVariableBilling)
     }
 }

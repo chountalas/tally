@@ -63,6 +63,26 @@ extension SubscriptionDetectionService {
         return .unknown
     }
 
+    func inferCadenceAcrossMissingCharges(
+        from intervals: [Int],
+        transactions: [NormalizedTransaction]
+    ) -> SubscriptionCadence {
+        guard transactions.count >= 3, hasStrongSparseSubscriptionSignals(transactions) else {
+            return .unknown
+        }
+
+        let candidates: [SubscriptionCadence] = [.weekly, .biweekly, .monthly, .quarterly, .semiannual, .annual]
+        return candidates.first { cadence in
+            guard let expected = cadence.cycleDays,
+                  transactions.count >= minimumOccurrences(for: cadence),
+                  intervals.contains(where: { abs($0 - expected) <= cadenceIntervalTolerance(cadence) }) else {
+                return false
+            }
+            return intervalsFitBillingCycles(intervals, cadence: cadence) &&
+                recurrenceConsistency(for: intervals, cadence: cadence) >= 0.65
+        } ?? .unknown
+    }
+
     func hasStrongSparseSubscriptionSignals(_ transactions: [NormalizedTransaction]) -> Bool {
         guard transactions.isEmpty == false else {
             return false
@@ -127,33 +147,43 @@ extension SubscriptionDetectionService {
             return 0
         }
 
-        let averageDeviation = intervals.reduce(0.0) { partial, interval in
-            partial + abs(Double(interval - expected))
-        } / Double(intervals.count)
+        let tolerance = Double(cadenceIntervalTolerance(cadence))
+        guard tolerance > 0 else { return 0 }
 
-        let tolerance: Double
+        let hasDirectInterval = intervals.contains { abs($0 - expected) <= Int(tolerance) }
+        guard hasDirectInterval, intervalsFitBillingCycles(intervals, cadence: cadence) else {
+            let averageDeviation = intervals.reduce(0.0) { $0 + abs(Double($1 - expected)) } / Double(intervals.count)
+            return max(0, 1 - averageDeviation / tolerance)
+        }
+        let scores = intervals.map { interval -> Double in
+            let cycles = hasDirectInterval ? max(1, Int((Double(interval) / Double(expected)).rounded())) : 1
+            guard interval > 0, cycles <= 3 else { return 0 }
+            let deviation = abs(Double(interval - cycles * expected)) / Double(cycles)
+            let missingPenalty = Double(cycles - 1) * 0.1
+            return max(0, 1 - deviation / tolerance - missingPenalty)
+        }
+        return scores.reduce(0, +) / Double(scores.count)
+    }
+
+    private func intervalsFitBillingCycles(_ intervals: [Int], cadence: SubscriptionCadence) -> Bool {
+        guard let expected = cadence.cycleDays else { return false }
+        let tolerance = cadenceIntervalTolerance(cadence)
+        return intervals.allSatisfy { interval in
+            let cycles = Int((Double(interval) / Double(expected)).rounded())
+            return (1...3).contains(cycles) && abs(interval - cycles * expected) <= tolerance * cycles
+        }
+    }
+
+    private func cadenceIntervalTolerance(_ cadence: SubscriptionCadence) -> Int {
         switch cadence {
-        case .monthly:
-            tolerance = 7
-        case .annual:
-            tolerance = 30
-        case .quarterly:
-            tolerance = 10
-        case .semiannual:
-            tolerance = 14
-        case .biweekly:
-            tolerance = 3
-        case .weekly:
-            tolerance = 2
-        case .unknown:
-            tolerance = 0
+        case .monthly: 7
+        case .annual: 30
+        case .quarterly: 10
+        case .semiannual: 14
+        case .biweekly: 3
+        case .weekly: 2
+        case .unknown: 0
         }
-
-        guard tolerance > 0 else {
-            return 0
-        }
-
-        return max(0, 1 - (averageDeviation / tolerance))
     }
 
     func amountStabilityScore(for priceVariation: Double) -> Double {

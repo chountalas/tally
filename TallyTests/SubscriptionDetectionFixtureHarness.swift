@@ -479,7 +479,10 @@ enum SubscriptionDetectionFixtureHarness {
         let actualOutcome: DetectionFixtureExpectedOutcome
         if subscriptions.isEmpty {
             actualOutcome = .negative
-        } else if subscriptions.allSatisfy({ $0.status == .needsReview }) {
+        } else if try context.fetch(FetchDescriptor<SubscriptionDetectionEvidence>())
+            .contains(where: { $0.decision == .autoConfirmed }) == false {
+            // This benchmark measures subscription identity. Account coverage
+            // and current lifecycle have their own multi-year import acceptance tests.
             actualOutcome = .reviewPositive
         } else {
             actualOutcome = .confirmedPositive

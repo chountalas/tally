@@ -56,7 +56,9 @@ actor GemmaRuntime {
         maxTokens: Int = 512,
         temperature: Float = 0
     ) throws -> String {
+        try Task.checkCancellation()
         let model = try ensureLoadedModel(at: modelURL)
+        try Task.checkCancellation()
         guard let vocab = llama_model_get_vocab(model) else {
             throw GemmaRuntimeError.modelLoadFailed
         }
@@ -76,6 +78,7 @@ actor GemmaRuntime {
         generatedTokens.reserveCapacity(maxTokens)
 
         for _ in 0..<maxTokens {
+            try Task.checkCancellation()
             let token = llama_sampler_sample(sampler, context, -1)
             if llama_vocab_is_eog(vocab, token) {
                 break
@@ -269,6 +272,7 @@ actor GemmaRuntime {
         }
 
         for chunkStart in stride(from: 0, to: tokens.count, by: Int(GemmaRuntimeLimits.batchSize)) {
+            try Task.checkCancellation()
             let chunkEnd = min(chunkStart + Int(GemmaRuntimeLimits.batchSize), tokens.count)
             var mutableTokens = Array(tokens[chunkStart..<chunkEnd])
             let status = mutableTokens.withUnsafeMutableBufferPointer { tokenBuffer -> Int32 in

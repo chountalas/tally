@@ -182,7 +182,7 @@ extension CSVTransactionImporterTests {
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)
         XCTAssertEqual(subscriptions.first?.cadence, .annual)
-        XCTAssertNotEqual(subscriptions.first?.status, .needsReview)
+        XCTAssertEqual(subscriptions.first?.status, .needsReview)
     }
 
     @MainActor

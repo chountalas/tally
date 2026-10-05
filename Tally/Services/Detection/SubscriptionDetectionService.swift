@@ -28,13 +28,18 @@ struct SubscriptionDetectionService {
         context.insert(detectionRun)
         let state = DetectionAccumulator()
 
+        let previousAssignments = Dictionary(uniqueKeysWithValues: transactions.compactMap { transaction in
+            transaction.subscriptionID.map { (transaction.id, $0) }
+        })
         await prepareTransactions(transactions)
         try checkCancellationAndRollback(in: context)
 
         let debitTransactions = transactions.filter { $0.transactionAmount < 0 }
         try synchronizeDerivedMatchRules(in: context, transactions: debitTransactions)
-        let environment = try makeEnvironment(in: context, detectionRun: detectionRun)
+        var environment = try makeEnvironment(in: context, detectionRun: detectionRun)
+        environment.previousAssignments = previousAssignments
         await applyMatchRules(
+            environment.matchRules.filter(\.isNegativeRule),
             to: debitTransactions,
             environment: environment,
             state: state
@@ -54,6 +59,7 @@ struct SubscriptionDetectionService {
             in: context
         )
         let finalSubscriptions = try context.fetch(FetchDescriptor<Subscription>())
+        reconcileLifecycles(for: finalSubscriptions, transactions: transactions, environment: environment)
         try reconcileOccurrences(
             for: finalSubscriptions,
             transactions: transactions,

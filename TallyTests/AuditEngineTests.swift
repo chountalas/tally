@@ -225,7 +225,7 @@ struct DashboardMetricsRegressionTests {
         #expect(DashboardHeroContext(metrics: metrics).activeSubscriptionCount == 1)
     }
 
-    @Test func shortCadenceSecondMissWindowStillCountsAsActive() {
+    @Test func shortCadenceSecondMissWindowStillCountsAsActive() throws {
         let calendar = Calendar.current
         let referenceDate = calendar.date(
             from: DateComponents(year: 2026, month: 7, day: 15, hour: 12)
@@ -257,10 +257,8 @@ struct DashboardMetricsRegressionTests {
         ).map(\.id) == [monthly.id])
         #expect(metrics.upcomingRenewals.map(\.id) == [monthly.id])
         #expect(metrics.actNowItems.map(\.subscriptionID) == [monthly.id])
-        #expect(metrics.actNowItems.first?.renewalDate == monthly.cadence.advance(
-            monthly.predictedNextChargeDate!,
-            using: calendar
-        ))
+        let expected = try #require(monthly.cadence.advance(monthly.predictedNextChargeDate!, using: calendar))
+        #expect(metrics.actNowItems.first?.renewalDate == calendar.startOfDay(for: expected))
     }
 
     @Test func projectedRenewalDatesAdvanceFromCurrentMonthEndRenewal() throws {
@@ -294,7 +292,7 @@ struct DashboardMetricsRegressionTests {
         )
 
         let renewal = try #require(marchRenewals.first)
-        #expect(calendar.component(.day, from: renewal) == 29)
+        #expect(calendar.component(.day, from: renewal) == 31)
         #expect(marchRenewals.count == 1)
     }
 

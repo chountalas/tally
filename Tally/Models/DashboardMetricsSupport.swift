@@ -23,7 +23,7 @@ extension DashboardMetrics {
             return .active
         }
         return currentRenewalDate(for: subscription, referenceDate: referenceDate) == nil
-            ? .former
+            ? .needsReview
             : .active
     }
 
@@ -31,7 +31,7 @@ extension DashboardMetrics {
         for subscription: Subscription,
         referenceDate: Date = .now
     ) -> Date? {
-        guard let renewalDate = subscription.predictedNextChargeDate else {
+        guard subscription.status != .former, let renewalDate = subscription.predictedNextChargeDate else {
             return nil
         }
 
@@ -40,7 +40,7 @@ extension DashboardMetrics {
         }
 
         guard subscription.cadence.allowsSecondMissTolerance,
-              let followingRenewalDate = subscription.cadence.advance(renewalDate),
+              let followingRenewalDate = billingSchedule(for: subscription).next(after: renewalDate),
               followingRenewalDate >= staleRenewalCutoff(for: subscription, referenceDate: referenceDate)
         else {
             return nil
@@ -86,27 +86,15 @@ extension DashboardMetrics {
             for: calendar.date(byAdding: .month, value: 1, to: visibleStart) ?? visibleStart
         )
 
-        var dates: [Date] = []
-        var current = displayStart
-        var iterations = 0
-        while iterations < 800 {
-            if current >= visibleEnd {
-                break
-            }
-            if current >= visibleStart, current >= displayStart {
-                dates.append(current)
-            }
+        let schedule = billingSchedule(for: subscription, calendar: calendar)
+        return schedule.dates(from: max(displayStart, visibleStart), through: visibleEnd)
+            .filter { $0 < visibleEnd }
+    }
 
-            guard let next = subscription.cadence.advanced(current, by: 1, using: calendar)
-                .map(calendar.startOfDay(for:)),
-                  next > current else {
-                break
-            }
-            current = next
-            iterations += 1
-        }
-
-        return dates
+    private static func billingSchedule(for subscription: Subscription, calendar: Calendar = .current) -> BillingSchedule {
+        BillingSchedule(cadence: subscription.cadence,
+                        dates: [subscription.firstChargeDate, subscription.lastChargeDate,
+                                subscription.predictedNextChargeDate].compactMap { $0 }, calendar: calendar)
     }
 
     static func overlapGroups(from subscriptions: [Subscription]) -> [OverlapGroup] {

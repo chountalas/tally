@@ -170,8 +170,8 @@ extension CSVTransactionImporterTests {
 
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)
-        XCTAssertEqual(subscriptions.first?.status, .former)
-        XCTAssertLessThan(subscriptions.first?.confidenceScore ?? 1, 0.9)
+        XCTAssertEqual(subscriptions.first?.status, .needsReview)
+        XCTAssertGreaterThan(subscriptions.first?.confidenceScore ?? 0, 0.6)
     }
 
     @MainActor
@@ -198,7 +198,7 @@ extension CSVTransactionImporterTests {
     }
 
     @MainActor
-    func testLongCancelledBorderlineRecurringChargesBecomeFormerInsteadOfReview() async throws {
+    func testOlderBorderlineRecurringHistoryNeedsRecentAccountCoverage() async throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
 
@@ -226,10 +226,10 @@ extension CSVTransactionImporterTests {
 
         let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
         XCTAssertEqual(subscriptions.count, 1)
-        XCTAssertEqual(subscriptions.first?.status, .former)
-        XCTAssertEqual(subscriptions.first?.libraryState, .inactive)
+        XCTAssertEqual(subscriptions.first?.status, .needsReview)
+        XCTAssertEqual(subscriptions.first?.libraryState, .suggested)
         XCTAssertLessThan(subscriptions.first?.confidenceScore ?? 1, 0.9)
-        XCTAssertEqual(report.summary(for: importRecord.id).needsReviewCount, 0)
+        XCTAssertEqual(report.summary(for: importRecord.id).needsReviewCount, 1)
     }
 
     @MainActor

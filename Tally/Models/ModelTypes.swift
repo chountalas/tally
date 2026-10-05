@@ -19,7 +19,7 @@ enum SubscriptionStatus: String, Codable, CaseIterable, Hashable, Identifiable, 
     }
 }
 
-enum SubscriptionCadence: String, Codable, CaseIterable, Identifiable {
+enum SubscriptionCadence: String, Codable, CaseIterable, Identifiable, Sendable {
     case monthly
     case annual
     case quarterly

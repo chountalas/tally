@@ -471,6 +471,7 @@ extension AppModel {
             .compactMap { $0?.nilIfBlank }
 
         subscription.status = .former
+        subscription.predictedNextChargeDate = nil
         subscription.isUserConfirmed = true
         subscription.lastNotificationScheduledAt = nil
         subscription.calendarEventIdentifier = nil
@@ -512,6 +513,13 @@ extension AppModel {
 
         let isManualRecord = subscription.creationPath == .manual
             || subscription.libraryState == .manual
+        if !isManualRecord {
+            let subscriptionID = subscription.id
+            let linked = try context.fetch(FetchDescriptor<NormalizedTransaction>(
+                predicate: #Predicate { $0.subscriptionID == subscriptionID }
+            ))
+            _ = try prepareHistoryLearningScope(for: subscription, linkedTransactions: linked, in: context)
+        }
         let canonicalName = subscription.canonicalName
         let syncedCalendarEventIdentifiers = [subscription.calendarEventIdentifier]
             .compactMap { $0?.nilIfBlank }
@@ -1155,7 +1163,7 @@ extension AppModel {
         applyAliasToFutureImports: Bool,
         isFalsePositive: Bool
     ) -> MerchantLearningPreview {
-        let targetCanonicalName = resolvedTargetCanonicalName(
+        let targetCanonicalName = subscription.historyIdentity != nil ? subscription.canonicalName : resolvedTargetCanonicalName(
             currentCanonicalName: subscription.canonicalName,
             proposedDisplayName: proposedDisplayName,
             applyAliasToFutureImports: applyAliasToFutureImports
@@ -1197,12 +1205,16 @@ extension AppModel {
 
         let linkedTransactions = try fetchLinkedTransactions(for: subscription, in: context)
         let rawMerchants = Set(linkedTransactions.map(\.merchantRaw))
-        let preview = merchantLearningPreview(
+        let learnsWholeMerchant = try !prepareHistoryLearningScope(
+            for: subscription, linkedTransactions: linkedTransactions, in: context
+        )
+        let preview = learnsWholeMerchant ? merchantLearningPreview(
             for: subscription,
             proposedDisplayName: displayName,
             applyAliasToFutureImports: applyAliasToFutureImports,
             isFalsePositive: isFalsePositive
-        )
+        ) : MerchantLearningPreview(mode: isFalsePositive ? .suppress : .reinforce,
+                                    targetCanonicalName: subscription.canonicalName)
 
         try validateCanonicalNameAvailability(
             preview: preview,
@@ -1247,6 +1259,12 @@ extension AppModel {
 
         subscription.canonicalName = preview.targetCanonicalName
         await SubscriptionIntelligenceService.invalidateCachedEvaluations()
+
+        if !learnsWholeMerchant {
+            subscription.displayName = resolvedDisplayName
+            _ = try await saveChangesAndRefreshSubscriptions(in: context)
+            return preview
+        }
 
         let classification = MerchantClassificationResult(
             canonicalName: preview.targetCanonicalName,

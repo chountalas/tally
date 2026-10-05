@@ -35,13 +35,15 @@ struct SubscriptionsView: View {
                 (DashboardMetrics.currentRenewalDate(for: $0, referenceDate: referenceDate) ?? .distantFuture) <
                     (DashboardMetrics.currentRenewalDate(for: $1, referenceDate: referenceDate) ?? .distantFuture)
             }
-        let activeIDs = Set(active.map(\.id))
         let former = subscriptions.filter {
-            $0.status == .former || ($0.status == .active && activeIDs.contains($0.id) == false)
+            DashboardMetrics.displayStatus(for: $0, referenceDate: referenceDate) == .former
         }
         let scopedIDs = importScopedSubscriptionIDs
         let review = subscriptions
-            .filter { $0.libraryState == .suggested && (scopedIDs?.contains($0.id) ?? true) }
+            .filter {
+                DashboardMetrics.displayStatus(for: $0, referenceDate: referenceDate) == .needsReview &&
+                    (scopedIDs?.contains($0.id) ?? true)
+            }
             .sorted { $0.confidenceScore > $1.confidenceScore }
         let monthlyTotal = appModel.dashboardMetricsSnapshot(
             subscriptions: subscriptions,
@@ -426,7 +428,7 @@ private struct SubRow: View {
         DashboardMetrics.currentActiveSubscriptions(from: [sub]).contains { $0.id == sub.id }
     }
     private var displaysAsEnded: Bool {
-        sub.status == .former || (sub.status == .active && isCurrentActive == false)
+        DashboardMetrics.displayStatus(for: sub) == .former
     }
     private var renewalDate: Date? {
         DashboardMetrics.currentRenewalDate(for: sub)

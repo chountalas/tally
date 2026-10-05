@@ -121,7 +121,7 @@ struct SubscriptionIntelligenceServiceTests {
         }
 
         #expect(subscriptionItem != nil)
-        #expect(subscriptionItem?.attributeSet.contentDescription?.localizedStandardContains("Former") == true)
+        #expect(subscriptionItem?.attributeSet.contentDescription?.localizedStandardContains("Needs Review") == true)
         #expect(subscriptionItem?.attributeSet.contentDescription?.localizedStandardContains("Active") == false)
         #expect(items.contains(where: { $0.uniqueIdentifier == "renewal.\(stale.id.uuidString)" }) == false)
     }

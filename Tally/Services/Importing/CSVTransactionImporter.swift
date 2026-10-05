@@ -62,6 +62,14 @@ struct CSVTransactionImporter {
         try draftBuilder.materializeSeeds(from: draft, mapping: mapping)
     }
 
+    @concurrent
+    static func materializeInBackground(
+        from draft: TransactionImportDraft, mapping: ColumnMappingConfig
+    ) async throws -> MaterializedTransactionSeeds {
+        try Task.checkCancellation()
+        return try CSVTransactionImporter().materializeSeeds(from: draft, mapping: mapping)
+    }
+
     private func parse(csvText: String) throws -> [[String]] {
         let normalizedText = normalize(csvText: csvText)
         let rows = candidateDelimiters

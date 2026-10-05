@@ -27,79 +27,76 @@ extension SubscriptionDetectionService {
         transactions: [NormalizedTransaction],
         mode: SubscriptionClusteringMode = .primary
     ) -> [SubscriptionCandidateCluster] {
-        let descriptorBuckets = Dictionary(grouping: transactions) { transaction in
-            explicitClusterDescriptor(for: transaction) ?? "__general__"
+        historyBuckets(transactions).flatMap { key, bucket in
+            makeHistoryClusters(merchant: merchant, key: key, transactions: bucket,
+                                histories: RecurringHistoryAnalyzer.histories(in: chargeSnapshots(bucket)), mode: mode)
         }
+    }
 
-        var candidates: [SubscriptionCandidateCluster] = []
-
-        for descriptorKey in descriptorBuckets.keys.sorted() {
-            guard let bucket = descriptorBuckets[descriptorKey] else {
-                continue
-            }
-
-            let descriptor = descriptorKey == "__general__" ? nil : descriptorKey
-            let amountGroups = mergeSequentialPriceSteps(splitByAmountSimilarity(bucket, mode: mode))
-                .filter { $0.count >= mode.minimumClusterSize }
-                .sorted { lhs, rhs in
-                    lhs.count == rhs.count
-                        ? averageAbsoluteAmount(for: lhs) < averageAbsoluteAmount(for: rhs)
-                        : lhs.count > rhs.count
-                }
-
-            let displayNames = amountGroups.enumerated().map { index, group in
-                clusterDisplayName(
-                    merchant: merchant,
-                    descriptor: descriptor,
-                    transactions: group,
-                    clusterIndex: index,
-                    totalClusters: amountGroups.count
-                )
-            }
-
-            for (index, group) in amountGroups.enumerated() {
-                let displayName = displayNames[index]
-                let canonicalName = amountGroups.count == 1 ? merchant : displayName
-                candidates.append(
-                    SubscriptionCandidateCluster(
-                        canonicalName: canonicalName,
-                        displayName: displayName,
-                        transactions: group
-                    )
-                )
-            }
+    func candidateHistories(
+        for merchant: String,
+        transactions: [NormalizedTransaction],
+        mode: SubscriptionClusteringMode = .primary
+    ) async -> [SubscriptionCandidateCluster] {
+        var clusters: [SubscriptionCandidateCluster] = []
+        for (key, bucket) in historyBuckets(transactions) {
+            guard !Task.isCancelled else { return [] }
+            let histories = await RecurringHistoryAnalyzer.analyze(chargeSnapshots(bucket))
+            clusters += makeHistoryClusters(merchant: merchant, key: key, transactions: bucket,
+                                            histories: histories, mode: mode)
         }
+        return clusters
+    }
 
-        if mode == .fallback, candidates.isEmpty {
-            let amountGroups = mergeSequentialPriceSteps(splitByAmountSimilarity(transactions, mode: mode))
-                .filter { $0.count >= mode.minimumClusterSize }
+    private func chargeSnapshots(_ transactions: [NormalizedTransaction]) -> [RecurringCharge] {
+        transactions.map { RecurringCharge(id: $0.id, date: $0.transactionDate, amount: abs($0.transactionAmount)) }
+    }
 
-            for (index, group) in amountGroups.enumerated() {
-                let displayName = clusterDisplayName(
-                    merchant: merchant,
-                    descriptor: nil,
-                    transactions: group,
-                    clusterIndex: index,
-                    totalClusters: amountGroups.count
-                )
-                let canonicalName = amountGroups.count == 1 ? merchant : displayName
-                candidates.append(
-                    SubscriptionCandidateCluster(
-                        canonicalName: canonicalName,
-                        displayName: displayName,
-                        transactions: group
-                    )
-                )
-            }
+    func canAnalyzeHistory(_ transactions: [NormalizedTransaction]) -> Bool {
+        !transactions.allSatisfy { $0.merchantKind.isUsuallyNonSubscription || isRecurringBillOrNonSubscriptionSpend($0) } ||
+            transactions.contains(where: hasExplicitSubscriptionKeywords)
+    }
+
+    private func historyBuckets(_ transactions: [NormalizedTransaction]) -> [(BillingHistoryKey, [NormalizedTransaction])] {
+        guard canAnalyzeHistory(transactions) else { return [] }
+        let buckets = Dictionary(grouping: transactions) {
+            BillingHistoryKey(currency: $0.currency?.uppercased() ?? "USD",
+                              account: $0.externalAccountID ?? $0.accountName ?? "",
+                              descriptor: explicitClusterDescriptor(for: $0) ?? "",
+                              merchantIdentity: $0.classificationConfidence >= 0.9 || hasExplicitSubscriptionKeywords($0)
+                                ? $0.merchantNormalized : $0.merchantRaw.lowercased())
         }
+        return buckets.sorted { $0.key.sortKey < $1.key.sortKey }.map { ($0.key, $0.value) }
+    }
 
-        return candidates
+    private func makeHistoryClusters(
+        merchant: String, key: BillingHistoryKey, transactions: [NormalizedTransaction],
+        histories: [RecurringHistory], mode: SubscriptionClusteringMode
+    ) -> [SubscriptionCandidateCluster] {
+        let byID = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        let used = Set(histories.flatMap(\.transactionIDs))
+        var clusters = histories.map { history in
+            let charges = history.transactionIDs.compactMap { byID[$0] }
+            let base = key.descriptor.isEmpty || merchant.localizedStandardContains(key.descriptor)
+                ? merchant : "\(merchant) \(key.descriptor)"
+            return SubscriptionCandidateCluster(canonicalName: merchant,
+                                                displayName: base, transactions: charges, billingPattern: history)
+        }
+        // Ambiguous fragments still reach the existing review policy. They never
+        // gain the calendar evidence of a reconstructed history.
+        let fragments = splitByAmountSimilarity(transactions.filter { !used.contains($0.id) }, mode: mode)
+            .filter { $0.count >= 2 }
+        clusters += fragments.map {
+            SubscriptionCandidateCluster(canonicalName: merchant, displayName: merchant, transactions: $0)
+        }
+        return clusters
     }
 
     func fallbackRecoveryGroups(
         from transactions: [NormalizedTransaction]
     ) -> [(merchant: String, transactions: [NormalizedTransaction])] {
-        let groups = Dictionary(grouping: transactions, by: recoveryGroupingKey(for:))
+        let eligible = transactions.filter { !$0.merchantKind.isUsuallyNonSubscription || hasExplicitSubscriptionKeywords($0) }
+        let groups = Dictionary(grouping: eligible, by: recoveryGroupingKey(for:))
 
         return groups
             .values
@@ -133,18 +130,11 @@ extension SubscriptionDetectionService {
         let descriptors: [(match: String, label: String)] = [
             ("amazon prime", "Prime"),
             ("prime membership", "Prime"),
-            ("member annual", "Membership"),
-            ("membership", "Membership"),
-            ("auto pay", "Autopay"),
-            ("autopay", "Autopay"),
             ("icloud+", "iCloud"),
             ("icloud", "iCloud"),
             ("apple one", "Apple One"),
             ("kindle unlimited", "Kindle Unlimited"),
             ("youtube premium", "YouTube Premium"),
-            ("premium", "Premium"),
-            ("family plan", "Family"),
-            ("bundle", "Bundle"),
             ("game pass", "Game Pass"),
             ("xbox live", "Xbox Live"),
             ("playstation plus", "PlayStation Plus"),
@@ -157,10 +147,7 @@ extension SubscriptionDetectionService {
             ("google one", "Google One"),
             ("microsoft 365", "Microsoft 365"),
             ("office 365", "Microsoft 365"),
-            ("creative cloud", "Creative Cloud"),
-            ("basic plan", "Basic"),
-            ("standard plan", "Standard"),
-            ("pro plan", "Pro")
+            ("creative cloud", "Creative Cloud")
         ]
 
         return descriptors.first(where: { combined.localizedStandardContains($0.match) })?.label
@@ -183,8 +170,9 @@ extension SubscriptionDetectionService {
                     cluster.averageAmount * toleranceProfile.percentage
                 )
             }) {
+                let count = Double(groups[index].transactions.count)
+                groups[index].averageAmount = (groups[index].averageAmount * count + amount) / (count + 1)
                 groups[index].transactions.append(transaction)
-                groups[index].averageAmount = averageAbsoluteAmount(for: groups[index].transactions)
             } else {
                 groups.append(
                     AmountCluster(
@@ -196,71 +184,6 @@ extension SubscriptionDetectionService {
         }
 
         return groups.map(\.transactions)
-    }
-
-    /// A price change makes one subscription look like two amount clusters that
-    /// never overlap in time. Re-join sequential clusters whose combined charge
-    /// history still reads as one consistent cadence, so a $9.99 → $14.99 bump
-    /// stays a single subscription instead of fragmenting below the minimum
-    /// cluster size.
-    func mergeSequentialPriceSteps(
-        _ groups: [[NormalizedTransaction]]
-    ) -> [[NormalizedTransaction]] {
-        guard groups.count > 1 else {
-            return groups
-        }
-
-        let ordered = groups
-            .map { $0.sorted { $0.transactionDate < $1.transactionDate } }
-            .sorted { ($0.first?.transactionDate ?? .distantPast) < ($1.first?.transactionDate ?? .distantPast) }
-
-        var merged: [[NormalizedTransaction]] = []
-        var current = ordered[0]
-
-        for next in ordered.dropFirst() {
-            if looksLikePriceStepContinuation(from: current, to: next) {
-                current = (current + next).sorted { $0.transactionDate < $1.transactionDate }
-            } else {
-                merged.append(current)
-                current = next
-            }
-        }
-
-        merged.append(current)
-        return merged
-    }
-
-    func looksLikePriceStepContinuation(
-        from earlier: [NormalizedTransaction],
-        to later: [NormalizedTransaction]
-    ) -> Bool {
-        guard let earlierLast = earlier.last?.transactionDate,
-              let laterFirst = later.first?.transactionDate,
-              laterFirst > earlierLast else {
-            return false
-        }
-
-        let earlierAverage = averageAbsoluteAmount(for: earlier)
-        let laterAverage = averageAbsoluteAmount(for: later)
-        guard earlierAverage > 0, laterAverage > 0 else {
-            return false
-        }
-
-        let step = abs(laterAverage - earlierAverage) / max(earlierAverage, laterAverage)
-        guard step <= 0.6 else {
-            return false
-        }
-
-        let combined = (earlier + later).sorted { $0.transactionDate < $1.transactionDate }
-        let intervals = zip(combined, combined.dropFirst()).map { lhs, rhs in
-            Calendar.current.dateComponents([.day], from: lhs.transactionDate, to: rhs.transactionDate).day ?? 0
-        }
-        let cadence = inferCadence(from: intervals, occurrenceCount: combined.count)
-        guard cadence != .unknown else {
-            return false
-        }
-
-        return recurrenceConsistency(for: intervals, cadence: cadence) >= 0.55
     }
 
     func amountToleranceProfile(
@@ -305,33 +228,6 @@ extension SubscriptionDetectionService {
             max(mode.absoluteAmountTolerance, 10),
             max(mode.percentageAmountTolerance, mode == .primary ? 0.24 : 0.28)
         )
-    }
-
-    func clusterDisplayName(
-        merchant: String,
-        descriptor: String?,
-        transactions: [NormalizedTransaction],
-        clusterIndex: Int,
-        totalClusters: Int
-    ) -> String {
-        let baseName: String
-        if let descriptor, merchant.localizedStandardContains(descriptor) == false {
-            baseName = "\(merchant) \(descriptor)"
-        } else {
-            baseName = merchant
-        }
-
-        guard totalClusters > 1 else {
-            return baseName
-        }
-
-        if descriptor != nil, clusterIndex == 0 {
-            return baseName
-        }
-
-        let averageAmount = Decimal(averageAbsoluteAmount(for: transactions))
-        let currencyCode = transactions.last?.currency ?? "USD"
-        return "\(baseName) \(averageAmount.currencyString(code: currencyCode))"
     }
 
     func absoluteAmount(for transaction: NormalizedTransaction) -> Double {
@@ -398,9 +294,18 @@ struct SubscriptionCandidateCluster {
     let canonicalName: String
     let displayName: String
     let transactions: [NormalizedTransaction]
+    var billingPattern: RecurringHistory?
 }
 
 private struct AmountCluster {
     var transactions: [NormalizedTransaction]
     var averageAmount: Double
+}
+
+private struct BillingHistoryKey: Hashable {
+    let currency: String
+    let account: String
+    let descriptor: String
+    let merchantIdentity: String
+    var sortKey: String { [currency, account, descriptor, merchantIdentity].joined(separator: "|") }
 }

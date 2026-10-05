@@ -63,6 +63,12 @@ extension SubscriptionDetectionService {
         )
         guard Task.isCancelled == false else { return }
 
+        await applyMatchRules(
+            environment.matchRules.filter { !$0.isNegativeRule && !state.seenCanonicals.contains($0.canonicalName) },
+            to: debitTransactions, environment: environment, state: state
+        )
+        guard Task.isCancelled == false else { return }
+
         let postFallbackTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
         }
@@ -142,7 +148,12 @@ extension SubscriptionDetectionService {
                 continue
             }
 
-            for cluster in candidateClusters(for: merchant, transactions: merchantTransactions) {
+            if !canAnalyzeHistory(merchantTransactions) {
+                recordExcludedHistory(merchant: merchant, transactions: merchantTransactions, state: state, source: source)
+                continue
+            }
+            let histories = await candidateHistories(for: merchant, transactions: merchantTransactions)
+            for cluster in identifyHistories(histories, environment: environment, state: state) {
                 guard Task.isCancelled == false else { return }
                 await applyDetectedCluster(
                     cluster,
@@ -159,6 +170,22 @@ extension SubscriptionDetectionService {
         }
     }
 
+    private func recordExcludedHistory(
+        merchant: String, transactions: [NormalizedTransaction], state: DetectionAccumulator, source: SubscriptionDetectionSource
+    ) {
+        guard transactions.count >= 2 else { return }
+        let intervals = zip(transactions, transactions.dropFirst()).map {
+            Calendar.current.dateComponents([.day], from: $0.transactionDate, to: $1.transactionDate).day ?? 0
+        }
+        guard inferCadence(from: intervals, occurrenceCount: transactions.count) != .unknown else { return }
+        state.clusterReports.append(SubscriptionClusterReport(
+            displayName: merchant, status: .suppressed, source: source, hadRecurringSignals: true,
+            reason: "Recurring spend excluded because the merchant evidence indicates purchases or financial movement.",
+            importRecordIDs: Set(transactions.compactMap(\.importRecordID))
+        ))
+        state.autoSuppressCount += 1
+    }
+
     func rebuildFallbackSubscriptions(
         from transactions: [NormalizedTransaction],
         environment: DetectionEnvironment,
@@ -166,11 +193,8 @@ extension SubscriptionDetectionService {
     ) async {
         for group in fallbackRecoveryGroups(from: transactions) {
             guard Task.isCancelled == false else { return }
-            for cluster in candidateClusters(
-                for: group.merchant,
-                transactions: group.transactions,
-                mode: .fallback
-            ) {
+            let histories = await candidateHistories(for: group.merchant, transactions: group.transactions, mode: .fallback)
+            for cluster in identifyHistories(histories, environment: environment, state: state) {
                 guard Task.isCancelled == false else { return }
                 await applyDetectedCluster(
                     cluster,
@@ -235,7 +259,7 @@ extension SubscriptionDetectionService {
                 displayName: cluster.displayName,
                 source: source,
                 hadRecurringSignals: true,
-                importRecordIDs: Set(cluster.transactions.compactMap(\.importRecordID))
+                transactions: cluster.transactions
             ),
             environment: environment,
             state: state

@@ -78,13 +78,28 @@ struct SourceTransactionUpsertService {
         var identities = try context.fetch(FetchDescriptor<SourceTransactionIdentity>())
         var transactions = try context.fetch(FetchDescriptor<NormalizedTransaction>())
         var transactionsByID = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        var manualIdentities = identities.reduce(into: [ManualImportIdentityKey: SourceTransactionIdentity]()) { result, identity in
+            if identity.source == .manualImport, let key = ManualImportIdentityKey(identity: identity), result[key] == nil {
+                result[key] = identity
+            }
+        }
 
         for (index, materialization) in materializations.enumerated() {
-            let match = findIdentity(
-                for: materialization.draft,
-                identities: identities,
-                transactions: transactions
-            )
+            try Task.checkCancellation()
+            let draft = materialization.draft
+            let canUseManualIndex = draft.source == .manualImport &&
+                draft.externalTransactionID == nil && draft.pendingExternalTransactionID == nil
+            let manualKey = canUseManualIndex ? ManualImportIdentityKey(draft: draft) : nil
+            let match: SourceIdentityMatch
+            if let manualKey {
+                if let identity = manualIdentities[manualKey], ManualImportIdentityKey(identity: identity) == manualKey {
+                    match = .identity(identity)
+                } else {
+                    match = .none
+                }
+            } else {
+                match = findIdentity(for: draft, identities: identities, transactions: transactions)
+            }
 
             let identity: SourceTransactionIdentity
             let transaction: NormalizedTransaction
@@ -154,6 +169,9 @@ struct SourceTransactionUpsertService {
                 from: materialization,
                 importRecordID: importRecordID
             )
+            if let manualKey {
+                manualIdentities[manualKey] = identity
+            }
             if changed, match.didFindExistingRecord {
                 summary.updatedCount += 1
             } else if match.didFindExistingRecord && wasFuzzyMatch == false {
@@ -168,6 +186,27 @@ struct SourceTransactionUpsertService {
         return summary
     }
 
+}
+
+private struct ManualImportIdentityKey: Hashable {
+    let accountID: String
+    let referenceID: String
+    let fingerprint: String
+
+    init?(draft: SourceTransactionDraft) {
+        guard let referenceID = draft.sourceReferenceID else { return nil }
+        accountID = draft.externalAccountID ?? ""
+        self.referenceID = referenceID
+        fingerprint = draft.sourceFingerprint
+    }
+
+    @MainActor
+    init?(identity: SourceTransactionIdentity) {
+        guard let referenceID = identity.sourceReferenceID else { return nil }
+        accountID = identity.externalAccountID ?? ""
+        self.referenceID = referenceID
+        fingerprint = identity.sourceFingerprint
+    }
 }
 
 private enum SourceIdentityMatch {

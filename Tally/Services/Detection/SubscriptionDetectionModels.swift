@@ -59,10 +59,12 @@ struct DetectionEnvironment {
     let rulesByCanonical: [String: SubscriptionReviewRule]
     let correctionsByCanonical: [String: MerchantCorrection]
     let matchRules: [SubscriptionMatchRule]
+    var previousAssignments: [UUID: UUID] = [:]
 }
 
 final class DetectionAccumulator {
     var seenCanonicals = Set<String>()
+    var claimedSubscriptionIDs = Set<UUID>()
     var suppressedTransactionIDs = Set<UUID>()
     var clusterReports: [SubscriptionClusterReport] = []
     var ruleMatchCount = 0
@@ -97,6 +99,7 @@ struct DetectionSuppressionRequest {
     let hadRecurringSignals: Bool
     let reason: String
     let importRecordIDs: Set<UUID>
+    let transactionIDs: Set<UUID>
 }
 
 struct DetectedSubscriptionUpdateContext {
