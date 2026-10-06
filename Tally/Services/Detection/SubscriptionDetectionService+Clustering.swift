@@ -4,8 +4,6 @@ enum SubscriptionClusteringMode {
     case primary
     case fallback
 
-    var minimumClusterSize: Int { 2 }
-
     var absoluteAmountTolerance: Double {
         switch self {
         case .primary: 2.5
@@ -232,14 +230,6 @@ extension SubscriptionDetectionService {
 
     func absoluteAmount(for transaction: NormalizedTransaction) -> Double {
         abs((transaction.transactionAmount as NSDecimalNumber).doubleValue)
-    }
-
-    func averageAbsoluteAmount(for transactions: [NormalizedTransaction]) -> Double {
-        guard transactions.isEmpty == false else {
-            return 0
-        }
-
-        return transactions.map(absoluteAmount(for:)).reduce(0, +) / Double(transactions.count)
     }
 
     func recoveryGroupingKey(for transaction: NormalizedTransaction) -> String {

@@ -1742,18 +1742,6 @@ private extension AppModel {
         }
     }
 
-    func linkedTransactions(
-        for subscription: Subscription,
-        in transactions: [NormalizedTransaction]
-    ) -> [NormalizedTransaction] {
-        let linked = transactions.filter { $0.subscriptionID == subscription.id }
-        if linked.isEmpty == false {
-            return linked
-        }
-
-        return transactions.filter { $0.merchantNormalized == subscription.canonicalName }
-    }
-
     func automationAction(
         for subscription: Subscription,
         linkedTransactions: [NormalizedTransaction],

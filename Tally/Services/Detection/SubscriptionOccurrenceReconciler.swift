@@ -147,7 +147,6 @@ private extension SubscriptionDetectionService {
             let status = occurrenceStatus(
                 windowEnd: windowEnd,
                 matchedTransaction: matchedTransaction,
-                subscription: subscription,
                 expectation: expectation,
                 expectedAmount: previousAmount,
                 observedMissing: coverage.observesMissingPayment(expected: expectedDate, schedule: schedule, charges: linkedTransactions)
@@ -210,7 +209,6 @@ private extension SubscriptionDetectionService {
     func occurrenceStatus(
         windowEnd: Date,
         matchedTransaction: NormalizedTransaction?,
-        subscription: Subscription,
         expectation: SubscriptionScheduleExpectation,
         expectedAmount: Decimal,
         observedMissing: Bool
