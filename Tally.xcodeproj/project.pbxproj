@@ -141,6 +141,7 @@
 		D950E1E4056751963F04C1A8 /* RenewalNotificationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB83C952E18E65AABCDF0550 /* RenewalNotificationServiceTests.swift */; };
 		DA1EC77FD023E35ED8385ABF /* BillingSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58128A042BF801A26DEC6F6A /* BillingSchedule.swift */; };
 		DB6B75A1B567986E65D0D802 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FEBA6BB922033C9A0A1DF90 /* SettingsView.swift */; };
+		DC7D47536419E3F8B830A50B /* AppRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC8B6A0644366FFD1D8B6F9 /* AppRegistrationTests.swift */; };
 		DD556DD06352B8152231549E /* LibraryResetServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD21DF9103667859E0ACFF6A /* LibraryResetServiceTests.swift */; };
 		DE7F5EFE8A2A2CA39E0A167F /* CSVTransactionImporterTests+AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFE129DBD4A171A8CE621C2 /* CSVTransactionImporterTests+AppModel.swift */; };
 		E116762372C91847185E6769 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D3A110C2438C4CC68E2AE17B /* Assets.xcassets */; };
@@ -213,6 +214,7 @@
 		29DCBF9F4D7255E2F26C587C /* SubscriptionEvidenceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionEvidenceModels.swift; sourceTree = "<group>"; };
 		2D4AD3D39915BAB88C0DABD4 /* AppIntentSubscriptionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentSubscriptionStoreTests.swift; sourceTree = "<group>"; };
 		2D6D46B36BEC3BD766D8CEE9 /* TallyKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TallyKit.swift; sourceTree = "<group>"; };
+		2DC8B6A0644366FFD1D8B6F9 /* AppRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRegistrationTests.swift; sourceTree = "<group>"; };
 		2E11006388257E98B0C7BC44 /* AppDataExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataExporter.swift; sourceTree = "<group>"; };
 		2E33DE5E3DDBE28110EC94FB /* Tally.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tally.xcconfig; sourceTree = "<group>"; };
 		3042133CBF3DA908E82F7273 /* SubscriptionDetectionDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionDetectionDiagnosticsTests.swift; sourceTree = "<group>"; };
@@ -447,6 +449,7 @@
 				2245F92CD9353EF8158B3EC5 /* AIProviderSelectionTests.swift */,
 				CA849838446688EE72F591A4 /* AppDataExporterTests.swift */,
 				2D4AD3D39915BAB88C0DABD4 /* AppIntentSubscriptionStoreTests.swift */,
+				2DC8B6A0644366FFD1D8B6F9 /* AppRegistrationTests.swift */,
 				5F57082345B0FB6F0692002A /* AuditEngineTests.swift */,
 				D030CF4D49F52C81C8B19971 /* BankFeedTransactionAdapterTests.swift */,
 				8BAC47C68412832BFED7151E /* CadenceDetectionTests.swift */,
@@ -912,6 +915,7 @@
 				6496D1224FF87050E4C1030A /* AIProviderSelectionTests.swift in Sources */,
 				C8D06F6227CCAC056464770D /* AppDataExporterTests.swift in Sources */,
 				3963A56FB39540442D061BD3 /* AppIntentSubscriptionStoreTests.swift in Sources */,
+				DC7D47536419E3F8B830A50B /* AppRegistrationTests.swift in Sources */,
 				18CCA69C15A411614EA44566 /* AuditEngineTests.swift in Sources */,
 				9FC9CE105A2399558C652C1B /* BankFeedTransactionAdapterTests.swift in Sources */,
 				DE7F5EFE8A2A2CA39E0A167F /* CSVTransactionImporterTests+AppModel.swift in Sources */,
@@ -1144,7 +1148,7 @@
 					"$(SRCROOT)/Tally/Support/LibXLSConfig",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
+				INFOPLIST_FILE = "Config/Tally-Info.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Tally can create renewal reminders in your calendar.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Tally can create renewal reminders in your calendar.";
@@ -1269,7 +1273,7 @@
 					"$(SRCROOT)/Tally/Support/LibXLSConfig",
 					"$(SRCROOT)/Vendor/libxls/include",
 				);
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tally\"], \"CFBundleURLName\": \"$(TALLY_BUNDLE_IDENTIFIER)\"]]";
+				INFOPLIST_FILE = "Config/Tally-Info.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Tally can create renewal reminders in your calendar.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Tally can create renewal reminders in your calendar.";

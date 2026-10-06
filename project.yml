@@ -17,6 +17,15 @@ targets:
   Tally:
     type: application
     platform: auto
+    info:
+      path: Config/Tally-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleURLTypes:
+          - CFBundleURLName: $(TALLY_BUNDLE_IDENTIFIER)
+            CFBundleURLSchemes:
+              - tally
     configFiles:
       Debug: Config/Tally.xcconfig
       Release: Config/Tally.xcconfig
@@ -85,10 +94,6 @@ targets:
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: Tally can create renewal reminders in your calendar.
         INFOPLIST_KEY_NSUserNotificationsUsageDescription: Tally can notify you before upcoming renewals.
         INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
-        INFOPLIST_KEY_CFBundleURLTypes:
-          - CFBundleURLName: $(TALLY_BUNDLE_IDENTIFIER)
-            CFBundleURLSchemes:
-              - tally
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
