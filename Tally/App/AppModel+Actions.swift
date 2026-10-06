@@ -488,19 +488,11 @@ extension AppModel {
             rule.updatedAt = .now
         }
 
-        if context.hasChanges {
-            try context.save()
-        }
-
-        RenewalNotificationService().clearScheduledNotifications(forSubscriptionIDs: [id])
-        do {
-            try clearSyncedCalendarEventsIfNeeded(identifiers: syncedCalendarEventIdentifiers)
-        } catch {
-            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
-        }
-
-        advanceLibraryRevision()
-        scheduleSpotlightReindex(in: context)
+        try finishSubscriptionDeactivation(
+            id: id,
+            calendarEventIdentifiers: syncedCalendarEventIdentifiers,
+            in: context
+        )
     }
 
     func removeSubscription(
@@ -552,15 +544,27 @@ extension AppModel {
 
         context.delete(subscription)
 
+        try finishSubscriptionDeactivation(
+            id: id,
+            calendarEventIdentifiers: syncedCalendarEventIdentifiers,
+            in: context
+        )
+    }
+
+    private func finishSubscriptionDeactivation(
+        id: UUID,
+        calendarEventIdentifiers: [String],
+        in context: ModelContext
+    ) throws {
         if context.hasChanges {
             try context.save()
         }
 
         RenewalNotificationService().clearScheduledNotifications(forSubscriptionIDs: [id])
         do {
-            try clearSyncedCalendarEventsIfNeeded(identifiers: syncedCalendarEventIdentifiers)
+            try clearSyncedCalendarEventsIfNeeded(identifiers: calendarEventIdentifiers)
         } catch {
-            calendarEventCleanupFailureRecorder(syncedCalendarEventIdentifiers)
+            calendarEventCleanupFailureRecorder(calendarEventIdentifiers)
         }
 
         advanceLibraryRevision()

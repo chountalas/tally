@@ -391,12 +391,6 @@ struct GemmaModelManager: @unchecked Sendable {
             gemmaModelLogger.notice(
                 "Validated Gemma model size=\(validatedFileSize, privacy: .public)B latency_ms=\(durationMilliseconds, privacy: .public)"
             )
-        } catch let error as GemmaModelValidationError {
-            let durationMilliseconds = Date().timeIntervalSince(start) * 1_000
-            gemmaModelLogger.error(
-                "Gemma model validation failed latency_ms=\(durationMilliseconds, privacy: .public)"
-            )
-            throw error
         } catch {
             let durationMilliseconds = Date().timeIntervalSince(start) * 1_000
             gemmaModelLogger.error(
