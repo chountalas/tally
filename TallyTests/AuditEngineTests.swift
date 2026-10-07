@@ -227,9 +227,9 @@ struct DashboardMetricsRegressionTests {
 
     @Test func shortCadenceSecondMissWindowStillCountsAsActive() throws {
         let calendar = Calendar.current
-        let referenceDate = calendar.date(
+        let referenceDate = try #require(calendar.date(
             from: DateComponents(year: 2026, month: 7, day: 15, hour: 12)
-        ) ?? .now
+        ))
         let monthly = makeSubscription(
             name: "Monthly Tool",
             price: 12,
@@ -237,11 +237,15 @@ struct DashboardMetricsRegressionTests {
             confidence: 0.92,
             status: .active
         )
-        monthly.predictedNextChargeDate = calendar.date(
-            byAdding: .day,
-            value: -10,
-            to: referenceDate
-        )
+        monthly.firstChargeDate = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 5, day: 5, hour: 12)
+        ))
+        monthly.lastChargeDate = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 6, day: 5, hour: 12)
+        ))
+        monthly.predictedNextChargeDate = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 5, hour: 12)
+        ))
 
         let metrics = DashboardMetrics(
             subscriptions: [monthly],
@@ -257,7 +261,9 @@ struct DashboardMetricsRegressionTests {
         ).map(\.id) == [monthly.id])
         #expect(metrics.upcomingRenewals.map(\.id) == [monthly.id])
         #expect(metrics.actNowItems.map(\.subscriptionID) == [monthly.id])
-        let expected = try #require(monthly.cadence.advance(monthly.predictedNextChargeDate!, using: calendar))
+        let expected = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 5, hour: 12)
+        ))
         #expect(metrics.actNowItems.first?.renewalDate == calendar.startOfDay(for: expected))
     }
 
