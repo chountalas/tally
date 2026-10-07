@@ -433,7 +433,6 @@ extension SubscriptionDetectionService {
             linkTransactions([candidate.transaction], to: subscription)
             state.seenCanonicals.insert(summary.canonicalName)
             state.candidateCount += 1
-            state.needsReviewCount += 1
             let llmContribution = await llmEvidenceContribution(
                 for: summary,
                 transactions: [candidate.transaction],
@@ -466,7 +465,8 @@ extension SubscriptionDetectionService {
                     source: .recentPurchase,
                     hadRecurringSignals: false,
                     reason: summary.reason,
-                    importRecordIDs: Set([candidate.transaction.importRecordID].compactMap { $0 })
+                    importRecordIDs: Set([candidate.transaction.importRecordID].compactMap { $0 }),
+                    subscriptionID: subscription.id
                 )
             )
         }

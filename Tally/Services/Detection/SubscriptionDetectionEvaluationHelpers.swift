@@ -143,9 +143,7 @@ extension SubscriptionDetectionService {
 
         state.seenCanonicals.insert(summary.canonicalName)
         state.candidateCount += 1
-        if summary.status == .needsReview {
-            state.needsReviewCount += 1
-        } else {
+        if summary.status != .needsReview {
             state.autoConfirmCount += 1
         }
         linkTransactions(cluster.transactions, to: subscription)
@@ -181,7 +179,8 @@ extension SubscriptionDetectionService {
                 source: summary.detectionSource,
                 hadRecurringSignals: true,
                 reason: summary.reason,
-                importRecordIDs: Set(cluster.transactions.compactMap(\.importRecordID))
+                importRecordIDs: Set(cluster.transactions.compactMap(\.importRecordID)),
+                subscriptionID: subscription.id
             )
         )
     }

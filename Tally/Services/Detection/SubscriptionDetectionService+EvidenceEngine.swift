@@ -411,7 +411,8 @@ extension SubscriptionDetectionService {
                 source: .primary,
                 hadRecurringSignals: true,
                 reason: "Linked by a saved match rule before candidate discovery.",
-                importRecordIDs: Set(matches.compactMap(\.importRecordID))
+                importRecordIDs: Set(matches.compactMap(\.importRecordID)),
+                subscriptionID: subscription.id
             )
         )
     }

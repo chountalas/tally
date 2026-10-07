@@ -76,12 +76,12 @@ struct SubscriptionDetectionService {
             throw CancellationError()
         }
 
-        let report = SubscriptionDetectionReport(clusters: state.clusterReports)
+        let report = finalReport(from: state.clusterReports, subscriptions: finalSubscriptions)
         detectionRun.ruleMatchCount = state.ruleMatchCount
         detectionRun.candidateCount = state.candidateCount
         detectionRun.autoConfirmCount = state.autoConfirmCount
         detectionRun.autoSuppressCount = state.autoSuppressCount
-        detectionRun.needsReviewCount = state.needsReviewCount
+        detectionRun.needsReviewCount = report.clusters.filter { $0.status == .needsReview }.count
         detectionRun.llmEvaluationCount = state.llmEvaluationCount
         detectionRun.finishedAt = .now
         detectionTelemetryLogger.notice(
@@ -94,6 +94,30 @@ struct SubscriptionDetectionService {
         )
 
         return report
+    }
+
+    private func finalReport(
+        from clusters: [SubscriptionClusterReport], subscriptions: [Subscription]
+    ) -> SubscriptionDetectionReport {
+        let byID = Dictionary(uniqueKeysWithValues: subscriptions.map { ($0.id, $0) })
+        let referenceDate = Date.now
+        return SubscriptionDetectionReport(clusters: clusters.map { cluster in
+            guard cluster.status != .suppressed,
+                  let id = cluster.subscriptionID, let subscription = byID[id] else { return cluster }
+            let status: SubscriptionDetectionClusterStatus = if subscription.libraryState == .ignored {
+                .suppressed
+            } else if DashboardMetrics.needsReview(for: subscription, referenceDate: referenceDate) {
+                .needsReview
+            } else {
+                .detected
+            }
+            return SubscriptionClusterReport(
+                displayName: subscription.displayName, status: status, source: cluster.source,
+                hadRecurringSignals: cluster.hadRecurringSignals,
+                reason: subscription.detectionReason ?? cluster.reason,
+                importRecordIDs: cluster.importRecordIDs, subscriptionID: id
+            )
+        })
     }
 
     private func checkCancellationAndRollback(in context: ModelContext) throws {

@@ -118,6 +118,50 @@ struct MultiYearSubscriptionImportTests {
         #expect(subscription.predictedNextChargeDate == nil)
         let occurrences = try context.fetch(FetchDescriptor<SubscriptionOccurrence>())
         #expect(occurrences.contains { $0.status == .missed } == false)
+        let record = try #require(try context.fetch(FetchDescriptor<ImportRecord>()).first)
+        #expect(record.needsReviewSubscriptionCount == 1)
+        #expect(record.detectedSubscriptionCount == 0)
+        #expect(record.recoveredRecurringCandidateCount == 0)
+        let runs = try context.fetch(FetchDescriptor<DetectionRun>())
+        #expect(runs.count == 1)
+        #expect(runs.first?.needsReviewCount == 1)
+        let report = try await app.detector.rebuildSubscriptions(in: context)
+        let summary = report.summary(for: record.id)
+        #expect(summary.needsReviewCount == 1)
+        #expect(summary.detectedCount == 0)
+        #expect(summary.recoveredCount == 0)
+        let cluster = try #require(report.clusters.first { $0.subscriptionID == subscription.id })
+        #expect(cluster.reason == subscription.detectionReason)
+    }
+
+    @Test
+    func importReportsKeepSameMerchantAccountHistoriesSeparate() async throws {
+        let history = History()
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let context = container.mainContext
+        let app = AppModel.testing()
+        let old = Array(history.monthly(merchant: "Netflix", day: 5, amount: "15.49").prefix(12))
+        let current = history.monthly(merchant: "Netflix", day: 20, amount: "15.49").map { row in
+            var value = row
+            value.account = "Other card"
+            return value
+        }
+        let rows = old + current
+        var originalIDs = Set<UUID>()
+        for pass in 0..<2 {
+            try await importRows(pass == 0 ? rows : Array(rows.reversed()), app: app, context: context)
+            let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
+            #expect(subscriptions.count == 2)
+            #expect(subscriptions.filter { DashboardMetrics.needsReview(for: $0) }.count == 1)
+            #expect(subscriptions.filter { $0.status == .active }.count == 1)
+            let ids = Set(subscriptions.map(\.id))
+            if pass == 0 { originalIDs = ids } else { #expect(ids == originalIDs) }
+            let records = try context.fetch(FetchDescriptor<ImportRecord>())
+            let latest = try #require(records.max { $0.importedAt < $1.importedAt })
+            #expect(latest.needsReviewSubscriptionCount == 1)
+            #expect(latest.detectedSubscriptionCount == 1)
+            #expect(latest.recoveredRecurringCandidateCount == 0)
+        }
     }
 
     @Test

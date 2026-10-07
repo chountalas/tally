@@ -14,6 +14,7 @@ struct SubscriptionClusterReport {
     let hadRecurringSignals: Bool
     let reason: String?
     let importRecordIDs: Set<UUID>
+    var subscriptionID: UUID? = nil
 }
 
 struct SubscriptionDetectionImportSummary {
@@ -71,7 +72,6 @@ final class DetectionAccumulator {
     var candidateCount = 0
     var autoConfirmCount = 0
     var autoSuppressCount = 0
-    var needsReviewCount = 0
     var llmEvaluationCount = 0
 }
 
