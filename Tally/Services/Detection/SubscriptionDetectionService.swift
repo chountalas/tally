@@ -19,6 +19,9 @@ struct SubscriptionDetectionService {
         in context: ModelContext
     ) async throws -> SubscriptionDetectionReport {
         try Task.checkCancellation()
+        let autosaveEnabled = context.autosaveEnabled
+        context.autosaveEnabled = false
+        defer { context.autosaveEnabled = autosaveEnabled }
         let startedAt = Date()
         let transactions = try fetchTransactions(in: context)
         let detectionRun = DetectionRun(
@@ -45,7 +48,7 @@ struct SubscriptionDetectionService {
             state: state
         )
         try checkCancellationAndRollback(in: context)
-        await runDetectionPasses(
+        try await runDetectionPasses(
             on: debitTransactions,
             environment: environment,
             state: state
@@ -60,12 +63,18 @@ struct SubscriptionDetectionService {
         )
         let finalSubscriptions = try context.fetch(FetchDescriptor<Subscription>())
         reconcileLifecycles(for: finalSubscriptions, transactions: transactions, environment: environment)
-        try reconcileOccurrences(
-            for: finalSubscriptions,
-            transactions: transactions,
-            detectionRun: detectionRun,
-            in: context
-        )
+        do {
+            try await reconcileOccurrences(
+                for: finalSubscriptions,
+                transactions: transactions,
+                detectionRun: detectionRun,
+                in: context
+            )
+            try checkCancellationAndRollback(in: context)
+        } catch is CancellationError {
+            context.rollback()
+            throw CancellationError()
+        }
 
         let report = SubscriptionDetectionReport(clusters: state.clusterReports)
         detectionRun.ruleMatchCount = state.ruleMatchCount

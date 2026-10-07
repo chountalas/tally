@@ -173,7 +173,7 @@ final class DashboardMetricsProvider {
             }
         let reviewQueueSubscriptions = Array(
             subscriptions
-                .filter { $0.status == .needsReview }
+                .filter { DashboardMetrics.needsReview(for: $0, referenceDate: referenceDate) }
                 .sorted {
                     if $0.confidenceScore == $1.confidenceScore {
                         return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
@@ -183,7 +183,7 @@ final class DashboardMetricsProvider {
                 .prefix(5)
         )
         let reviewQueueTotalCount = subscriptions.reduce(into: 0) { count, subscription in
-            if subscription.libraryState == .suggested {
+            if DashboardMetrics.needsReview(for: subscription, referenceDate: referenceDate) {
                 count += 1
             }
         }

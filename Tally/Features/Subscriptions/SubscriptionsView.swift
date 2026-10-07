@@ -41,7 +41,7 @@ struct SubscriptionsView: View {
         let scopedIDs = importScopedSubscriptionIDs
         let review = subscriptions
             .filter {
-                DashboardMetrics.displayStatus(for: $0, referenceDate: referenceDate) == .needsReview &&
+                DashboardMetrics.needsReview(for: $0, referenceDate: referenceDate) &&
                     (scopedIDs?.contains($0.id) ?? true)
             }
             .sorted { $0.confidenceScore > $1.confidenceScore }

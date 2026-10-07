@@ -11,22 +11,62 @@ struct AccountObservationCoverage {
             guard let account = Self.account(for: transaction), transaction.transactionDate <= .now else { return nil }
             return (account, transaction.transactionDate)
         }
-        datesByAccount = Dictionary(grouping: entries, by: { $0.0 }).mapValues { $0.map { $0.1 }.sorted() }
+        datesByAccount = Dictionary(grouping: entries, by: { $0.0 }).mapValues { Set($0.map { $0.1 }).sorted() }
     }
 
     @MainActor
     func observesMissingPayment(
         expected: Date, schedule: BillingSchedule, charges: [NormalizedTransaction], referenceDate: Date = .now
     ) -> Bool {
-        guard let graceEnd = schedule.calendar.date(byAdding: .day,
-                                                    value: schedule.cadence.renewalGraceWindowDays,
-                                                    to: expected), graceEnd < referenceDate else { return false }
-        let next = schedule.next(after: expected) ?? referenceDate
-        let cutoff = max(next, graceEnd)
+        guard let window = missingPaymentWindow(expected: expected, schedule: schedule, referenceDate: referenceDate) else {
+            return false
+        }
         let accounts = Set(charges.compactMap { Self.account(for: $0) })
         return accounts.contains { account in
-            datesByAccount[account, default: []].contains { $0 >= graceEnd && $0 <= cutoff }
+            let dates = datesByAccount[account, default: []]
+            var lower = 0
+            var upper = dates.count
+            while lower < upper {
+                let middle = lower + (upper - lower) / 2
+                if dates[middle] < window.lowerBound { lower = middle + 1 } else { upper = middle }
+            }
+            return lower < dates.count && dates[lower] <= window.upperBound
         }
+    }
+
+    @MainActor
+    func observedMissingCycles(
+        schedule: BillingSchedule, charges: [NormalizedTransaction], referenceDate: Date = .now
+    ) async throws -> Set<Int> {
+        let accounts = Set(charges.compactMap { Self.account(for: $0) })
+        var cycles = Set<Int>()
+        var processed = 0
+        for account in accounts {
+            for observation in datesByAccount[account, default: []] {
+                if processed.isMultiple(of: 64) {
+                    await Task.yield()
+                    try Task.checkCancellation()
+                }
+                processed += 1
+                let near = schedule.cycle(near: observation)
+                for cycle in (near - 1)...(near + 1) where cycle >= 0 {
+                    guard let expected = schedule.date(at: cycle),
+                          let window = missingPaymentWindow(expected: expected, schedule: schedule, referenceDate: referenceDate),
+                          window.contains(observation) else { continue }
+                    cycles.insert(cycle)
+                }
+            }
+        }
+        return cycles
+    }
+
+    private func missingPaymentWindow(
+        expected: Date, schedule: BillingSchedule, referenceDate: Date
+    ) -> ClosedRange<Date>? {
+        guard let graceEnd = schedule.calendar.date(byAdding: .day,
+                                                    value: schedule.cadence.renewalGraceWindowDays,
+                                                    to: expected), graceEnd < referenceDate else { return nil }
+        return graceEnd...max(schedule.next(after: expected) ?? referenceDate, graceEnd)
     }
 
     @MainActor

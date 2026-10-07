@@ -38,7 +38,7 @@ extension SubscriptionDetectionService {
         on debitTransactions: [NormalizedTransaction],
         environment: DetectionEnvironment,
         state: DetectionAccumulator
-    ) async {
+    ) async throws {
         guard Task.isCancelled == false else { return }
         let discoverableTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
@@ -63,9 +63,10 @@ extension SubscriptionDetectionService {
         )
         guard Task.isCancelled == false else { return }
 
-        await applyMatchRules(
-            environment.matchRules.filter { !$0.isNegativeRule && !state.seenCanonicals.contains($0.canonicalName) },
-            to: debitTransactions, environment: environment, state: state
+        try await replayPositiveMatchRules(
+            on: debitTransactions,
+            environment: environment,
+            state: state
         )
         guard Task.isCancelled == false else { return }
 
@@ -86,6 +87,66 @@ extension SubscriptionDetectionService {
             in: environment.context,
             seenCanonicals: &state.seenCanonicals
         )
+    }
+
+    private func replayPositiveMatchRules(
+        on transactions: [NormalizedTransaction], environment: DetectionEnvironment, state: DetectionAccumulator
+    ) async throws {
+        let rules = environment.matchRules.filter { !$0.isNegativeRule }.sorted { $0.priority > $1.priority }
+        for rule in rules {
+            guard Task.isCancelled == false else { return }
+            // Include owners saved by autosave or inserted by discovery and earlier rules.
+            let subscriptions = try environment.context.fetch(FetchDescriptor<Subscription>())
+            let owners = subscriptions.reduce(into: [String: Subscription]()) { result, subscription in
+                result[subscription.canonicalName] = subscription
+            }
+            let owner = owners[rule.canonicalName]
+            let matches = transactions.filter { transaction in
+                transaction.subscriptionID == nil && !state.suppressedTransactionIDs.contains(transaction.id) &&
+                    ruleMatches(rule, transaction: transaction) &&
+                    canReplay(transaction, to: owner, among: transactions, environment: environment)
+            }
+            let replayEnvironment = DetectionEnvironment(
+                context: environment.context, detectionRun: environment.detectionRun,
+                existingSubscriptions: environment.existingSubscriptions, existingByCanonical: owners,
+                rulesByCanonical: environment.rulesByCanonical, correctionsByCanonical: environment.correctionsByCanonical,
+                matchRules: environment.matchRules, previousAssignments: environment.previousAssignments
+            )
+            await applyMatchRules([rule], to: matches, environment: replayEnvironment, state: state)
+            if let owner, !matches.isEmpty {
+                // A replayed fragment must not replace the reconstructed history's charge boundaries.
+                refreshSubscriptionFromRuleMatches(
+                    owner, matches: transactions.filter { $0.subscriptionID == owner.id },
+                    reviewRule: environment.rulesByCanonical[rule.canonicalName]
+                )
+            }
+        }
+    }
+
+    private func canReplay(
+        _ transaction: NormalizedTransaction, to owner: Subscription?, among transactions: [NormalizedTransaction],
+        environment: DetectionEnvironment
+    ) -> Bool {
+        guard let owner else { return true }
+        let previousOwner = environment.previousAssignments[transaction.id]
+        if let previousOwner, previousOwner != owner.id { return false }
+        if owner.historyIdentity != nil { return previousOwner == owner.id }
+        let linked = transactions.filter { $0.subscriptionID == owner.id }
+        guard !linked.isEmpty else { return true }
+        let account = replayAccount(for: transaction)
+        guard linked.contains(where: { replayAccount(for: $0) == account }) else { return false }
+        if previousOwner == owner.id { return true }
+        // An unassigned charge cannot choose between same-account, same-currency merchant histories.
+        return !transactions.contains { sibling in
+            sibling.subscriptionID != nil && sibling.subscriptionID != owner.id &&
+                sibling.merchantNormalized.caseInsensitiveCompare(owner.canonicalName) == .orderedSame &&
+                replayAccount(for: sibling) == account &&
+                (sibling.currency?.uppercased() ?? "USD") == (transaction.currency?.uppercased() ?? "USD")
+        }
+    }
+
+    private func replayAccount(for transaction: NormalizedTransaction) -> String? {
+        transaction.externalAccountID?.nilIfBlank ?? transaction.accountName?.nilIfBlank
     }
 
     func resetSubscriptionLinks(for transactions: [NormalizedTransaction]) async {

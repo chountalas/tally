@@ -26,8 +26,11 @@ struct HeuristicMerchantClassifier {
             return specialCase
         }
 
-        if let brand = orderedKnownBrandProfiles
-            .first(where: { containsBrand($0.key, in: combined) })?.value {
+        let merchantEvidence = [effectiveMerchant.lowercased(), normalized.lowercased()].joined(separator: " ")
+        let ambiguousBrands: Set<String> = ["calm", "cursor", "linear", "max", "notion", "proton", "steam"]
+        if let brand = orderedKnownBrandProfiles.first(where: {
+            containsBrand($0.key, in: ambiguousBrands.contains($0.key) ? merchantEvidence : combined)
+        })?.value {
             return MerchantClassificationResult(
                 canonicalName: brand.name,
                 serviceCategory: brand.category,

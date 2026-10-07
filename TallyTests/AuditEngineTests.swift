@@ -647,3 +647,36 @@ struct DashboardMetricsRegressionTests {
         return sub
     }
 }
+
+@MainActor
+struct SubscriptionReviewEligibilityTests {
+    @Test
+    func reviewKeepsStaleConfirmedButHidesNotMine() throws {
+        let formatter = ISO8601DateFormatter()
+        let reference = try #require(formatter.date(from: "2026-10-07T12:00:00Z"))
+        let old = try #require(formatter.date(from: "2026-01-05T12:00:00Z"))
+        let current = try #require(formatter.date(from: "2026-11-05T12:00:00Z"))
+        let suggested = subscription("Suggested", state: .suggested, status: .needsReview, renewal: nil)
+        let ignored = subscription("Ignored", state: .ignored, status: .needsReview, renewal: nil)
+        let staleConfirmed = subscription("Stale", state: .confirmed, status: .active, renewal: old)
+        let currentConfirmed = subscription("Current", state: .confirmed, status: .active, renewal: current)
+        let former = subscription("Former", state: .inactive, status: .former, renewal: nil)
+        let snapshot = DashboardMetricsProvider(referenceDateProvider: { reference }).contentSnapshot(
+            subscriptions: [suggested, ignored, staleConfirmed, currentConfirmed, former],
+            transactions: [], revision: .initial
+        ) { subscription, _ in
+            MerchantLearningPreview(mode: .reinforce, targetCanonicalName: subscription.canonicalName)
+        }
+        #expect(Set(snapshot.reviewQueueSubscriptions.map(\.id)) == [suggested.id, staleConfirmed.id])
+        #expect(snapshot.reviewQueueTotalCount == 2)
+        #expect(Set(snapshot.reviewPreviews.keys) == [suggested.id, staleConfirmed.id])
+    }
+
+    private func subscription(
+        _ name: String, state: SubscriptionLibraryState, status: SubscriptionStatus, renewal: Date?
+    ) -> Subscription {
+        Subscription(canonicalName: name, displayName: name, status: status, libraryState: state,
+                     cadence: .monthly, priceAmount: 15, priceCurrency: "USD", normalizedMonthlyAmount: 15,
+                     lastChargeDate: nil, predictedNextChargeDate: renewal, confidenceScore: 0.8)
+    }
+}

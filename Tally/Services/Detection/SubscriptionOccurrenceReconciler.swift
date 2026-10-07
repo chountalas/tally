@@ -7,7 +7,7 @@ extension SubscriptionDetectionService {
         transactions: [NormalizedTransaction],
         detectionRun: DetectionRun,
         in context: ModelContext
-    ) throws {
+    ) async throws {
         let existingExpectations = try context.fetch(FetchDescriptor<SubscriptionScheduleExpectation>())
         let existingOccurrences = try context.fetch(FetchDescriptor<SubscriptionOccurrence>())
         var expectationsBySubscription = Dictionary(
@@ -22,6 +22,8 @@ extension SubscriptionDetectionService {
         let evidenceByID = Dictionary(uniqueKeysWithValues: existingEvidence.map { ($0.id, $0) })
         let occurrencesBySubscription = Dictionary(grouping: existingOccurrences, by: \.subscriptionID)
         for subscription in subscriptions {
+            await Task.yield()
+            try Task.checkCancellation()
             let subscriptionOccurrences = occurrencesBySubscription[subscription.id] ?? []
             let linkedTransactions = (transactionsBySubscription[subscription.id] ?? [])
                 .sorted { $0.transactionDate < $1.transactionDate }
@@ -43,12 +45,16 @@ extension SubscriptionDetectionService {
             )
 
             let oldEvidenceIDs = Set(subscriptionOccurrences.compactMap(\.evidenceID))
-            for id in oldEvidenceIDs {
+            for (index, id) in oldEvidenceIDs.enumerated() {
+                try await yieldOccurrenceWork(at: index)
                 if let evidence = evidenceByID[id] { context.delete(evidence) }
             }
-            for occurrence in subscriptionOccurrences { context.delete(occurrence) }
+            for (index, occurrence) in subscriptionOccurrences.enumerated() {
+                try await yieldOccurrenceWork(at: index)
+                context.delete(occurrence)
+            }
 
-            let occurrences = projectedOccurrences(
+            let occurrences = try await projectedOccurrences(
                 for: subscription,
                 expectation: expectation,
                 linkedTransactions: linkedTransactions,
@@ -115,19 +121,22 @@ private extension SubscriptionDetectionService {
         coverage: AccountObservationCoverage,
         detectionRun: DetectionRun,
         in context: ModelContext
-    ) -> [SubscriptionOccurrence] {
-        let expectedDates = projectedExpectedDates(
-            for: subscription,
-            expectation: expectation,
-            linkedTransactions: linkedTransactions
+    ) async throws -> [SubscriptionOccurrence] {
+        let dates = linkedTransactions.map(\.transactionDate)
+        guard expectation.cadence != .unknown,
+              let first = dates.first ?? subscription.firstChargeDate ?? subscription.lastChargeDate else { return [] }
+        let schedule = BillingSchedule(cadence: expectation.cadence, dates: dates.isEmpty ? [first] : dates)
+        let missingCycles = try await coverage.observedMissingCycles(schedule: schedule, charges: linkedTransactions)
+        let expectedDates = try await projectedExpectedDates(
+            for: subscription, schedule: schedule, linkedTransactions: linkedTransactions, missingCycles: missingCycles
         )
         var unmatchedTransactions = linkedTransactions
         var occurrences: [SubscriptionOccurrence] = []
-        let schedule = BillingSchedule(cadence: subscription.cadence, dates: linkedTransactions.map(\.transactionDate))
         var previousAmount = linkedTransactions.first.map { abs($0.transactionAmount) } ?? subscription.priceAmount
         if linkedTransactions.count == 1 { previousAmount = subscription.priceAmount }
 
-        for expectedDate in expectedDates {
+        for (index, expectedDate) in expectedDates.enumerated() {
+            try await yieldOccurrenceWork(at: index)
             let expectedDay = Calendar.current.startOfDay(for: expectedDate)
             let windowStart = Calendar.current.date(
                 byAdding: .day,
@@ -149,7 +158,7 @@ private extension SubscriptionDetectionService {
                 matchedTransaction: matchedTransaction,
                 expectation: expectation,
                 expectedAmount: previousAmount,
-                observedMissing: coverage.observesMissingPayment(expected: expectedDate, schedule: schedule, charges: linkedTransactions)
+                observedMissing: missingCycles.contains(schedule.cycle(near: expectedDate))
             )
             let evidence = occurrenceEvidence(
                 status: status,
@@ -192,18 +201,29 @@ private extension SubscriptionDetectionService {
 
     func projectedExpectedDates(
         for subscription: Subscription,
-        expectation: SubscriptionScheduleExpectation,
-        linkedTransactions: [NormalizedTransaction]
-    ) -> [Date] {
-        guard expectation.cadence != .unknown else {
-            return []
+        schedule: BillingSchedule,
+        linkedTransactions: [NormalizedTransaction],
+        missingCycles: Set<Int>
+    ) async throws -> [Date] {
+        let lastObservedCycle = linkedTransactions.last.map { schedule.cycle(near: $0.transactionDate) } ?? 0
+        let terminalCycle = lastObservedCycle + (schedule.cadence.allowsSecondMissTolerance ? 2 : 1)
+        var cycles = subscription.predictedNextChargeDate == nil
+            ? Set(missingCycles.filter { $0 <= terminalCycle }) : missingCycles
+        for (index, transaction) in linkedTransactions.enumerated() {
+            try await yieldOccurrenceWork(at: index)
+            cycles.insert(max(0, schedule.cycle(near: transaction.transactionDate)))
         }
+        if linkedTransactions.isEmpty { cycles.insert(0) }
+        if let next = subscription.predictedNextChargeDate {
+            cycles.insert(max(0, schedule.cycle(near: next)))
+        }
+        return cycles.sorted().compactMap { schedule.date(at: $0) }
+    }
 
-        let dates = linkedTransactions.map(\.transactionDate)
-        guard let first = dates.min() ?? subscription.firstChargeDate ?? subscription.lastChargeDate else { return [] }
-        let schedule = BillingSchedule(cadence: expectation.cadence, dates: dates.isEmpty ? [first] : dates)
-        let cutoff = max(Calendar.current.startOfDay(for: .now), subscription.predictedNextChargeDate ?? first)
-        return schedule.dates(from: Calendar.current.startOfDay(for: first), through: cutoff)
+    func yieldOccurrenceWork(at index: Int) async throws {
+        guard index.isMultiple(of: 64) else { return }
+        await Task.yield()
+        try Task.checkCancellation()
     }
 
     func occurrenceStatus(

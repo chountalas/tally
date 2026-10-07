@@ -1,4 +1,6 @@
+import Foundation
 import SwiftData
+import Testing
 import XCTest
 @testable import Tally
 
@@ -562,5 +564,233 @@ private extension CSVTransactionImporterTests {
             transaction.classificationConfidence = row.confidence
             context.insert(transaction)
         }
+    }
+}
+
+@MainActor
+struct SubscriptionPositiveRuleReplayTests {
+    @Test(arguments: [false, true])
+    func confirmedHistoryRetainsOffCycleCharge(previouslyLinked: Bool) async throws {
+        try await withFixture { context, service in
+            let history = try insertMonthlyHistory(day: 5, into: context)
+            try await service.rebuildSubscriptions(in: context)
+            let original = try #require(try context.fetch(FetchDescriptor<Subscription>()).first)
+            original.isUserConfirmed = true
+            try context.save()
+            let offCycle = try transaction(day: 14)
+            offCycle.subscriptionID = previouslyLinked ? original.id : nil
+            context.insert(offCycle)
+            try context.save()
+
+            for _ in 0..<2 {
+                try await service.rebuildSubscriptions(in: context)
+                try context.save()
+                let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
+                #expect(subscriptions.count == 1)
+                #expect(subscriptions.first?.id == original.id)
+                #expect(offCycle.subscriptionID == original.id)
+                #expect(history.allSatisfy { $0.subscriptionID == original.id })
+                #expect(original.firstChargeDate == history.first?.transactionDate)
+                #expect(original.lastChargeDate == offCycle.transactionDate)
+            }
+        }
+    }
+
+    @Test
+    func reviewRuleReusesSubscriptionCreatedDuringDiscovery() async throws {
+        try await withFixture { context, service in
+            let history = try insertMonthlyHistory(day: 5, into: context)
+            context.insert(SubscriptionReviewRule(canonicalName: "Netflix", isUserConfirmed: true))
+            let offCycle = try transaction(day: 14)
+            context.insert(offCycle)
+            try context.save()
+
+            try await service.rebuildSubscriptions(in: context)
+            try context.save()
+            let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
+            let subscription = try #require(subscriptions.first)
+            #expect(subscriptions.count == 1)
+            #expect(offCycle.subscriptionID == subscription.id)
+            #expect(history.allSatisfy { $0.subscriptionID == subscription.id })
+            #expect(subscription.firstChargeDate == history.first?.transactionDate)
+        }
+    }
+
+    @Test
+    func savedDiscoveredOwnerIsReusedByReplay() async throws {
+        try await withFixture { context, service in
+            let history = try insertMonthlyHistory(day: 5, into: context)
+            let offCycle = try transaction(day: 14)
+            context.insert(offCycle)
+            context.insert(SubscriptionMatchRule(
+                canonicalName: "Netflix",
+                allowedRawMerchantsJSON: SubscriptionEvidenceJSON.encodeStrings(["NETFLIX"]),
+                amountMinimum: 13,
+                amountMaximum: 18,
+                currencyCode: "USD",
+                confidence: 1
+            ))
+            let run = DetectionRun(trigger: .rebuild, transactionCount: history.count + 1)
+            context.insert(run)
+            let environment = try service.makeEnvironment(in: context, detectionRun: run)
+            let state = DetectionAccumulator()
+            await service.rebuildDetectedSubscriptions(
+                from: ["Netflix": history + [offCycle]], environment: environment, state: state,
+                source: .primary, reviewOnly: false
+            )
+            let original = try #require(try context.fetch(FetchDescriptor<Subscription>()).first)
+            try #require(state.seenCanonicals.contains(original.canonicalName))
+            try #require(offCycle.subscriptionID == nil)
+            try context.save()
+
+            try await service.runDetectionPasses(on: history + [offCycle], environment: environment, state: state)
+            try context.save()
+            let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
+            #expect(subscriptions.count == 1)
+            #expect(offCycle.subscriptionID == original.id)
+            #expect(history.allSatisfy { $0.subscriptionID == original.id })
+        }
+    }
+
+    @Test(arguments: ["account", "currency", "suppression"])
+    func replayPreservesAccountAndCurrencyScope(_ mismatch: String) async throws {
+        try await withFixture { context, service in
+            _ = try insertMonthlyHistory(day: 5, into: context)
+            try await service.rebuildSubscriptions(in: context)
+            let original = try #require(try context.fetch(FetchDescriptor<Subscription>()).first)
+            original.isUserConfirmed = true
+            try context.save()
+            let unrelated = try transaction(day: 14, account: mismatch == "account" ? "Other card" : "Visa",
+                                            currency: mismatch == "currency" ? "EUR" : "USD")
+            if mismatch == "suppression" {
+                unrelated.merchantRaw = "NETFLIX EXCLUDED"
+                context.insert(SubscriptionMatchRule(
+                    canonicalName: "Excluded charge",
+                    allowedRawMerchantsJSON: SubscriptionEvidenceJSON.encodeStrings([unrelated.merchantRaw]),
+                    confidence: 1,
+                    isNegativeRule: true
+                ))
+            }
+            context.insert(unrelated)
+            try context.save()
+
+            try await service.rebuildSubscriptions(in: context)
+            try context.save()
+            #expect(unrelated.subscriptionID == nil)
+            #expect(try context.fetch(FetchDescriptor<Subscription>()).count == 1)
+        }
+    }
+
+    @Test(arguments: ["owner", "sibling", "unassigned"])
+    func historyRulePreservesChargeOwnership(previousAssignment: String) async throws {
+        try await withFixture { context, service in
+            let firstHistory = try insertMonthlyHistory(day: 5, into: context)
+            let secondHistory = try insertMonthlyHistory(day: 20, into: context)
+            try await service.rebuildSubscriptions(in: context)
+            let subscriptions = try context.fetch(FetchDescriptor<Subscription>())
+            try #require(subscriptions.count == 2)
+            let first = try #require(subscriptions.first { $0.id == firstHistory.first?.subscriptionID })
+            let second = try #require(subscriptions.first { $0.id == secondHistory.first?.subscriptionID })
+            let rule = SubscriptionMatchRule(
+                subscriptionID: first.id,
+                canonicalName: first.canonicalName,
+                allowedRawMerchantsJSON: SubscriptionEvidenceJSON.encodeStrings(["NETFLIX"]),
+                amountMinimum: 13,
+                amountMaximum: 18,
+                amountMedian: 15.49,
+                currencyCode: "USD",
+                accountHint: "Visa",
+                priority: 900,
+                confidence: 1
+            )
+            context.insert(rule)
+            let unrelated = try transaction(day: 14)
+            unrelated.subscriptionID = previousAssignment == "owner" ? first.id :
+                (previousAssignment == "sibling" ? second.id : nil)
+            context.insert(unrelated)
+            try context.save()
+
+            try await service.rebuildSubscriptions(in: context)
+            try context.save()
+            if previousAssignment == "owner" {
+                #expect(unrelated.subscriptionID == first.id)
+                #expect(try context.fetch(FetchDescriptor<Subscription>()).count == 2)
+            } else {
+                #expect(unrelated.subscriptionID != first.id)
+            }
+            #expect(firstHistory.allSatisfy { $0.subscriptionID == first.id })
+            #expect(secondHistory.allSatisfy { $0.subscriptionID == second.id })
+            #expect(try context.fetch(FetchDescriptor<Subscription>()).filter { $0.id == first.id }.count == 1)
+        }
+    }
+
+    @Test
+    func confirmedMerchantRuleDoesNotTakeAmbiguousSiblingCharge() async throws {
+        try await withFixture { context, service in
+            let originalHistory = try insertMonthlyHistory(day: 5, into: context)
+            try await service.rebuildSubscriptions(in: context)
+            let original = try #require(try context.fetch(FetchDescriptor<Subscription>()).first)
+            original.isUserConfirmed = true
+            try context.save()
+            let siblingHistory = try insertMonthlyHistory(day: 20, into: context)
+            let ambiguous = try transaction(day: 14)
+            context.insert(ambiguous)
+            try context.save()
+
+            try await service.rebuildSubscriptions(in: context)
+            try context.save()
+            #expect(ambiguous.subscriptionID == nil)
+            #expect(originalHistory.allSatisfy { $0.subscriptionID == original.id })
+            #expect(siblingHistory.allSatisfy { $0.subscriptionID != nil && $0.subscriptionID != original.id })
+            #expect(try context.fetch(FetchDescriptor<Subscription>()).count == 2)
+        }
+    }
+
+    private func withFixture(
+        _ body: @MainActor (ModelContext, SubscriptionDetectionService) async throws -> Void
+    ) async throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let suite = "TallyTests.PositiveRuleReplay.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AIProviderPreferences(userDefaults: defaults)
+        preferences.isAIGenerationDisabled = true
+        let directory = FileManager.default.temporaryDirectory.appending(path: suite, directoryHint: .isDirectory)
+        let intelligence = SubscriptionIntelligenceService(
+            usage: .backgroundAutomation,
+            preferences: preferences,
+            gemmaModelManager: GemmaModelManager(appSupportDirectory: directory, adoptableSourceURLs: [])
+        )
+        try await body(container.mainContext, SubscriptionDetectionService(intelligence: intelligence))
+    }
+
+    private func insertMonthlyHistory(day: Int, into context: ModelContext) throws -> [NormalizedTransaction] {
+        let history = try (-6 ... -1).map { offset in try transaction(monthOffset: offset, day: day) }
+        for charge in history { context.insert(charge) }
+        try context.save()
+        return history
+    }
+
+    private func transaction(
+        monthOffset: Int = -1, day: Int, account: String = "Visa", currency: String = "USD"
+    ) throws -> NormalizedTransaction {
+        let calendar = Calendar.current
+        let month = try #require(calendar.date(byAdding: .month, value: monthOffset, to: .now))
+        let components = calendar.dateComponents([.year, .month], from: month)
+        let date = try #require(calendar.date(from: DateComponents(year: components.year, month: components.month, day: day)))
+        let charge = NormalizedTransaction(
+            transactionDate: date,
+            transactionAmount: -15.49,
+            merchantRaw: "NETFLIX",
+            merchantNormalized: "Netflix",
+            currency: currency,
+            accountName: account,
+            category: "Streaming",
+            memo: "Monthly subscription",
+            merchantKind: .mediaStreaming,
+            merchantSubscriptionAffinity: 0.95
+        )
+        charge.classificationConfidence = 0.95
+        return charge
     }
 }

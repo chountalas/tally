@@ -12,6 +12,10 @@ extension DashboardMetrics {
         }
     }
 
+    static func needsReview(for subscription: Subscription, referenceDate: Date = .now) -> Bool {
+        subscription.libraryState != .ignored && displayStatus(for: subscription, referenceDate: referenceDate) == .needsReview
+    }
+
     static func displayStatus(
         for subscription: Subscription,
         referenceDate: Date = .now
