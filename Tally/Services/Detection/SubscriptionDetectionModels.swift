@@ -14,6 +14,7 @@ struct SubscriptionClusterReport {
     let hadRecurringSignals: Bool
     let reason: String?
     let importRecordIDs: Set<UUID>
+    var subscriptionID: UUID? = nil
 }
 
 struct SubscriptionDetectionImportSummary {
@@ -59,17 +60,18 @@ struct DetectionEnvironment {
     let rulesByCanonical: [String: SubscriptionReviewRule]
     let correctionsByCanonical: [String: MerchantCorrection]
     let matchRules: [SubscriptionMatchRule]
+    var previousAssignments: [UUID: UUID] = [:]
 }
 
 final class DetectionAccumulator {
     var seenCanonicals = Set<String>()
+    var claimedSubscriptionIDs = Set<UUID>()
     var suppressedTransactionIDs = Set<UUID>()
     var clusterReports: [SubscriptionClusterReport] = []
     var ruleMatchCount = 0
     var candidateCount = 0
     var autoConfirmCount = 0
     var autoSuppressCount = 0
-    var needsReviewCount = 0
     var llmEvaluationCount = 0
 }
 
@@ -97,6 +99,7 @@ struct DetectionSuppressionRequest {
     let hadRecurringSignals: Bool
     let reason: String
     let importRecordIDs: Set<UUID>
+    let transactionIDs: Set<UUID>
 }
 
 struct DetectedSubscriptionUpdateContext {

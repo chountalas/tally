@@ -1,3 +1,5 @@
+import Testing
+import Foundation
 import SwiftData
 import XCTest
 @testable import Tally
@@ -904,5 +906,42 @@ private actor CancellingIndividualMerchantClassificationIntelligence: MerchantCl
 
     func merchantCallCount() -> Int {
         callCount
+    }
+}
+
+struct AmbiguousMerchantEvidenceTests {
+    @Test(arguments: ["Linear", "Calm", "Cursor", "Max", "Notion", "Proton", "Steam"])
+    func incidentalWordsDoNotIdentifyService(_ brand: String) {
+        for field in ["memo", "category"] {
+            let result = HeuristicMerchantClassifier().classify(
+                rawMerchant: "SHELL",
+                memo: field == "memo" ? "\(brand) motion fuel rewards" : nil,
+                category: field == "category" ? "\(brand) motion fuel rewards" : "Fuel",
+                amount: -45
+            )
+            #expect(result.canonicalName.caseInsensitiveCompare(brand) != .orderedSame)
+        }
+    }
+
+    @Test(arguments: ["Linear", "Calm", "Cursor"])
+    func merchantAndProcessorIdentityStillRecognizeService(_ brand: String) {
+        for merchant in [brand.uppercased(), "STRIPE* \(brand.uppercased())"] {
+            let result = HeuristicMerchantClassifier().classify(
+                rawMerchant: merchant, memo: "Monthly subscription", category: "Software", amount: -20
+            )
+            #expect(result.canonicalName.caseInsensitiveCompare(brand) == .orderedSame)
+            #expect(result.subscriptionAffinity >= 0.85)
+        }
+    }
+
+    @Test(arguments: ["Disney+", "Paramount+", "ESPN+"])
+    func trailingPlusBrandsKeepMatching(_ brand: String) {
+        for suffix in ["", " monthly"] {
+            let result = HeuristicMerchantClassifier().classify(
+                rawMerchant: brand + suffix, memo: nil, category: "Streaming", amount: -15
+            )
+            #expect(result.subscriptionAffinity >= 0.85)
+            #expect(result.merchantKind == .mediaStreaming)
+        }
     }
 }

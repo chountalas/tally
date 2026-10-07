@@ -628,13 +628,11 @@ extension SubscriptionDetectionService {
     }
 
     func hasStrongSubscriptionWording(_ transaction: NormalizedTransaction) -> Bool {
-        let combined = [
+        let signal = textSignal(from: [
             transaction.memo,
             transaction.merchantRaw,
             transaction.merchantNormalized
-        ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
+        ])
 
         return [
             "subscription",
@@ -665,18 +663,16 @@ extension SubscriptionDetectionService {
             "per year",
             "/mo",
             "/yr"
-        ].contains { combined.localizedStandardContains($0) }
+        ].contains { containsSignal($0, in: signal) }
     }
 
     func hasExplicitSubscriptionKeywords(_ transaction: NormalizedTransaction) -> Bool {
-        let combined = [
+        let signal = textSignal(from: [
             transaction.memo,
             transaction.category,
             transaction.merchantRaw,
             transaction.merchantNormalized
-        ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
+        ])
 
         return [
             "subscription",
@@ -735,17 +731,15 @@ extension SubscriptionDetectionService {
             "/yr",
             "retainer",
             "saas"
-        ].contains { combined.localizedStandardContains($0) }
+        ].contains { containsSignal($0, in: signal) }
     }
 
     func hasAppointmentOrVisitSignals(_ transaction: NormalizedTransaction) -> Bool {
-        let combined = [
+        let signal = textSignal(from: [
             transaction.memo,
             transaction.category,
             transaction.merchantRaw
-        ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
+        ])
 
         return [
             "appointment",
@@ -756,17 +750,15 @@ extension SubscriptionDetectionService {
             "chiropr",
             "massage",
             "wellness"
-        ].contains { combined.localizedStandardContains($0) }
+        ].contains { containsSignal($0, in: signal) }
     }
 
     func hasMarketplaceOrderSignals(_ transaction: NormalizedTransaction) -> Bool {
-        let combined = [
+        let signal = textSignal(from: [
             transaction.memo,
             transaction.category,
             transaction.merchantRaw
-        ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
+        ])
 
         return [
             "order",
@@ -775,7 +767,7 @@ extension SubscriptionDetectionService {
             "seller",
             "shipment",
             "delivery"
-        ].contains { combined.localizedStandardContains($0) }
+        ].contains { containsSignal($0, in: signal) }
     }
 
     func isExcludedCategory(_ transaction: NormalizedTransaction) -> Bool {

@@ -360,10 +360,15 @@ struct MerchantClassificationEngine: Sendable {
     }
 
     private func shouldPreferHeuristic(_ result: MerchantClassificationResult) -> Bool {
+        if result.merchantKind.isUsuallyNonSubscription,
+           result.confidence >= 0.7,
+           result.subscriptionAffinity <= 0.35 {
+            return true
+        }
         guard result.confidence >= 0.9 else {
             return false
         }
 
-        return result.subscriptionAffinity >= 0.95 || result.subscriptionAffinity <= 0.05
+        return result.subscriptionAffinity >= 0.85 || result.subscriptionAffinity <= 0.05
     }
 }

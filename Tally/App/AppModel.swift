@@ -173,7 +173,7 @@ final class DashboardMetricsProvider {
             }
         let reviewQueueSubscriptions = Array(
             subscriptions
-                .filter { $0.status == .needsReview }
+                .filter { DashboardMetrics.needsReview(for: $0, referenceDate: referenceDate) }
                 .sorted {
                     if $0.confidenceScore == $1.confidenceScore {
                         return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
@@ -183,7 +183,7 @@ final class DashboardMetricsProvider {
                 .prefix(5)
         )
         let reviewQueueTotalCount = subscriptions.reduce(into: 0) { count, subscription in
-            if subscription.libraryState == .suggested {
+            if DashboardMetrics.needsReview(for: subscription, referenceDate: referenceDate) {
                 count += 1
             }
         }
@@ -473,7 +473,7 @@ final class AppModel {
             importRecord.mappingSignature = mapping.signature
             importRecord.errorMessage = nil
 
-            let materialized = try csvImporter.materializeSeeds(from: importDraft, mapping: mapping)
+            let materialized = try await CSVTransactionImporter.materializeInBackground(from: importDraft, mapping: mapping)
             let seeds = materialized.seeds
             let classificationLoadResult = try await loadClassifications(for: seeds, context: context)
             importRecord.status = .analyzed
@@ -799,8 +799,11 @@ private extension AppModel {
         importRecordID: UUID,
         into context: ModelContext
     ) async throws -> SourceTransactionUpsertSummary {
-        let sourceReferenceIDs = manualImportSourceReferenceIDs(for: seeds)
-        let materializations = seeds.enumerated().map { index, seed in
+        var occurrenceCountsByFingerprint: [String: Int] = [:]
+        let materializations = seeds.map { seed in
+            let fingerprint = SourceTransactionDraft.fingerprint(for: seed)
+            let occurrence = occurrenceCountsByFingerprint[fingerprint, default: 0]
+            occurrenceCountsByFingerprint[fingerprint] = occurrence + 1
             let classification = transactionClassification(
                 for: seed,
                 classifications: classifications
@@ -810,7 +813,8 @@ private extension AppModel {
                 draft: SourceTransactionDraft(
                     seed: seed,
                     source: .manualImport,
-                    sourceReferenceID: sourceReferenceIDs[index],
+                    sourceReferenceID: "fingerprint:\(fingerprint)#\(occurrence)",
+                    sourceFingerprint: fingerprint,
                     sourceMetadata: ["adapter": "tabular_import"]
                 ),
                 merchantNormalized: classification.canonicalName,
@@ -828,17 +832,6 @@ private extension AppModel {
             importRecordID: importRecordID,
             into: context
         )
-    }
-
-    func manualImportSourceReferenceIDs(for seeds: [NormalizedTransactionSeed]) -> [String] {
-        var occurrenceCountsByFingerprint: [String: Int] = [:]
-
-        return seeds.map { seed in
-            let fingerprint = SourceTransactionDraft.fingerprint(for: seed)
-            let occurrence = occurrenceCountsByFingerprint[fingerprint, default: 0]
-            occurrenceCountsByFingerprint[fingerprint] = occurrence + 1
-            return "fingerprint:\(fingerprint)#\(occurrence)"
-        }
     }
 
     func transactionClassification(

@@ -225,11 +225,11 @@ struct DashboardMetricsRegressionTests {
         #expect(DashboardHeroContext(metrics: metrics).activeSubscriptionCount == 1)
     }
 
-    @Test func shortCadenceSecondMissWindowStillCountsAsActive() {
+    @Test func shortCadenceSecondMissWindowStillCountsAsActive() throws {
         let calendar = Calendar.current
-        let referenceDate = calendar.date(
+        let referenceDate = try #require(calendar.date(
             from: DateComponents(year: 2026, month: 7, day: 15, hour: 12)
-        ) ?? .now
+        ))
         let monthly = makeSubscription(
             name: "Monthly Tool",
             price: 12,
@@ -237,11 +237,15 @@ struct DashboardMetricsRegressionTests {
             confidence: 0.92,
             status: .active
         )
-        monthly.predictedNextChargeDate = calendar.date(
-            byAdding: .day,
-            value: -10,
-            to: referenceDate
-        )
+        monthly.firstChargeDate = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 5, day: 5, hour: 12)
+        ))
+        monthly.lastChargeDate = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 6, day: 5, hour: 12)
+        ))
+        monthly.predictedNextChargeDate = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 5, hour: 12)
+        ))
 
         let metrics = DashboardMetrics(
             subscriptions: [monthly],
@@ -257,10 +261,10 @@ struct DashboardMetricsRegressionTests {
         ).map(\.id) == [monthly.id])
         #expect(metrics.upcomingRenewals.map(\.id) == [monthly.id])
         #expect(metrics.actNowItems.map(\.subscriptionID) == [monthly.id])
-        #expect(metrics.actNowItems.first?.renewalDate == monthly.cadence.advance(
-            monthly.predictedNextChargeDate!,
-            using: calendar
+        let expected = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 5, hour: 12)
         ))
+        #expect(metrics.actNowItems.first?.renewalDate == calendar.startOfDay(for: expected))
     }
 
     @Test func projectedRenewalDatesAdvanceFromCurrentMonthEndRenewal() throws {
@@ -294,7 +298,7 @@ struct DashboardMetricsRegressionTests {
         )
 
         let renewal = try #require(marchRenewals.first)
-        #expect(calendar.component(.day, from: renewal) == 29)
+        #expect(calendar.component(.day, from: renewal) == 31)
         #expect(marchRenewals.count == 1)
     }
 
@@ -647,5 +651,38 @@ struct DashboardMetricsRegressionTests {
         sub.tenureMonths = tenure
         sub.priceChangePercent = priceChange
         return sub
+    }
+}
+
+@MainActor
+struct SubscriptionReviewEligibilityTests {
+    @Test
+    func reviewKeepsStaleConfirmedButHidesNotMine() throws {
+        let formatter = ISO8601DateFormatter()
+        let reference = try #require(formatter.date(from: "2026-10-07T12:00:00Z"))
+        let old = try #require(formatter.date(from: "2026-01-05T12:00:00Z"))
+        let current = try #require(formatter.date(from: "2026-11-05T12:00:00Z"))
+        let suggested = subscription("Suggested", state: .suggested, status: .needsReview, renewal: nil)
+        let ignored = subscription("Ignored", state: .ignored, status: .needsReview, renewal: nil)
+        let staleConfirmed = subscription("Stale", state: .confirmed, status: .active, renewal: old)
+        let currentConfirmed = subscription("Current", state: .confirmed, status: .active, renewal: current)
+        let former = subscription("Former", state: .inactive, status: .former, renewal: nil)
+        let snapshot = DashboardMetricsProvider(referenceDateProvider: { reference }).contentSnapshot(
+            subscriptions: [suggested, ignored, staleConfirmed, currentConfirmed, former],
+            transactions: [], revision: .initial
+        ) { subscription, _ in
+            MerchantLearningPreview(mode: .reinforce, targetCanonicalName: subscription.canonicalName)
+        }
+        #expect(Set(snapshot.reviewQueueSubscriptions.map(\.id)) == [suggested.id, staleConfirmed.id])
+        #expect(snapshot.reviewQueueTotalCount == 2)
+        #expect(Set(snapshot.reviewPreviews.keys) == [suggested.id, staleConfirmed.id])
+    }
+
+    private func subscription(
+        _ name: String, state: SubscriptionLibraryState, status: SubscriptionStatus, renewal: Date?
+    ) -> Subscription {
+        Subscription(canonicalName: name, displayName: name, status: status, libraryState: state,
+                     cadence: .monthly, priceAmount: 15, priceCurrency: "USD", normalizedMonthlyAmount: 15,
+                     lastChargeDate: nil, predictedNextChargeDate: renewal, confidenceScore: 0.8)
     }
 }

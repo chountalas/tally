@@ -49,9 +49,11 @@ struct TabularTransactionDraftBuilder {
         let parser = dateAwareParser(for: draft.rawRows, dateColumn: mapping.dateColumn)
 
         var seeds: [NormalizedTransactionSeed] = []
+        seeds.reserveCapacity(draft.rawRows.count)
         var skippedRowCount = 0
 
         for row in draft.rawRows {
+            try Task.checkCancellation()
             let dateValue = row[mapping.dateColumn] ?? ""
             let amountValue = row[mapping.amountColumn] ?? ""
             let merchantValue = row[mapping.merchantColumn ?? ""] ??

@@ -529,7 +529,10 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
     func testMatchRuleLinksNewChargeBeforeClusteringAndRecordsEvidence() async throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = container.mainContext
-        let formatter = ISO8601DateFormatter()
+        let calendar = Calendar.current
+        let observedDate = calendar.startOfDay(for: .now)
+        let previousDate = calendar.date(byAdding: .month, value: -1, to: observedDate)
+        let expectedDate = calendar.date(byAdding: .month, value: 1, to: observedDate)
         let subscription = Subscription(
             canonicalName: "OpenAI",
             displayName: "OpenAI",
@@ -539,8 +542,8 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
             priceAmount: Decimal(string: "20.00") ?? 20,
             priceCurrency: "USD",
             normalizedMonthlyAmount: Decimal(string: "20.00") ?? 20,
-            lastChargeDate: formatter.date(from: "2026-05-14T00:00:00Z"),
-            predictedNextChargeDate: formatter.date(from: "2026-06-14T00:00:00Z"),
+            lastChargeDate: previousDate,
+            predictedNextChargeDate: observedDate,
             confidenceScore: 0.96,
             isUserConfirmed: true
         )
@@ -560,7 +563,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
             )
         )
         let transaction = NormalizedTransaction(
-            transactionDate: formatter.date(from: "2026-06-15T00:00:00Z") ?? .now,
+            transactionDate: observedDate,
             transactionAmount: Decimal(string: "-20.00") ?? -20,
             merchantRaw: "STRIPE* OPENAI",
             merchantNormalized: "OpenAI",
@@ -582,7 +585,7 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         XCTAssertEqual(subscription.priceAmount, Decimal(string: "20.00") ?? 20)
         XCTAssertEqual(
             subscription.predictedNextChargeDate,
-            formatter.date(from: "2026-07-15T00:00:00Z")
+            expectedDate
         )
 
         let evidence = try context.fetch(FetchDescriptor<SubscriptionDetectionEvidence>())
@@ -626,6 +629,15 @@ final class SubscriptionEvidenceEngineTests: XCTestCase {
         )
         transaction.classificationConfidence = 0.9
         context.insert(transaction)
+
+        for date in ["2026-05-15T00:00:00Z", "2026-06-15T00:00:00Z"] {
+            context.insert(NormalizedTransaction(
+                transactionDate: formatter.date(from: date) ?? .now, transactionAmount: -35,
+                merchantRaw: "Neighborhood Market", merchantNormalized: "Neighborhood Market",
+                currency: "USD", accountName: "Visa", category: "Shopping", memo: "Order",
+                merchantKind: .groceryRetailer, merchantSubscriptionAffinity: 0
+            ))
+        }
 
         try await SubscriptionDetectionService().rebuildSubscriptions(in: context)
         try context.save()

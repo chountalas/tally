@@ -472,7 +472,6 @@ struct ManualSubscriptionDraftSuggestion: Sendable {
     let websiteURL: String?
     let reminderDaysBefore: Int?
     let replacementSubscriptionID: UUID?
-    let modelSource: AIProviderKind?
     let summary: String
 }
 
@@ -573,7 +572,6 @@ struct ManualSubscriptionDraftAdvisor: Sendable {
             websiteURL: suggestedWebsite,
             reminderDaysBefore: suggestedReminderLead,
             replacementSubscriptionID: suggestedReplacement,
-            modelSource: aiClassification == nil ? nil : AIProviderPreferences().selectedKind,
             summary: summary
         )
     }

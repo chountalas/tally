@@ -40,7 +40,7 @@ extension SubscriptionDetectionService {
                 displayName: displayName,
                 source: .recentPurchase,
                 hadRecurringSignals: false,
-                importRecordIDs: Set([transaction.importRecordID].compactMap { $0 })
+                transactions: [transaction]
             ),
             environment: environment,
             state: state
@@ -52,7 +52,9 @@ extension SubscriptionDetectionService {
         if handleFalsePositiveRule(
             rule,
             canonicalName: canonicalName,
-            environment: environment
+            transactions: [transaction],
+            environment: environment,
+            state: state
         ) {
             return nil
         }
@@ -71,7 +73,7 @@ extension SubscriptionDetectionService {
         displayName: String,
         source: SubscriptionDetectionSource,
         hadRecurringSignals: Bool,
-        importRecordIDs: Set<UUID>
+        transactions: [NormalizedTransaction]
     ) -> DetectionSuppressionRequest {
         DetectionSuppressionRequest(
             canonicalName: canonicalName,
@@ -79,7 +81,8 @@ extension SubscriptionDetectionService {
             source: source,
             hadRecurringSignals: hadRecurringSignals,
             reason: "Suppressed using a saved user correction.",
-            importRecordIDs: importRecordIDs
+            importRecordIDs: Set(transactions.compactMap(\.importRecordID)),
+            transactionIDs: Set(transactions.map(\.id))
         )
     }
 
@@ -119,7 +122,9 @@ extension SubscriptionDetectionService {
         if handleFalsePositiveRule(
             rule,
             canonicalName: summary.canonicalName,
-            environment: environment
+            transactions: cluster.transactions,
+            environment: environment,
+            state: state
         ) {
             return
         }
@@ -138,9 +143,7 @@ extension SubscriptionDetectionService {
 
         state.seenCanonicals.insert(summary.canonicalName)
         state.candidateCount += 1
-        if summary.status == .needsReview {
-            state.needsReviewCount += 1
-        } else {
+        if summary.status != .needsReview {
             state.autoConfirmCount += 1
         }
         linkTransactions(cluster.transactions, to: subscription)
@@ -176,7 +179,8 @@ extension SubscriptionDetectionService {
                 source: summary.detectionSource,
                 hadRecurringSignals: true,
                 reason: summary.reason,
-                importRecordIDs: Set(cluster.transactions.compactMap(\.importRecordID))
+                importRecordIDs: Set(cluster.transactions.compactMap(\.importRecordID)),
+                subscriptionID: subscription.id
             )
         )
     }

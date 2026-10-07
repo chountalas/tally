@@ -19,6 +19,7 @@ struct SubscriptionDetailView: View {
     @State private var isConfirmingCancellation = false
     @State private var displayedChargeRows: [ChargeRowData] = []
     @State private var chargeRowsAreProjected = false
+    @State private var showsFullHistory = false
     @State private var chargeLoadErrorMessage: String?
 
     init(subscription: Subscription) {
@@ -26,20 +27,12 @@ struct SubscriptionDetailView: View {
     }
 
     private var sub: Subscription { subscription }
-    private var isCurrentActive: Bool {
-        DashboardMetrics.currentActiveSubscriptions(from: [sub]).contains { $0.id == sub.id }
-    }
-    private var displayStatus: SubscriptionStatus {
-        sub.status == .active && isCurrentActive == false ? .former : sub.status
-    }
+    private var displayStatus: SubscriptionStatus { DashboardMetrics.displayStatus(for: sub) }
     private var currentRenewalDate: Date? {
         DashboardMetrics.currentRenewalDate(for: sub)
     }
     private var isActive: Bool { displayStatus == .active }
     private var isNeedsReview: Bool { displayStatus == .needsReview }
-    /// A suggested (needs-review) item is still an ongoing detected charge, so it
-    /// shares the active layout for next-charge / tenure / renews. Stale active
-    /// records render as ended until the next rebuild persists that status.
     private var isOngoing: Bool { displayStatus != .former }
     private var isManualRecord: Bool {
         sub.creationPath == .manual || sub.libraryState == .manual
@@ -59,7 +52,20 @@ struct SubscriptionDetailView: View {
                 hero.padding(.bottom, 22)
                 headlineCard.padding(.bottom, 14)
                 if sub.tallyPriceWentUp { priceCallout.padding(.bottom, 14) }
-                factGrid.padding(.bottom, 22)
+                factGrid.padding(.bottom, 14)
+                if let reason = sub.detectionReason?.nilIfBlank {
+                    Text(reason)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 18)
+                }
+                if !chargeRowsAreProjected, !displayedChargeRows.isEmpty {
+                    Text(historySummary)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                        .padding(.bottom, 12)
+                }
                 SectionHead(chargeRowsAreProjected ? "Projected charges" : "Recent charges")
                     .padding(.bottom, chargeRowsAreProjected ? 6 : 14)
                 if chargeRowsAreProjected {
@@ -75,6 +81,14 @@ struct SubscriptionDetailView: View {
                         .padding(.vertical, 8)
                 } else {
                     chargeList
+                    if !chargeRowsAreProjected, displayedChargeRows.count > 6 {
+                        Button(showsFullHistory ? "Show recent charges" : "Show all \(displayedChargeRows.count) charges") {
+                            showsFullHistory.toggle()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.Colors.accent)
+                        .padding(.top, 12)
+                    }
                 }
                 actions.padding(.top, 22)
             }
@@ -304,8 +318,9 @@ struct SubscriptionDetailView: View {
     // MARK: Recent charges
 
     private var chargeList: some View {
-        let charges = displayedChargeRows.isEmpty ? recentCharges() : displayedChargeRows
-        return VStack(spacing: 0) {
+        let loaded = displayedChargeRows.isEmpty ? recentCharges() : displayedChargeRows
+        let charges = showsFullHistory ? loaded : Array(loaded.prefix(6))
+        return LazyVStack(spacing: 0) {
             ForEach(Array(charges.enumerated()), id: \.element.id) { index, charge in
                 HStack {
                     Text(charge.label)
@@ -327,6 +342,12 @@ struct SubscriptionDetailView: View {
         .cardShadow()
     }
 
+    private var historySummary: String {
+        let start = displayedChargeRows.last?.label ?? ""
+        let end = displayedChargeRows.first?.label ?? ""
+        return "\(displayedChargeRows.count) imported charges · \(start) to \(end)"
+    }
+
     private var chargeRefreshID: String {
         "\(sub.id.uuidString)-\(appModel.libraryRevision.generation)"
     }
@@ -340,8 +361,8 @@ struct SubscriptionDetailView: View {
 
     /// Real `NormalizedTransaction` rows for this subscription, most-recent first,
     /// shown with their own dates / amounts / currencies.
-    private func loadActualCharges(count: Int = 6) throws -> [ChargeRowData] {
-        try linkedTransactions().prefix(count).map { transaction in
+    private func loadActualCharges() throws -> [ChargeRowData] {
+        try linkedTransactions().map { transaction in
             let label = transaction.transactionDate.formatted(.dateTime.month(.abbreviated).day().year())
             let amount = abs(transaction.transactionAmount)
             return ChargeRowData(
@@ -354,25 +375,12 @@ struct SubscriptionDetailView: View {
         }
     }
 
-    /// Transactions linked to this subscription, most-recent first. Falls back to a
-    /// canonical-name match (mirrors `AppModel.fetchLinkedTransactions`) so charges
-    /// still surface for items linked by merchant rather than id.
     private func linkedTransactions() throws -> [NormalizedTransaction] {
         let subscriptionID = sub.id
-        let linkedDescriptor = FetchDescriptor<NormalizedTransaction>(
+        return try modelContext.fetch(FetchDescriptor<NormalizedTransaction>(
             predicate: #Predicate { $0.subscriptionID == subscriptionID },
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
-        )
-        let linked = try modelContext.fetch(linkedDescriptor)
-        if linked.isEmpty == false {
-            return linked
-        }
-        let canonicalName = sub.canonicalName
-        let canonicalDescriptor = FetchDescriptor<NormalizedTransaction>(
-            predicate: #Predicate { $0.merchantNormalized == canonicalName },
-            sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
-        )
-        return try modelContext.fetch(canonicalDescriptor)
+        ))
     }
 
     private func recentCharges(count: Int = 6) -> [ChargeRowData] {

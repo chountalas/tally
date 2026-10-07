@@ -19,6 +19,9 @@ struct SubscriptionDetectionService {
         in context: ModelContext
     ) async throws -> SubscriptionDetectionReport {
         try Task.checkCancellation()
+        let autosaveEnabled = context.autosaveEnabled
+        context.autosaveEnabled = false
+        defer { context.autosaveEnabled = autosaveEnabled }
         let startedAt = Date()
         let transactions = try fetchTransactions(in: context)
         let detectionRun = DetectionRun(
@@ -28,19 +31,24 @@ struct SubscriptionDetectionService {
         context.insert(detectionRun)
         let state = DetectionAccumulator()
 
+        let previousAssignments = Dictionary(uniqueKeysWithValues: transactions.compactMap { transaction in
+            transaction.subscriptionID.map { (transaction.id, $0) }
+        })
         await prepareTransactions(transactions)
         try checkCancellationAndRollback(in: context)
 
         let debitTransactions = transactions.filter { $0.transactionAmount < 0 }
         try synchronizeDerivedMatchRules(in: context, transactions: debitTransactions)
-        let environment = try makeEnvironment(in: context, detectionRun: detectionRun)
+        var environment = try makeEnvironment(in: context, detectionRun: detectionRun)
+        environment.previousAssignments = previousAssignments
         await applyMatchRules(
+            environment.matchRules.filter(\.isNegativeRule),
             to: debitTransactions,
             environment: environment,
             state: state
         )
         try checkCancellationAndRollback(in: context)
-        await runDetectionPasses(
+        try await runDetectionPasses(
             on: debitTransactions,
             environment: environment,
             state: state
@@ -54,19 +62,26 @@ struct SubscriptionDetectionService {
             in: context
         )
         let finalSubscriptions = try context.fetch(FetchDescriptor<Subscription>())
-        try reconcileOccurrences(
-            for: finalSubscriptions,
-            transactions: transactions,
-            detectionRun: detectionRun,
-            in: context
-        )
+        reconcileLifecycles(for: finalSubscriptions, transactions: transactions, environment: environment)
+        do {
+            try await reconcileOccurrences(
+                for: finalSubscriptions,
+                transactions: transactions,
+                detectionRun: detectionRun,
+                in: context
+            )
+            try checkCancellationAndRollback(in: context)
+        } catch is CancellationError {
+            context.rollback()
+            throw CancellationError()
+        }
 
-        let report = SubscriptionDetectionReport(clusters: state.clusterReports)
+        let report = finalReport(from: state.clusterReports, subscriptions: finalSubscriptions)
         detectionRun.ruleMatchCount = state.ruleMatchCount
         detectionRun.candidateCount = state.candidateCount
         detectionRun.autoConfirmCount = state.autoConfirmCount
         detectionRun.autoSuppressCount = state.autoSuppressCount
-        detectionRun.needsReviewCount = state.needsReviewCount
+        detectionRun.needsReviewCount = report.clusters.filter { $0.status == .needsReview }.count
         detectionRun.llmEvaluationCount = state.llmEvaluationCount
         detectionRun.finishedAt = .now
         detectionTelemetryLogger.notice(
@@ -79,6 +94,30 @@ struct SubscriptionDetectionService {
         )
 
         return report
+    }
+
+    private func finalReport(
+        from clusters: [SubscriptionClusterReport], subscriptions: [Subscription]
+    ) -> SubscriptionDetectionReport {
+        let byID = Dictionary(uniqueKeysWithValues: subscriptions.map { ($0.id, $0) })
+        let referenceDate = Date.now
+        return SubscriptionDetectionReport(clusters: clusters.map { cluster in
+            guard cluster.status != .suppressed,
+                  let id = cluster.subscriptionID, let subscription = byID[id] else { return cluster }
+            let status: SubscriptionDetectionClusterStatus = if subscription.libraryState == .ignored {
+                .suppressed
+            } else if DashboardMetrics.needsReview(for: subscription, referenceDate: referenceDate) {
+                .needsReview
+            } else {
+                .detected
+            }
+            return SubscriptionClusterReport(
+                displayName: subscription.displayName, status: status, source: cluster.source,
+                hadRecurringSignals: cluster.hadRecurringSignals,
+                reason: subscription.detectionReason ?? cluster.reason,
+                importRecordIDs: cluster.importRecordIDs, subscriptionID: id
+            )
+        })
     }
 
     private func checkCancellationAndRollback(in context: ModelContext) throws {

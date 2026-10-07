@@ -6,10 +6,7 @@ struct TransactionFieldParser {
         case dayFirst
     }
 
-    private nonisolated(unsafe) static let isoFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        return formatter
-    }()
+    private let isoFormatter = ISO8601DateFormatter()
 
     private static let currencySymbols = ["$", "€", "£", "¥", "₹", "₩", "¢"]
     private static let currencyCodes = Set(Locale.commonISOCurrencyCodes.map { $0.uppercased() })
@@ -87,7 +84,7 @@ struct TransactionFieldParser {
     }
 
     private func parseDateCandidate(_ value: String) -> Date? {
-        if let isoDate = Self.isoFormatter.date(from: value) {
+        if let isoDate = isoFormatter.date(from: value) {
             return isoDate
         }
 

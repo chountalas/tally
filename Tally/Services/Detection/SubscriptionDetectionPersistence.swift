@@ -5,7 +5,9 @@ extension SubscriptionDetectionService {
     func handleFalsePositiveRule(
         _ rule: SubscriptionReviewRule?,
         canonicalName: String,
-        environment: DetectionEnvironment
+        transactions: [NormalizedTransaction],
+        environment: DetectionEnvironment,
+        state: DetectionAccumulator
     ) -> Bool {
         guard rule?.isFalsePositive == true else {
             return false
@@ -14,6 +16,7 @@ extension SubscriptionDetectionService {
         if let existing = environment.existingByCanonical[canonicalName] {
             environment.context.delete(existing)
         }
+        state.suppressedTransactionIDs.formUnion(transactions.map(\.id))
         return true
     }
 
@@ -30,6 +33,7 @@ extension SubscriptionDetectionService {
         if let existing = environment.existingByCanonical[request.canonicalName] {
             environment.context.delete(existing)
         }
+        state.suppressedTransactionIDs.formUnion(request.transactionIDs)
 
         state.clusterReports.append(
             SubscriptionClusterReport(
@@ -77,16 +81,15 @@ extension SubscriptionDetectionService {
         existing: Subscription?
     ) -> Subscription {
         let resolvedCadence = rule?.overrideCadence ?? correction?.correctedCadence ?? summary.cadence
-        let resolvedLastChargeDate = rule?.overrideLastChargeDate ?? summary.lastChargeDate
+        let resolvedLastChargeDate = [rule?.overrideLastChargeDate, summary.lastChargeDate].compactMap { $0 }.max()
         let resolution = DetectedSubscriptionResolution(
             summary: summary,
             rule: rule,
             cadence: resolvedCadence,
             lastChargeDate: resolvedLastChargeDate,
-            nextChargeDate: predictNextCharge(
-                from: resolvedLastChargeDate,
-                cadence: resolvedCadence
-            ),
+            nextChargeDate: resolvedLastChargeDate.flatMap {
+                BillingSchedule(cadence: resolvedCadence, dates: cluster.transactions.map(\.transactionDate)).next(after: $0)
+            },
             normalizedMonthlyAmount: resolvedCadence.normalizedMonthlyAmount(
                 for: rule?.overridePriceAmount ?? summary.priceAmount
             )
@@ -145,9 +148,9 @@ extension SubscriptionDetectionService {
         subscription.confidenceScore = context.summary.confidence
         subscription.serviceCategory = context.resolution.category
         subscription.detectionReason = context.summary.reason
-        subscription.notes = context.rule?.notes?.nilIfBlank
+        subscription.notes = context.rule.map { $0.notes?.nilIfBlank } ?? subscription.notes
         subscription.isUserConfirmed =
-            context.rule?.isUserConfirmed ?? context.correction?.isSubscription == true
+            context.rule?.isUserConfirmed ?? context.correction?.isSubscription ?? subscription.isUserConfirmed
         if subscription.serviceIdentifier?.nilIfBlank == nil {
             subscription.serviceIdentifier = ServiceLogoDatabase.suggestedIdentifier(
                 displayName: subscription.displayName,
@@ -174,7 +177,7 @@ extension SubscriptionDetectionService {
         // the next rebuild whenever its last charge looks stale, because the summary
         // status (not the override) drove the library state.
         let effectiveStatus = rule?.overrideStatus ?? summary.status
-        if rule?.isUserConfirmed == true || correction?.isSubscription == true {
+        if rule?.isUserConfirmed == true || correction?.isSubscription == true || existing?.isUserConfirmed == true {
             return effectiveStatus == .former ? .inactive : .confirmed
         }
         if effectiveStatus == .former {
@@ -191,7 +194,8 @@ extension SubscriptionDetectionService {
             return nil
         }
 
-        return Calendar.current.dateComponents([.month], from: firstChargeDate, to: .now).month
+        return Calendar.current.dateComponents([.month], from: firstChargeDate,
+                                               to: cluster.transactions.map(\.transactionDate).max() ?? firstChargeDate).month
     }
 
     func priceChangePercent(for cluster: SubscriptionCandidateCluster) -> Double? {

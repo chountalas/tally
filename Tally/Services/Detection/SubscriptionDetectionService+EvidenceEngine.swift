@@ -157,11 +157,12 @@ extension SubscriptionDetectionService {
     }
 
     func applyMatchRules(
+        _ rules: [SubscriptionMatchRule],
         to debitTransactions: [NormalizedTransaction],
         environment: DetectionEnvironment,
         state: DetectionAccumulator
     ) async {
-        let orderedRules = environment.matchRules.sorted {
+        let orderedRules = rules.sorted {
             if $0.isNegativeRule != $1.isNegativeRule {
                 return $0.isNegativeRule && !$1.isNegativeRule
             }
@@ -204,64 +205,7 @@ extension SubscriptionDetectionService {
         }
     }
 
-    func reconcileOccurrences(
-        for subscriptions: [Subscription],
-        transactions: [NormalizedTransaction],
-        detectionRun: DetectionRun,
-        in context: ModelContext
-    ) throws {
-        let existingExpectations = try context.fetch(FetchDescriptor<SubscriptionScheduleExpectation>())
-        let existingOccurrences = try context.fetch(FetchDescriptor<SubscriptionOccurrence>())
-        var expectationsBySubscription = Dictionary(
-            uniqueKeysWithValues: existingExpectations.map { ($0.subscriptionID, $0) }
-        )
-        let transactionsBySubscription = Dictionary(grouping: transactions.compactMap { transaction -> NormalizedTransaction? in
-            transaction.subscriptionID == nil ? nil : transaction
-        }, by: { $0.subscriptionID ?? UUID() })
 
-        for subscription in subscriptions {
-            let linkedTransactions = (transactionsBySubscription[subscription.id] ?? [])
-                .sorted { $0.transactionDate < $1.transactionDate }
-            let expectation = expectationsBySubscription[subscription.id] ?? makeScheduleExpectation(
-                for: subscription,
-                linkedTransactions: linkedTransactions,
-                context: context
-            )
-            expectationsBySubscription[subscription.id] = expectation
-            updateScheduleExpectation(
-                expectation,
-                subscription: subscription,
-                linkedTransactions: linkedTransactions
-            )
-            let previouslyMissedDates = Set(
-                existingOccurrences
-                    .filter { $0.subscriptionID == subscription.id && $0.status == .missed }
-                    .map { Calendar.current.startOfDay(for: $0.expectedDate) }
-            )
-
-            for occurrence in existingOccurrences where occurrence.subscriptionID == subscription.id {
-                context.delete(occurrence)
-            }
-
-            let occurrences = projectedOccurrences(
-                for: subscription,
-                expectation: expectation,
-                linkedTransactions: linkedTransactions,
-                detectionRun: detectionRun,
-                in: context
-            )
-            let missedCount = occurrences.filter {
-                $0.status == .missed &&
-                    previouslyMissedDates.contains(Calendar.current.startOfDay(for: $0.expectedDate)) == false
-            }.count
-            if missedCount > 0 {
-                subscription.confidenceScore = max(
-                    0,
-                    subscription.confidenceScore - min(0.3, Double(missedCount) * 0.08)
-                )
-            }
-        }
-    }
 }
 
 extension SubscriptionDetectionService {
@@ -467,7 +411,8 @@ extension SubscriptionDetectionService {
                 source: .primary,
                 hadRecurringSignals: true,
                 reason: "Linked by a saved match rule before candidate discovery.",
-                importRecordIDs: Set(matches.compactMap(\.importRecordID))
+                importRecordIDs: Set(matches.compactMap(\.importRecordID)),
+                subscriptionID: subscription.id
             )
         )
     }
@@ -565,7 +510,10 @@ extension SubscriptionDetectionService {
             amount <= ($0 as NSDecimalNumber).doubleValue
         } ?? true
         let amountMatchesBand = amountMatchesMinimum && amountMatchesMaximum
-        let canBypassAmountBand = rule.subscriptionID != nil && rule.isNegativeRule == false
+        // Only an exact service identity can follow a price change outside the saved band.
+        // A broader merchant/token match still needs the band to distinguish parallel plans.
+        let canBypassAmountBand = rule.subscriptionID != nil && rule.isNegativeRule == false &&
+            transaction.merchantNormalized.caseInsensitiveCompare(rule.canonicalName) == .orderedSame
 
         let text = [
             transaction.merchantRaw,
@@ -902,367 +850,6 @@ extension SubscriptionDetectionService {
             hash = hash &* 1_099_511_628_211
         }
         return String(hash, radix: 16)
-    }
-}
-
-private extension SubscriptionDetectionService {
-    func makeScheduleExpectation(
-        for subscription: Subscription,
-        linkedTransactions: [NormalizedTransaction],
-        context: ModelContext
-    ) -> SubscriptionScheduleExpectation {
-        let expectation = SubscriptionScheduleExpectation(
-            subscriptionID: subscription.id,
-            cadence: subscription.cadence,
-            interval: 1,
-            anchorPolicy: anchorPolicy(for: subscription, linkedTransactions: linkedTransactions),
-            dateToleranceBeforeDays: dateTolerance(for: subscription.cadence),
-            dateToleranceAfterDays: dateTolerance(for: subscription.cadence),
-            gracePeriodDays: graceWindow(for: subscription.cadence),
-            confidence: subscription.confidenceScore,
-            source: subscription.isUserConfirmed ? .confirmedSubscription : .detectedCandidate
-        )
-        context.insert(expectation)
-        return expectation
-    }
-
-    func updateScheduleExpectation(
-        _ expectation: SubscriptionScheduleExpectation,
-        subscription: Subscription,
-        linkedTransactions: [NormalizedTransaction]
-    ) {
-        expectation.cadence = subscription.cadence
-        expectation.interval = 1
-        expectation.anchorPolicy = anchorPolicy(for: subscription, linkedTransactions: linkedTransactions)
-        expectation.anchorDay = anchorDay(for: subscription, linkedTransactions: linkedTransactions)
-        expectation.anchorWeekday = anchorWeekday(for: subscription, linkedTransactions: linkedTransactions)
-        expectation.dateToleranceBeforeDays = dateTolerance(for: subscription.cadence)
-        expectation.dateToleranceAfterDays = dateTolerance(for: subscription.cadence)
-        expectation.gracePeriodDays = graceWindow(for: subscription.cadence)
-        expectation.confidence = subscription.confidenceScore
-        expectation.updatedAt = .now
-    }
-
-    func projectedOccurrences(
-        for subscription: Subscription,
-        expectation: SubscriptionScheduleExpectation,
-        linkedTransactions: [NormalizedTransaction],
-        detectionRun: DetectionRun,
-        in context: ModelContext
-    ) -> [SubscriptionOccurrence] {
-        let expectedDates = projectedExpectedDates(
-            for: subscription,
-            expectation: expectation,
-            linkedTransactions: linkedTransactions
-        )
-        var unmatchedTransactions = linkedTransactions
-        var occurrences: [SubscriptionOccurrence] = []
-
-        for expectedDate in expectedDates {
-            let expectedDay = Calendar.current.startOfDay(for: expectedDate)
-            let windowStart = Calendar.current.date(
-                byAdding: .day,
-                value: -expectation.dateToleranceBeforeDays,
-                to: expectedDay
-            ) ?? expectedDay
-            let windowEnd = Calendar.current.date(
-                byAdding: .day,
-                value: expectation.dateToleranceAfterDays,
-                to: expectedDay
-            ) ?? expectedDay
-            let matchIndex = unmatchedTransactions.firstIndex { transaction in
-                let transactionDay = Calendar.current.startOfDay(for: transaction.transactionDate)
-                return (windowStart...windowEnd).contains(transactionDay)
-            }
-            let matchedTransaction = matchIndex.map { unmatchedTransactions.remove(at: $0) }
-            let status = occurrenceStatus(
-                windowEnd: windowEnd,
-                matchedTransaction: matchedTransaction,
-                subscription: subscription,
-                expectation: expectation
-            )
-            let evidence = occurrenceEvidence(
-                status: status,
-                subscription: subscription,
-                transaction: matchedTransaction,
-                expectedDate: expectedDate,
-                detectionRun: detectionRun,
-                context: context
-            )
-            let dateDelta = matchedTransaction.map {
-                Calendar.current.dateComponents([.day], from: expectedDate, to: $0.transactionDate).day ?? 0
-            }
-            let amountDelta = matchedTransaction.flatMap {
-                amountDeltaPercent(expected: subscription.priceAmount, actual: abs($0.transactionAmount))
-            }
-            let occurrence = SubscriptionOccurrence(
-                subscriptionID: subscription.id,
-                scheduleExpectationID: expectation.id,
-                expectedDate: expectedDate,
-                windowStartDate: windowStart,
-                windowEndDate: windowEnd,
-                matchedTransactionID: matchedTransaction?.id,
-                status: status,
-                observedDate: matchedTransaction?.transactionDate,
-                observedAmount: matchedTransaction.map { abs($0.transactionAmount) },
-                expectedAmount: subscription.priceAmount,
-                dateDeltaDays: dateDelta,
-                amountDeltaPercent: amountDelta,
-                matchConfidence: matchedTransaction == nil ? 0 : 0.92,
-                evidenceID: evidence?.id,
-                createdByDetectionRunID: detectionRun.id
-            )
-            context.insert(occurrence)
-            occurrences.append(occurrence)
-        }
-
-        return occurrences
-    }
-
-    func projectedExpectedDates(
-        for subscription: Subscription,
-        expectation: SubscriptionScheduleExpectation,
-        linkedTransactions: [NormalizedTransaction]
-    ) -> [Date] {
-        guard expectation.cadence != .unknown else {
-            return []
-        }
-
-        let calendar = Calendar.current
-        let anchorCandidates = [
-            linkedTransactions.first?.transactionDate,
-            subscription.firstChargeDate,
-            subscription.lastChargeDate,
-            subscription.predictedNextChargeDate
-        ].compactMap { $0 }
-        guard var cursor = anchorCandidates.min() else {
-            return []
-        }
-
-        cursor = calendar.startOfDay(for: cursor)
-        let reference = calendar.startOfDay(for: .now)
-        let cutoffCandidates = [
-            reference,
-            subscription.predictedNextChargeDate.map { calendar.startOfDay(for: $0) },
-            linkedTransactions.last.map { calendar.startOfDay(for: $0.transactionDate) }
-        ].compactMap { $0 }
-        let cutoff = cutoffCandidates.max() ?? reference
-        var dates: [Date] = []
-        var guardCount = 0
-        while cursor <= cutoff, guardCount < 180 {
-            dates.append(cursor)
-            guard let next = advanceExpectedDate(cursor, expectation: expectation, calendar: calendar) else {
-                break
-            }
-            cursor = next
-            guardCount += 1
-        }
-        return Array(Set(dates)).sorted()
-    }
-
-    func advanceExpectedDate(
-        _ date: Date,
-        expectation: SubscriptionScheduleExpectation,
-        calendar: Calendar
-    ) -> Date? {
-        let component: Calendar.Component
-        let value: Int
-        switch expectation.cadence {
-        case .monthly:
-            component = .month
-            value = expectation.interval
-        case .quarterly:
-            component = .month
-            value = expectation.interval * 3
-        case .semiannual:
-            component = .month
-            value = expectation.interval * 6
-        case .annual:
-            component = .year
-            value = expectation.interval
-        case .biweekly:
-            component = .day
-            value = expectation.interval * 14
-        case .weekly:
-            component = .day
-            value = expectation.interval * 7
-        case .unknown:
-            return nil
-        }
-
-        guard let advanced = calendar.date(byAdding: component, value: value, to: date) else {
-            return nil
-        }
-
-        switch expectation.anchorPolicy {
-        case .endOfMonth:
-            return calendar.endOfMonth(for: advanced)
-        case .exactDayOfMonth, .sameCalendarDate:
-            guard let anchorDay = expectation.anchorDay else {
-                return advanced
-            }
-            return calendar.dateByClamping(day: anchorDay, inMonthOf: advanced)
-        case .nthWeekday, .sameWeekday, .rollingInterval, .unknown:
-            return advanced
-        }
-    }
-
-    func occurrenceStatus(
-        windowEnd: Date,
-        matchedTransaction: NormalizedTransaction?,
-        subscription: Subscription,
-        expectation: SubscriptionScheduleExpectation
-    ) -> SubscriptionOccurrenceStatus {
-        if let matchedTransaction {
-            if let delta = amountDeltaPercent(expected: subscription.priceAmount, actual: abs(matchedTransaction.transactionAmount)),
-               abs(delta) > max(0.12, expectation.confidence < 0.7 ? 0.2 : 0.12) {
-                return .priceChanged
-            }
-            return .matched
-        }
-
-        let graceEnd = Calendar.current.date(
-            byAdding: .day,
-            value: expectation.gracePeriodDays,
-            to: windowEnd
-        ) ?? windowEnd
-        return graceEnd < Date.now ? .missed : .pending
-    }
-
-    func occurrenceEvidence(
-        status: SubscriptionOccurrenceStatus,
-        subscription: Subscription,
-        transaction: NormalizedTransaction?,
-        expectedDate: Date,
-        detectionRun: DetectionRun,
-        context: ModelContext
-    ) -> SubscriptionDetectionEvidence? {
-        let decision: SubscriptionEvidenceDecision
-        let factorKey: String
-        let reason: String
-        switch status {
-        case .matched:
-            decision = .occurrenceMatched
-            factorKey = "occurrence_coverage"
-            reason = "Expected payment matched an observed transaction."
-        case .missed:
-            decision = .occurrenceMissed
-            factorKey = "missed_occurrence_penalty"
-            reason = "No matching transaction appeared inside the expected payment window."
-        case .priceChanged:
-            decision = .priceChanged
-            factorKey = "price_change_signal"
-            reason = "A matched occurrence moved outside the learned amount tolerance."
-        case .pending, .late, .early, .duplicateInCycle, .manualConfirmed, .manualRejected:
-            return nil
-        }
-
-        let evidence = SubscriptionDetectionEvidence(
-            detectionRunID: detectionRun.id,
-            subscriptionID: subscription.id,
-            candidateKey: "\(subscription.canonicalName):\(expectedDate.ISO8601Format())",
-            decision: decision,
-            confidence: transaction == nil ? 0.45 : 0.92,
-            deterministicScore: transaction == nil ? 0.45 : 0.92,
-            evidenceFactorsJSON: SubscriptionEvidenceJSON.encodeFactors([
-                SubscriptionEvidenceFactor(
-                    key: factorKey,
-                    weight: 1,
-                    score: transaction == nil ? 0.45 : 0.92,
-                    source: "occurrence_reconciliation",
-                    description: reason
-                )
-            ]),
-            matchedTransactionIDsJSON: SubscriptionEvidenceJSON.encodeUUIDs(transaction.map { [$0.id] } ?? []),
-            reason: reason
-        )
-        context.insert(evidence)
-        return evidence
-    }
-
-    func dateTolerance(for cadence: SubscriptionCadence) -> Int {
-        switch cadence {
-        case .annual:
-            return 14
-        case .quarterly, .semiannual:
-            return 7
-        case .monthly:
-            return 3
-        case .biweekly:
-            return 2
-        case .weekly:
-            return 1
-        case .unknown:
-            return 0
-        }
-    }
-
-    func anchorPolicy(
-        for subscription: Subscription,
-        linkedTransactions: [NormalizedTransaction]
-    ) -> SubscriptionAnchorPolicy {
-        switch subscription.cadence {
-        case .monthly, .quarterly, .semiannual:
-            if linkedTransactions.count >= 2,
-               linkedTransactions.allSatisfy({ Calendar.current.isEndOfMonth($0.transactionDate) }) {
-                return .endOfMonth
-            }
-            return .exactDayOfMonth
-        case .annual:
-            return .sameCalendarDate
-        case .weekly, .biweekly:
-            return .rollingInterval
-        case .unknown:
-            return .unknown
-        }
-    }
-
-    func anchorDay(
-        for subscription: Subscription,
-        linkedTransactions: [NormalizedTransaction]
-    ) -> Int? {
-        let date = linkedTransactions.last?.transactionDate ?? subscription.lastChargeDate
-        return date.map { Calendar.current.component(.day, from: $0) }
-    }
-
-    func anchorWeekday(
-        for subscription: Subscription,
-        linkedTransactions: [NormalizedTransaction]
-    ) -> Int? {
-        let date = linkedTransactions.last?.transactionDate ?? subscription.lastChargeDate
-        return date.map { Calendar.current.component(.weekday, from: $0) }
-    }
-
-    func amountDeltaPercent(expected: Decimal, actual: Decimal) -> Double? {
-        let expectedDouble = abs((expected as NSDecimalNumber).doubleValue)
-        guard expectedDouble > 0 else {
-            return nil
-        }
-        let actualDouble = abs((actual as NSDecimalNumber).doubleValue)
-        return (actualDouble - expectedDouble) / expectedDouble
-    }
-}
-
-private extension Calendar {
-    func isEndOfMonth(_ date: Date) -> Bool {
-        component(.day, from: date) == range(of: .day, in: .month, for: date)?.upperBound.advanced(by: -1)
-    }
-
-    func endOfMonth(for date: Date) -> Date {
-        let components = dateComponents([.year, .month], from: date)
-        guard let monthStart = self.date(from: components),
-              let nextMonth = self.date(byAdding: .month, value: 1, to: monthStart),
-              let end = self.date(byAdding: .day, value: -1, to: nextMonth) else {
-            return date
-        }
-        return startOfDay(for: end)
-    }
-
-    func dateByClamping(day: Int, inMonthOf date: Date) -> Date {
-        var components = dateComponents([.year, .month], from: date)
-        let maximumDay = range(of: .day, in: .month, for: date)?.upperBound.advanced(by: -1) ?? day
-        components.day = min(day, maximumDay)
-        return self.date(from: components).map(startOfDay) ?? date
     }
 }
 

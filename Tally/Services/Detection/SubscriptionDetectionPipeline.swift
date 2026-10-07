@@ -38,7 +38,7 @@ extension SubscriptionDetectionService {
         on debitTransactions: [NormalizedTransaction],
         environment: DetectionEnvironment,
         state: DetectionAccumulator
-    ) async {
+    ) async throws {
         guard Task.isCancelled == false else { return }
         let discoverableTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
@@ -63,6 +63,13 @@ extension SubscriptionDetectionService {
         )
         guard Task.isCancelled == false else { return }
 
+        try await replayPositiveMatchRules(
+            on: debitTransactions,
+            environment: environment,
+            state: state
+        )
+        guard Task.isCancelled == false else { return }
+
         let postFallbackTransactions = debitTransactions.filter {
             $0.subscriptionID == nil && state.suppressedTransactionIDs.contains($0.id) == false
         }
@@ -80,6 +87,66 @@ extension SubscriptionDetectionService {
             in: environment.context,
             seenCanonicals: &state.seenCanonicals
         )
+    }
+
+    private func replayPositiveMatchRules(
+        on transactions: [NormalizedTransaction], environment: DetectionEnvironment, state: DetectionAccumulator
+    ) async throws {
+        let rules = environment.matchRules.filter { !$0.isNegativeRule }.sorted { $0.priority > $1.priority }
+        for rule in rules {
+            guard Task.isCancelled == false else { return }
+            // Include owners saved by autosave or inserted by discovery and earlier rules.
+            let subscriptions = try environment.context.fetch(FetchDescriptor<Subscription>())
+            let owners = subscriptions.reduce(into: [String: Subscription]()) { result, subscription in
+                result[subscription.canonicalName] = subscription
+            }
+            let owner = owners[rule.canonicalName]
+            let matches = transactions.filter { transaction in
+                transaction.subscriptionID == nil && !state.suppressedTransactionIDs.contains(transaction.id) &&
+                    ruleMatches(rule, transaction: transaction) &&
+                    canReplay(transaction, to: owner, among: transactions, environment: environment)
+            }
+            let replayEnvironment = DetectionEnvironment(
+                context: environment.context, detectionRun: environment.detectionRun,
+                existingSubscriptions: environment.existingSubscriptions, existingByCanonical: owners,
+                rulesByCanonical: environment.rulesByCanonical, correctionsByCanonical: environment.correctionsByCanonical,
+                matchRules: environment.matchRules, previousAssignments: environment.previousAssignments
+            )
+            await applyMatchRules([rule], to: matches, environment: replayEnvironment, state: state)
+            if let owner, !matches.isEmpty {
+                // A replayed fragment must not replace the reconstructed history's charge boundaries.
+                refreshSubscriptionFromRuleMatches(
+                    owner, matches: transactions.filter { $0.subscriptionID == owner.id },
+                    reviewRule: environment.rulesByCanonical[rule.canonicalName]
+                )
+            }
+        }
+    }
+
+    private func canReplay(
+        _ transaction: NormalizedTransaction, to owner: Subscription?, among transactions: [NormalizedTransaction],
+        environment: DetectionEnvironment
+    ) -> Bool {
+        guard let owner else { return true }
+        let previousOwner = environment.previousAssignments[transaction.id]
+        if let previousOwner, previousOwner != owner.id { return false }
+        if owner.historyIdentity != nil { return previousOwner == owner.id }
+        let linked = transactions.filter { $0.subscriptionID == owner.id }
+        guard !linked.isEmpty else { return true }
+        let account = replayAccount(for: transaction)
+        guard linked.contains(where: { replayAccount(for: $0) == account }) else { return false }
+        if previousOwner == owner.id { return true }
+        // An unassigned charge cannot choose between same-account, same-currency merchant histories.
+        return !transactions.contains { sibling in
+            sibling.subscriptionID != nil && sibling.subscriptionID != owner.id &&
+                sibling.merchantNormalized.caseInsensitiveCompare(owner.canonicalName) == .orderedSame &&
+                replayAccount(for: sibling) == account &&
+                (sibling.currency?.uppercased() ?? "USD") == (transaction.currency?.uppercased() ?? "USD")
+        }
+    }
+
+    private func replayAccount(for transaction: NormalizedTransaction) -> String? {
+        transaction.externalAccountID?.nilIfBlank ?? transaction.accountName?.nilIfBlank
     }
 
     func resetSubscriptionLinks(for transactions: [NormalizedTransaction]) async {
@@ -142,7 +209,12 @@ extension SubscriptionDetectionService {
                 continue
             }
 
-            for cluster in candidateClusters(for: merchant, transactions: merchantTransactions) {
+            if !canAnalyzeHistory(merchantTransactions) {
+                recordExcludedHistory(merchant: merchant, transactions: merchantTransactions, state: state, source: source)
+                continue
+            }
+            let histories = await candidateHistories(for: merchant, transactions: merchantTransactions)
+            for cluster in identifyHistories(histories, environment: environment, state: state) {
                 guard Task.isCancelled == false else { return }
                 await applyDetectedCluster(
                     cluster,
@@ -159,6 +231,22 @@ extension SubscriptionDetectionService {
         }
     }
 
+    private func recordExcludedHistory(
+        merchant: String, transactions: [NormalizedTransaction], state: DetectionAccumulator, source: SubscriptionDetectionSource
+    ) {
+        guard transactions.count >= 2 else { return }
+        let intervals = zip(transactions, transactions.dropFirst()).map {
+            Calendar.current.dateComponents([.day], from: $0.transactionDate, to: $1.transactionDate).day ?? 0
+        }
+        guard inferCadence(from: intervals, occurrenceCount: transactions.count) != .unknown else { return }
+        state.clusterReports.append(SubscriptionClusterReport(
+            displayName: merchant, status: .suppressed, source: source, hadRecurringSignals: true,
+            reason: "Recurring spend excluded because the merchant evidence indicates purchases or financial movement.",
+            importRecordIDs: Set(transactions.compactMap(\.importRecordID))
+        ))
+        state.autoSuppressCount += 1
+    }
+
     func rebuildFallbackSubscriptions(
         from transactions: [NormalizedTransaction],
         environment: DetectionEnvironment,
@@ -166,11 +254,8 @@ extension SubscriptionDetectionService {
     ) async {
         for group in fallbackRecoveryGroups(from: transactions) {
             guard Task.isCancelled == false else { return }
-            for cluster in candidateClusters(
-                for: group.merchant,
-                transactions: group.transactions,
-                mode: .fallback
-            ) {
+            let histories = await candidateHistories(for: group.merchant, transactions: group.transactions, mode: .fallback)
+            for cluster in identifyHistories(histories, environment: environment, state: state) {
                 guard Task.isCancelled == false else { return }
                 await applyDetectedCluster(
                     cluster,
@@ -235,7 +320,7 @@ extension SubscriptionDetectionService {
                 displayName: cluster.displayName,
                 source: source,
                 hadRecurringSignals: true,
-                importRecordIDs: Set(cluster.transactions.compactMap(\.importRecordID))
+                transactions: cluster.transactions
             ),
             environment: environment,
             state: state
@@ -348,7 +433,6 @@ extension SubscriptionDetectionService {
             linkTransactions([candidate.transaction], to: subscription)
             state.seenCanonicals.insert(summary.canonicalName)
             state.candidateCount += 1
-            state.needsReviewCount += 1
             let llmContribution = await llmEvidenceContribution(
                 for: summary,
                 transactions: [candidate.transaction],
@@ -381,7 +465,8 @@ extension SubscriptionDetectionService {
                     source: .recentPurchase,
                     hadRecurringSignals: false,
                     reason: summary.reason,
-                    importRecordIDs: Set([candidate.transaction.importRecordID].compactMap { $0 })
+                    importRecordIDs: Set([candidate.transaction.importRecordID].compactMap { $0 }),
+                    subscriptionID: subscription.id
                 )
             )
         }

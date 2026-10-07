@@ -20,7 +20,7 @@ private let classificationTelemetryLogger = Logger(
     category: "Classification"
 )
 
-private let currentClassificationCacheVersion = 4
+private let currentClassificationCacheVersion = 5
 private let fallbackClassificationCacheVersion = 0
 private let maxClassificationCacheAge: TimeInterval = 180 * 24 * 60 * 60
 
